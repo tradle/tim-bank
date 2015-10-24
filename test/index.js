@@ -52,6 +52,8 @@ test('setup', function (t) {
 })
 
 test('current account', function (t) {
+  t.plan(4)
+
   var msg = {}
   msg[TYPE] = types.CurrentAccountApplication
   msg[NONCE] = '123'
@@ -62,20 +64,21 @@ test('current account', function (t) {
   })
   .done()
 
-  APPLICANT.on('message', function (info) {
+  ;['unchained', 'message'].forEach(function (event) {
+    APPLICANT.on(event, function (info) {
     // confirmation of appliation
-    APPLICANT.lookupObject(info)
-      .then(function (obj) {
-        t.equal(obj[TYPE], types.CurrentAccountConfirmation)
-        var applicationHash = obj.parsed.data.application
-        var msgDB = APPLICANT.messages()
-        return Q.ninvoke(msgDB, 'byCurHash', applicationHash)
-      })
-      .then(APPLICANT.lookupObject)
-      .done(function (application) {
-        t.deepEqual(application.parsed.data, msg)
-        t.end()
-      })
+      APPLICANT.lookupObject(info)
+        .then(function (obj) {
+          t.equal(obj[TYPE], types.CurrentAccountConfirmation)
+          var applicationHash = obj.parsed.data.application
+          var msgDB = APPLICANT.messages()
+          return Q.ninvoke(msgDB, 'byCurHash', applicationHash)
+        })
+        .then(APPLICANT.lookupObject)
+        .done(function (application) {
+          t.deepEqual(application.parsed.data, msg)
+        })
+    })
   })
 })
 

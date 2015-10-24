@@ -9,6 +9,8 @@ var fs = require('fs')
 var Q = require('q')
 var constants = require('tradle-constants')
 var Builder = require('chained-obj').Builder
+var Tim = require('tim')
+var kiki = Tim.Kiki
 var buildNode = require('./lib/buildNode')
 var CUR_HASH = constants.CUR_HASH
 var ROOT_HASH = constants.CUR_HASH
@@ -93,18 +95,22 @@ Bank.prototype._handleCurrentAccountApplication = function (app) {
 
   resp[TYPE] = types.CurrentAccountConfirmation
   resp[OWNER] = this._tim.myCurrentHash()
-  typeforce('String', resp[OWNER])
+
+  var key = kiki.toKey(this._tim.getPrivateKey({
+    type: 'ec',
+    purpose: 'sign'
+  }))
 
   var b = Builder()
     .data(resp)
-    .signWith(this._tim.signingKey)
+    .signWith(key)
 
   Q.ninvoke(b, 'build')
     .then(function (build) {
       return self._tim.send({
         to: [app.from],
         msg: build.form,
-        // chain: true,
+        chain: true,
         deliver: true
       })
     })
@@ -117,15 +123,34 @@ Bank.prototype.destroy = function () {
   return this._destroyPromise = this._tim.destroy()
 }
 
-// var keeper = fakeKeeper.empty()
+function dumpDBs (tim) {
+  var identities = tim.identities()
+  identities.onLive(function () {
+    identities.createValueStream()
+      .on('data', function (result) {
+        // console.log('identity', result.identity.name.firstName)
+        console.log('identity', result.identity)
+      })
+  })
 
-// var tedPub = new Buffer(stringify(require('./fixtures/ted-pub.json')), 'binary')
-// var tedPriv = require('./fixtures/ted-priv')
-// var ted = Identity.fromJSON(tedPriv)
-// var tedPort = 51087
-// var tedWallet = realWalletFor(ted)
-// var blockchain = tedWallet.blockchain
-// var tedWallet = walletFor(ted)
+  var messages = tim.messages()
+  messages.onLive(function () {
+    messages.createValueStream()
+      .on('data', function (data) {
+        tim.lookupObject(data)
+          .then(function (obj) {
+            console.log('msg', obj[CUR_HASH])
+          })
+      })
+  })
+}
+
+function printIdentityStatus (tim) {
+  return tim.identityPublishStatus()
+    .then(function (status) {
+      console.log(tim.name(), 'identity publish status', status)
+    })
+}
 
 // clear(function () {
   // print(init)
@@ -182,32 +207,3 @@ Bank.prototype.destroy = function () {
 // function onTimReady () {
 //   console.log(tim.name(), 'is ready')
 // }
-
-function dumpDBs (tim) {
-  var identities = tim.identities()
-  identities.onLive(function () {
-    identities.createValueStream()
-      .on('data', function (result) {
-        // console.log('identity', result.identity.name.firstName)
-        console.log('identity', result.identity)
-      })
-  })
-
-  var messages = tim.messages()
-  messages.onLive(function () {
-    messages.createValueStream()
-      .on('data', function (data) {
-        tim.lookupObject(data)
-          .then(function (obj) {
-            console.log('msg', obj[CUR_HASH])
-          })
-      })
-  })
-}
-
-function printIdentityStatus (tim) {
-  return tim.identityPublishStatus()
-    .then(function (status) {
-      console.log(tim.name(), 'identity publish status', status)
-    })
-}
