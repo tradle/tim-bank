@@ -1,23 +1,37 @@
 {
-  "name": "tim-lloyds",
+  "name": "tim-bank",
   "version": "1.0.0",
   "description": "",
   "private": true,
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node test"
   },
   "author": "Mark Vayngrib <mark.vayngrib@lablz.com> (http://github.com/mvayngrib)",
   "license": "ISC",
   "dependencies": {
     "bittorrent-dht": "tradle/bittorrent-dht",
     "cb-blockr": "tradle/cb-blockr",
-    "http-keeper": "^1.3.2",
+    "chained-obj": "^1.2.0",
+    "debug": "^2.2.0",
+    "http-keeper": "^1.3.3",
     "leveldown": "^1.4.1",
-    "midentity": "tradle/identity",
+    "midentity": "git+https://github.com/tradle/identity.git",
+    "minimist": "^1.2.0",
+    "multiplex-utp": "^1.0.1",
+    "q": "^1.4.1",
     "rimraf": "^2.4.3",
     "simple-wallet": "tradle/simple-wallet",
     "tim": "tradle/tim",
-    "tradle-utils": "tradle/tradle-utils"
+    "tradle-constants": "^1.1.0",
+    "tradle-utils": "tradle/tradle-utils",
+    "typeforce": "^1.3.6",
+    "xtend": "^4.0.0"
+  },
+  "devDependencies": {
+    "array-find": "^1.0.0",
+    "memdown": "^1.1.0",
+    "tape": "^4.2.2",
+    "tradle-test-helpers": "tradle/test-helpers"
   }
 }

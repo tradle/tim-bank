@@ -1,28 +1,121 @@
+require('multiplex-utp')
+
 var path = require('path')
-var crypto = require('crypto')
-var DHT = require('bittorrent-dht')
-var leveldown = require('leveldown')
+var debug = require('debug')('bank')
+var typeforce = require('typeforce')
 var utils = require('tradle-utils')
-var rimraf = require('rimraf')
 var fs = require('fs')
 // var level = require('react-native-level')
-var Driver = require('tim')
-var Identity = require('midentity').Identity
-// var tedPriv = require('chained-chat/test/fixtures/ted-priv')
-// var Fakechain = require('blockloader/fakechain')
-var Blockchain = require('cb-blockr')
-// var Keeper = require('bitkeeper-js')
-var Keeper = require('http-keeper')
-var Wallet = require('simple-wallet')
-// var fakeKeeper = help.fakeKeeper
-// var fakeWallet = help.fakeWallet
-// var ted = Identity.fromJSON(tedPriv)
-var FIXTURES_DIR = './node_modules/tim/test/fixtures/'
-var priv = require(FIXTURES_DIR + 'bill-priv.json')
-var pub = require(FIXTURES_DIR + 'bill-pub.json')
-var tim
-var networkName = 'testnet'
-var port = Number(process.argv[2]) || 51086
+var Q = require('q')
+var constants = require('tradle-constants')
+var Builder = require('chained-obj').Builder
+var buildNode = require('./lib/buildNode')
+var CUR_HASH = constants.CUR_HASH
+var ROOT_HASH = constants.CUR_HASH
+var TYPE = constants.TYPE
+var OWNER = constants.OWNER
+var types = require('./lib/types')
+
+module.exports = Bank
+
+function Bank (options) {
+  var self = this
+
+  typeforce({
+    identity: 'Object',
+    identityKeys: 'Array',
+    port: 'Number',
+    networkName: 'String',
+    ip: 'String',
+    blockchain: '?Object',
+    keeper: '?Object'
+  }, options)
+
+  utils.bindPrototypeFunctions(this)
+
+  this._identity = options.identity
+  this._keys = options.identityKeys
+  this._port = options.port
+
+  var tim = this._tim = buildNode(options)
+
+  tim.on('error', function (err) {
+    self._debug('error', err)
+  })
+
+  tim.on('message', function (info) {
+    tim.lookupObject(info)
+      .then(self._onmessage)
+  })
+
+  var readyDefer = Q.defer()
+  this._readyPromise = readyDefer.promise
+
+  tim.once('ready', function () {
+    self._ready = true
+    readyDefer.resolve()
+    // printIdentityStatus(tim)
+    //   .then(dumpDBs.bind(null, tim))
+  })
+}
+
+Bank.prototype._debug = function () {
+  var args = [].slice.call(arguments)
+  args.unshift(this._tim.name())
+  return debug.apply(null, args)
+}
+
+Bank.prototype._onmessage = function (obj) {
+  if (!this._ready) {
+    return this._readyPromise.then(this._onmessage.bind(this, obj))
+  }
+
+  var msgType = obj[TYPE]
+  this._debug('received message of type', msgType)
+
+  switch (msgType) {
+    case types.CurrentAccountApplication:
+      return this._handleCurrentAccountApplication(obj)
+    default:
+      this._debug('ignoring message of type', obj[TYPE])
+      break;
+  }
+}
+
+Bank.prototype._handleCurrentAccountApplication = function (app) {
+  var self = this
+  var curHash = app[CUR_HASH]
+  var data = app.parsed.data
+  var resp = {
+    application: curHash,
+    status: 'accepted'
+  }
+
+  resp[TYPE] = types.CurrentAccountConfirmation
+  resp[OWNER] = this._tim.myCurrentHash()
+  typeforce('String', resp[OWNER])
+
+  var b = Builder()
+    .data(resp)
+    .signWith(this._tim.signingKey)
+
+  Q.ninvoke(b, 'build')
+    .then(function (build) {
+      return self._tim.send({
+        to: [app.from],
+        msg: build.form,
+        // chain: true,
+        deliver: true
+      })
+    })
+    .done()
+}
+
+Bank.prototype.destroy = function () {
+  if (this._destroyPromise) return this._destroyPromise
+
+  return this._destroyPromise = this._tim.destroy()
+}
 
 // var keeper = fakeKeeper.empty()
 
@@ -39,7 +132,7 @@ var port = Number(process.argv[2]) || 51086
 // })
 
 // clear(init)
-init()
+// init()
 
 // ;['bill', 'ted'].forEach(function (prefix) {
 //   var keeper = new Keeper({
@@ -82,82 +175,21 @@ init()
 //     })
 // })
 
-function print (cb) {
-  walk('./', function (err, results) {
-    if (results && results.length) {
-      results.forEach(function (r) {
-        console.log(r)
-      })
-    }
+// function init () {
+//   setInterval(printIdentityStatus, 30000)
+// }
 
-    cb()
-  })
-}
+// function onTimReady () {
+//   console.log(tim.name(), 'is ready')
+// }
 
-function walk (dir, done) {
-  var results = []
-  fs.readdir(dir, function(err, list) {
-    if (err) return done(err)
-    var pending = list.length
-    if (!pending) return done(null, results)
-    list.forEach(function(file) {
-      file = path.resolve(dir, file)
-      fs.stat(file, function(err, stat) {
-        if (stat && stat.isDirectory()) {
-          walk(file, function(err, res) {
-            results = results.concat(res)
-            if (!--pending) done(null, results)
-          })
-        } else {
-          results.push(file)
-          if (!--pending) done(null, results)
-        }
-      })
-    })
-  })
-}
-
-function clear (cb) {
-  var togo = 1
-  rimraf('./', setTimeout.bind(null, finish, 100))
-
-  ;[
-    'addressBook.db',
-    'msg-log.db',
-    'messages.db',
-    'txs.db'
-  ].forEach(function (dbName) {
-    ;[pub].forEach(function (identity) {
-      togo++
-      leveldown.destroy(getPrefix(identity) + '-' + dbName, finish)
-    })
-  })
-
-  function finish () {
-    if (--togo === 0) cb()
-  }
-}
-
-function init () {
-  setInterval(printIdentityStatus, 30000)
-  tim = buildDriver(Identity.fromJSON(pub), priv, port)
-  tim.once('ready', onTimReady)
-  tim.on('error', function (err) {
-    debugger
-    console.error(err)
-  })
-}
-
-function onTimReady () {
-  console.log(tim.name(), 'is ready')
-
-  printIdentityStatus()
-
+function dumpDBs (tim) {
   var identities = tim.identities()
   identities.onLive(function () {
-    identities.createReadStream()
-      .on('data', function (data) {
-        console.log('identity', data)
+    identities.createValueStream()
+      .on('data', function (result) {
+        // console.log('identity', result.identity.name.firstName)
+        console.log('identity', result.identity)
       })
   })
 
@@ -167,75 +199,15 @@ function onTimReady () {
       .on('data', function (data) {
         tim.lookupObject(data)
           .then(function (obj) {
-            console.log('msg', obj)
+            console.log('msg', obj[CUR_HASH])
           })
       })
   })
 }
 
-function printIdentityStatus () {
-  tim.identityPublishStatus(function (err, status) {
-    console.log(tim.name(), 'identity publish status', status)
-  })
-}
-
-function buildDriver (identity, keys, port) {
-  var iJSON = identity.toJSON()
-  var prefix = getPrefix(iJSON)
-  var dht = dhtFor(iJSON)
-  dht.listen(port)
-
-  var keeper = new Keeper({
-    storage: prefix + '-storage',
-    fallbacks: ['http://tradle.io:25667']
-  })
-
-  var blockchain = new Blockchain(networkName)
-
-  var d = new Driver({
-    pathPrefix: prefix,
-    networkName: networkName,
-    keeper: keeper,
-    blockchain: blockchain,
-    leveldown: leveldown,
-    identity: identity,
-    identityKeys: keys,
-    dht: dht,
-    port: port,
-    syncInterval: 60000
-  })
-
-  return d
-}
-
-function dhtFor (identity) {
-  return new DHT({
-    nodeId: nodeIdFor(identity),
-    bootstrap: ['tradle.io:25778']
-  })
-}
-
-function nodeIdFor (identity) {
-  return crypto.createHash('sha256')
-    .update(findKey(identity.pubkeys, { type: 'dsa' }).fingerprint)
-    .digest()
-    .slice(0, 20)
-}
-
-function findKey (keys, where) {
-  var match
-  keys.some(function (k) {
-    for (var p in where) {
-      if (k[p] !== where[p]) return false
-    }
-
-    match = k
-    return true
-  })
-
-  return match
-}
-
-function getPrefix (identity) {
-  return identity.name.firstName.toLowerCase()
+function printIdentityStatus (tim) {
+  return tim.identityPublishStatus()
+    .then(function (status) {
+      console.log(tim.name(), 'identity publish status', status)
+    })
 }
