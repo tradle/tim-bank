@@ -87,7 +87,6 @@ Bank.prototype._onmessage = function (obj) {
 Bank.prototype._handleCurrentAccountApplication = function (app) {
   var self = this
   var curHash = app[CUR_HASH]
-  var data = app.parsed.data
 
   // this simulation clearly takes
   // financial inclusion very seriously
