@@ -13,7 +13,7 @@ var Tim = require('tim')
 var kiki = Tim.Kiki
 var buildNode = require('./lib/buildNode')
 var CUR_HASH = constants.CUR_HASH
-var ROOT_HASH = constants.CUR_HASH
+var ROOT_HASH = constants.ROOT_HASH
 var TYPE = constants.TYPE
 var OWNER = constants.OWNER
 var types = require('./lib/types')
@@ -59,6 +59,8 @@ function Bank (options) {
     // printIdentityStatus(tim)
     //   .then(dumpDBs.bind(null, tim))
   })
+
+  this.wallet = tim.wallet
 }
 
 Bank.prototype._debug = function () {
@@ -98,25 +100,34 @@ Bank.prototype._handleCurrentAccountApplication = function (app) {
   resp[TYPE] = types.CurrentAccountConfirmation
   resp[OWNER] = this._tim.myCurrentHash()
 
-  var key = kiki.toKey(this._tim.getPrivateKey({
-    type: 'ec',
-    purpose: 'sign'
-  }))
+  var sender = {}
+  sender[ROOT_HASH] = app.from[ROOT_HASH]
 
-  var b = Builder()
-    .data(resp)
-    .signWith(key)
+  var chainPromise
+  if (app.dateChained || app.dateUnchained) {
+    chainPromise = Q.resolve()
+  } else {
+    // chain message on behalf of customer
+    chainPromise = this._tim.chain({
+      msg: app.data,
+      to: [sender]
+    })
+  }
 
-  Q.ninvoke(b, 'build')
-    .then(function (build) {
+  var reply = this._tim.sign(resp)
+    .then(function (signed) {
       return self._tim.send({
-        to: [app.from],
-        msg: build.form,
+        to: [sender],
+        msg: signed,
         chain: true,
         deliver: true
       })
     })
-    .done()
+
+  Q.all([
+    chainPromise,
+    reply
+  ]).done()
 }
 
 Bank.prototype.destroy = function () {

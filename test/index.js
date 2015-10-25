@@ -52,32 +52,52 @@ test('setup', function (t) {
 })
 
 test('current account', function (t) {
-  t.plan(4)
+  t.plan(5)
 
   var msg = {}
   msg[TYPE] = types.CurrentAccountApplication
   msg[NONCE] = '123'
-  APPLICANT.send({
-    msg: msg,
-    to: getCoords(BANK._tim),
-    deliver: true
-  })
-  .done()
 
+  var signed
+  APPLICANT.sign(msg)
+    .then(function (_signed) {
+      signed = _signed
+      APPLICANT.send({
+        msg: signed,
+        to: getCoords(BANK._tim),
+        deliver: true
+      })
+    })
+    .done()
+
+  var typesDetected = { unchained: {}, message: {} }
   ;['unchained', 'message'].forEach(function (event) {
     APPLICANT.on(event, function (info) {
-    // confirmation of appliation
-      APPLICANT.lookupObject(info)
-        .then(function (obj) {
-          t.equal(obj[TYPE], types.CurrentAccountConfirmation)
-          var applicationHash = obj.parsed.data.application
-          var msgDB = APPLICANT.messages()
-          return Q.ninvoke(msgDB, 'byCurHash', applicationHash)
-        })
-        .then(APPLICANT.lookupObject)
-        .done(function (application) {
-          t.deepEqual(application.parsed.data, msg)
-        })
+      // confirmation of appliation
+      var type = info[TYPE]
+      if (typesDetected[event][type]) return
+
+      typesDetected[event][type] = true
+      switch (type) {
+        case types.CurrentAccountApplication:
+          return APPLICANT.lookupObject(info)
+            .done(function (obj) {
+              t.deepEqual(obj.data, signed)
+            })
+        case types.CurrentAccountConfirmation:
+          return APPLICANT.lookupObject(info)
+            .then(function (obj) {
+              t.equal(obj[TYPE], types.CurrentAccountConfirmation)
+              var applicationHash = obj.parsed.data.application
+              var msgDB = APPLICANT.messages()
+              return Q.ninvoke(msgDB, 'byCurHash', applicationHash)
+            })
+            .then(APPLICANT.lookupObject)
+            .done(function (application) {
+              t.deepEqual(application.data, signed)
+            })
+      }
+
     })
   })
 })

@@ -7,6 +7,7 @@ var path = require('path')
 var fs = require('fs')
 var dns = require('dns')
 var Bank = require('./')
+var Identity = require('tim').Identity
 var DEFAULT_PORT = 51086
 var argv = require('minimist')(process.argv.slice(2), {
   alias: {
@@ -31,16 +32,21 @@ var identity = JSON.parse(fs.readFileSync(path.resolve(argv.identity)))
   dns.resolve4('tradle.io', function (err, addrs) {
     if (err) throw err
 
-    new Bank({
+    var bank = new Bank({
       ip: addrs[0],
       port: argv.port || DEFAULT_PORT,
       networkName: 'testnet',
-      identity: identity,
+      identity: Identity.fromJSON(identity),
       identityKeys: keys,
       relay: {
         address: addrs[0],
         port: 25778
       }
+    })
+
+    bank.wallet.balance(function (err, balance) {
+      console.log('Balance: ', balance)
+      console.log('Send coins to: ', bank.wallet.addressString)
     })
   })
 // })
