@@ -116,8 +116,6 @@ test('current account', function (t) {
     })
 
   function step1 () {
-    console.log('step 1')
-    var defer = Q.defer()
     var msg = utils.buildSimpleMsg(
       'application for',
       'tradle.CurrentAccounts'
@@ -128,8 +126,6 @@ test('current account', function (t) {
   }
 
   function step2 () {
-    console.log('step 2')
-    var defer = Q.defer()
     var msg = {
       nationality: 'British',
       residentialStatus: 'Living with parents',
@@ -147,7 +143,6 @@ test('current account', function (t) {
   }
 
   function step3 () {
-    console.log('step 3')
     var msg = {
       monthlyIncome: '5000 pounds',
       whenHired: 1414342441249
@@ -164,7 +159,6 @@ test('current account', function (t) {
   }
 
   function step4 () {
-    console.log('step 4')
     var msg = {
       licenseNumber: 'abc',
       dateOfIssue: 1414342441249
@@ -181,7 +175,6 @@ test('current account', function (t) {
   }
 
   function bank2step1 () {
-    console.log('bank 2 step 1')
     var msg = utils.buildSimpleMsg(
       'application for',
       'tradle.CurrentAccounts'
@@ -192,20 +185,16 @@ test('current account', function (t) {
   }
 
   function bank2step2 () {
-    console.log('bank 2 step 2')
-    var defer = Q.defer()
     shareVerification('tradle.AboutYou')
     return await('tradle.YourMoney')
   }
 
   function bank2step3 () {
-    console.log('bank 2 step 3')
     shareVerification('tradle.YourMoney')
     return await('tradle.LicenseVerification')
   }
 
   function bank2step4 () {
-    console.log('bank 2 step 4')
     shareVerification('tradle.LicenseVerification')
     return awaitConfirmation()
   }
