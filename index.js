@@ -26,20 +26,15 @@ MODELS.getModels().forEach(function (m) {
   MODELS_BY_ID[m.id] = m
 })
 
-var ACCOUNT_NAMES = {
-  'tradle.CurrentAccounts': 'a current account',
-  'tradle.HomeInsurance': 'home insurance'
-}
-
 var APP_TYPES = [
-  'tradle.CurrentAccounts',
+  'tradle.CurrentAccount',
   'tradle.HomeInsurance'
 ]
 
 var DOC_TYPES = APP_TYPES.map(function (a) {
   var model = MODELS_BY_ID[a]
   try {
-    return model.properties.forms.items
+    return model.forms || model.properties.forms.items
   } catch (err) {
     return []
   }
@@ -315,7 +310,7 @@ Bank.prototype._sendNextFormOrApprove = function (obj, state, productType) {
     this._debug('approving for product', productType)
     resp = {}
     resp[TYPE] = productType + 'Confirmation'
-    resp.message = 'Congratulations! You were approved for ' + ACCOUNT_NAMES[productType]
+    resp.message = 'Congratulations! You were approved for: ' + MODELS_BY_ID[productType].title
     if (--state.pendingApplications[productType] === 0) {
       delete state.pendingApplications[productType]
     }

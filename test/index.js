@@ -134,7 +134,7 @@ test('current account', function (t) {
       'tradle.AboutYou',
       'tradle.YourMoney',
       'tradle.LicenseVerification',
-      'tradle.CurrentAccountsConfirmation',
+      'tradle.CurrentAccountConfirmation',
       'tradle.Verification'
     ]
 
@@ -154,7 +154,7 @@ test('current account', function (t) {
   function step1 () {
     var msg = utils.buildSimpleMsg(
       'application for',
-      'tradle.CurrentAccounts'
+      'tradle.CurrentAccount'
     )
 
     signNSend(msg)
@@ -213,7 +213,7 @@ test('current account', function (t) {
   function bank2step1 () {
     var msg = utils.buildSimpleMsg(
       'application for',
-      'tradle.CurrentAccounts'
+      'tradle.CurrentAccount'
     )
 
     signNSend(msg)
@@ -263,7 +263,7 @@ test('current account', function (t) {
   }
 
   function awaitConfirmation () {
-    return awaitType('tradle.CurrentAccountsConfirmation')
+    return awaitType('tradle.CurrentAccountConfirmation')
   }
 
   function awaitType (type) {
