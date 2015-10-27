@@ -3,16 +3,20 @@
 // var ppfile = require('ppfile')
 require('multiplex-utp')
 
+var express = require('express')
 var path = require('path')
 var fs = require('fs')
 var dns = require('dns')
 var Bank = require('./')
+var buildNode = require('./lib/buildNode')
 var Identity = require('tim').Identity
-var DEFAULT_PORT = 51086
+var createServer = require('tim-server')
+var DEFAULT_TIM_PORT = 51086
 var argv = require('minimist')(process.argv.slice(2), {
   alias: {
     i: 'identity',
     k: 'keys',
+    t: 'tim-port',
     p: 'port'
   }
 })
@@ -32,9 +36,9 @@ var identity = JSON.parse(fs.readFileSync(path.resolve(argv.identity)))
   dns.resolve4('tradle.io', function (err, addrs) {
     if (err) throw err
 
-    var bank = new Bank({
+    var tim = buildNode({
       ip: addrs[0],
-      port: argv.port || DEFAULT_PORT,
+      port: argv['tim-port'] || DEFAULT_TIM_PORT,
       networkName: 'testnet',
       identity: Identity.fromJSON(identity),
       identityKeys: keys,
@@ -44,10 +48,33 @@ var identity = JSON.parse(fs.readFileSync(path.resolve(argv.identity)))
       }
     })
 
+    var bank = new Bank({
+      tim: tim
+    })
+
     bank.wallet.balance(function (err, balance) {
       console.log('Balance: ', balance)
       console.log('Send coins to: ', bank.wallet.addressString)
     })
+
+    if (!argv.port) return
+
+    var app = express()
+    if (argv.local) {
+      app.use(function (req, res, next) {
+        console.log(req)
+        next()
+      })
+    }
+
+    var server = app.listen(argv.port)
+
+    createServer({
+      tim: tim,
+      app: app
+    })
+
+    console.log('Server running on port', argv.port)
   })
 // })
 
