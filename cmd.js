@@ -33,21 +33,32 @@ require('multiplex-utp')
 var path = require('path')
 var fs = require('fs')
 var dns = require('dns')
+var debug = require('debug')('bankd')
 var express = require('express')
 var leveldown = require('leveldown')
 var Bank = require('./')
 var buildNode = require('./lib/buildNode')
 var Identity = require('tim').Identity
 var createServer = require('tim-server')
+var DEV = process.env.NODE_ENV === 'development'
 
 // ppfile.decrypt(argv, function (err, contents) {
 //   console.log(err || contents)
 // })
 
+var server
+var selfDestructing
+process.on('exit', cleanup)
+process.on('SIGINT', cleanup)
+process.on('SIGTERM', cleanup)
+process.on('uncaughtException', function (err) {
+  console.log('Uncaught exception, caught in process catch-all: ' + err.message)
+  console.log(err.stack)
+})
+
 run()
 
 function run () {
-
   var identity = JSON.parse(fs.readFileSync(path.resolve(argv.identity)))
 // ppfile.decrypt({ in: argv.keys }, function () {
   var keys = JSON.parse(fs.readFileSync(path.resolve(argv.keys)))
@@ -83,18 +94,28 @@ function run () {
     if (!argv.port) return
 
     var app = express()
-    var server = app.listen(argv.port)
+    server = app.listen(argv.port)
 
     createServer({
       tim: tim,
       app: app,
-      public: argv.public,
+      public: argv.public
+    })
 
+    app.get('/list/:type', function (req, res, next) {
+      bank.list(req.params.type)
+        .then(res.json.bind(res))
+        .catch(sendErr.bind(null, res))
     })
 
     console.log('Server running on port', argv.port)
   })
 // })
+}
+
+function sendErr (res, err) {
+  var msg = DEV ? err.message : 'something went horribly wrong'
+  res.status(500).send(err.message + '\n' + err.stack)
 }
 
 function printIdentityPublishStatus (tim) {
@@ -110,6 +131,22 @@ function printIdentityPublishStatus (tim) {
     })
     .catch(function (err) {
       console.error('failed to get identity status', err.message)
+    })
+}
+
+function cleanup () {
+  if (selfDestructing) return
+
+  selfDestructing = true
+  debug('cleaning up before shut down...')
+  try {
+    server.close()
+  } catch (err) {}
+
+  destroy()
+    .done(function () {
+      debug('shutting down')
+      process.exit()
     })
 }
 

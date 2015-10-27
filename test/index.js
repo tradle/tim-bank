@@ -82,16 +82,28 @@ test('current account', function (t) {
   var verificationsTogo = 3
   var verificationsDefer = Q.defer()
 
+  // logging
+  // getTims().forEach(function (tim) {
+  //   var who = tim === APPLICANT ? 'applicant' : tim === BANKS[0]._tim ? 'bank1' : 'bank2'
+  //   tim.on('message', function (info) {
+  //     tim.lookupObject(info)
+  //       .then(function (obj) {
+  //         console.log(who, 'received', JSON.stringify(obj.parsed.data, null, 2))
+  //       })
+  //   })
+  // })
+
   APPLICANT.on('unchained', function (info) {
     if (info[TYPE] !== 'tradle.Verification') return
 
     APPLICANT.lookupObject(info)
       .then(function (obj) {
-        var documentHash = obj.parsed.data.document
+        var documentHash = obj.parsed.data.document.id.split('_')[1]
         return APPLICANT.lookupObjectByCurHash(documentHash)
       })
       .then(function (obj) {
-        verifications[obj.parsed.data[TYPE]] = info[CUR_HASH]
+        var vType = obj.parsed.data[TYPE]
+        verifications[vType] = info[CUR_HASH]
         if (--verificationsTogo) return
 
         verificationsDefer.resolve()

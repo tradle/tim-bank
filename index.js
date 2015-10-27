@@ -1,10 +1,12 @@
 require('multiplex-utp')
 
 var path = require('path')
+var assert = require('assert')
 var debug = require('debug')('bank')
 var extend = require('xtend')
 var levelup = require('levelup')
 var typeforce = require('typeforce')
+var collect = require('stream-collector')
 var tutils = require('tradle-utils')
 var utils = require('./lib/utils')
 var Q = require('q')
@@ -21,6 +23,27 @@ var MODELS_BY_ID = {}
 MODELS.getModels().forEach(function (m) {
   MODELS_BY_ID[m.id] = m
 })
+
+var ACCOUNT_NAMES = {
+  'tradle.CurrentAccounts': 'a current account',
+  'tradle.HomeInsurance': 'home insurance'
+}
+
+var APP_TYPES = [
+  'tradle.CurrentAccounts',
+  'tradle.HomeInsurance'
+]
+
+var DOC_TYPES = APP_TYPES.map(function (a) {
+  var model = MODELS_BY_ID[a]
+  try {
+    return model.properties.forms.items
+  } catch (err) {
+    return []
+  }
+}).reduce(function (memo, next) {
+  return memo.concat(next)
+}, [])
 
 module.exports = Bank
 
@@ -47,6 +70,15 @@ function Bank (options) {
       .done(self._onMessage)
   })
 
+  ;['chained', 'unchained'].forEach(function (e) {
+    tim.on(e, function (info) {
+      if (info[TYPE] === types.IDENTITY) return
+
+      tim.lookupObject(info)
+        .done(self._updateChained)
+    })
+  })
+
   var readyDefer = Q.defer()
   this._readyPromise = readyDefer.promise
 
@@ -63,13 +95,58 @@ function Bank (options) {
   })
 }
 
+Bank.prototype.list = function (type) {
+  var start = prefixKey(type, '')
+  return Q.nfcall(collect, this._db.createValueStream({
+    start: start,
+    end: start + '\xff'
+  }))
+}
+
+Bank.prototype.customers = function () {
+  return this.list(types.IDENTITY)
+}
+
+Bank.prototype.verifications = function () {
+  return this.list(types.VERIFICATION)
+}
+
 Bank.prototype._getCustomerState = function (customerRootHash) {
-  return Q.ninvoke(this._db, 'get', prefixKey(types.IDENTITY, customerRootHash))
+  return this._getResource(types.IDENTITY, customerRootHash)
 }
 
 Bank.prototype._setCustomerState = function (customerRootHash, state) {
-  return Q.ninvoke(this._db, 'put', prefixKey(types.IDENTITY, customerRootHash), state)
+  return this._setResource(types.IDENTITY, customerRootHash, state)
 }
+
+Bank.prototype._updateChained = function (obj) {
+  this._setResource(obj.parsed.data[TYPE], obj[ROOT_HASH], obj.parsed)
+}
+
+// very inefficient for now
+// Bank.prototype._updateChained = function (obj) {
+//   var rootHash = obj[ROOT_HASH]
+//   var objHash = obj[ROOT_HASH]
+//   var txId = obj.txId
+//   this.customers()
+//     .done(function (customers) {
+//       customers.forEach(function (c) {
+//         for (var type in c.forms) {
+//           var docState = c.forms[type]
+//           if (docState.form[ROOT_HASH] === objHash) {
+//             docState.form.txId = txId
+//           }
+
+//           var verifications = docState.verifications
+//           verifications.forEach(function (v) {
+//             if (v[ROOT_HASH] === objHash) {
+//               v.txId = txId
+//             }
+//           })
+//         }
+//       })
+//     })
+// }
 
 Bank.prototype._debug = function () {
   var args = [].slice.call(arguments)
@@ -84,11 +161,12 @@ Bank.prototype._onMessage = function (obj) {
   }
 
   var state
-  this._getCustomerState(obj.from[ROOT_HASH])
+  var customerHash = obj.from[ROOT_HASH]
+  this._getCustomerState(customerHash)
     .catch(function (err) {
       if (!err.notFound) throw err
 
-      return newCustomerState()
+      return newCustomerState(obj.from[ROOT_HASH])
     })
     .then(function (_state) {
       return state = _state
@@ -106,19 +184,13 @@ Bank.prototype._onMessageFromCustomer = function (obj, state) {
 
   switch (msgType) {
     case types.SIMPLE_MESSAGE:
-      var parsed = utils.parseSimpleMsg(obj.parsed.data.message)
-      switch (parsed.type) {
-        case 'tradle.CurrentAccounts':
-          return this._handleNewApplication(obj, state, parsed.type)
-        default:
-          break
+      var msg = obj.parsed.data.message
+      var parsed = utils.parseSimpleMsg(msg)
+      if (APP_TYPES.indexOf(parsed.type) !== -1) {
+        return this._handleNewApplication(obj, state, parsed.type)
+      } else {
+        return this._debug('ignoring simple message: ', msg)
       }
-
-      break
-    case 'tradle.AboutYou':
-    case 'tradle.YourMoney':
-    case 'tradle.LicenseVerification':
-      return this._handleDocument(obj, state)
     case 'tradle.Verification':
       return this._handleVerification(obj, state)
     // case types.CurrentAccountApplication:
@@ -126,8 +198,11 @@ Bank.prototype._onMessageFromCustomer = function (obj, state) {
     // case types.SharedKYC:
     //   return this._handleSharedKYC(obj)
     default:
-      this._debug('ignoring message of type', obj[TYPE])
-      break
+      if (DOC_TYPES.indexOf(msgType) !== -1) {
+        return this._handleDocument(obj, state)
+      } else {
+        return this._debug('ignoring message of type', msgType)
+      }
   }
 }
 
@@ -146,7 +221,12 @@ Bank.prototype._handleDocument = function (obj, state) {
   var docState = state.forms[type] = state.forms[type] || {}
   var verifications = []
 
-  docState.form = obj.parsed.data
+  docState.form = {
+    body: obj.parsed.data,
+    txId: obj.txId
+  }
+
+  docState.form[ROOT_HASH] = obj[ROOT_HASH]
   docState.verifications = docState.verifications || []
   // docState[obj[ROOT_HASH]] = {
   //   form: obj.parsed.data,
@@ -155,17 +235,23 @@ Bank.prototype._handleDocument = function (obj, state) {
 
   // pretend we verified it
   var verification = newVerificationFor(obj)
-  docState.verifications.push(verification)
+  var stored = {
+    txId: null,
+    body: verification
+  }
 
+  docState.verifications.push(stored)
   return this._respond(obj, verification)
-    .then(function () {
+    .then(function (entries) {
+      var rootHash = entries[0].toJSON()[ROOT_HASH]
+      stored[ROOT_HASH] = obj[ROOT_HASH]
       return self._continue(obj, state)
     })
 }
 
 Bank.prototype._handleVerification = function (obj, state) {
   var verification = obj.parsed.data
-  var type = verification.documentType
+  var type = verification.document.id.split('_')[0]
   var docState = state.forms[type] = state.forms[type] || {}
   // var formHash = verification.document
   // var formState = docState[formHash] = docState[formHash] || {
@@ -174,7 +260,12 @@ Bank.prototype._handleVerification = function (obj, state) {
   // }
 
   docState.verifications = docState.verifications || []
-  docState.verifications.push(verification)
+  docState.verifications.push({
+    rootHash: obj[ROOT_HASH],
+    txId: obj.txId,
+    body: verification
+  })
+
   return this._continue(obj, state)
 }
 
@@ -211,7 +302,7 @@ Bank.prototype._sendNextFormOrApprove = function (obj, state, productType) {
     this._debug('approving for product', productType)
     resp = {}
     resp[TYPE] = productType + 'Confirmation'
-    resp.message = 'Congratulations! You were approved for a ' + productType
+    resp.message = 'Congratulations! You were approved for ' + ACCOUNT_NAMES[productType]
     if (--state.pendingApplications[productType] === 0) {
       delete state.pendingApplications[productType]
     }
@@ -239,8 +330,17 @@ Bank.prototype._chainReceivedMsg = function (app) {
   })
 }
 
-Bank.prototype._getResource = function (type, appHash) {
-  return Q.ninvoke(db, 'get', prefixKey(type, appHash))
+Bank.prototype._setResource = function (type, rootHash, val) {
+  typeforce('String', type)
+  typeforce('String', rootHash)
+  assert(val !== null, 'missing value')
+  return Q.ninvoke(this._db, 'put', prefixKey(type, rootHash), val)
+}
+
+Bank.prototype._getResource = function (type, rootHash) {
+  typeforce('String', type)
+  typeforce('String', rootHash)
+  return Q.ninvoke(this._db, 'get', prefixKey(type, rootHash))
 }
 
 // Bank.prototype._handleDriverLicense = function (license) {
@@ -373,18 +473,27 @@ function printIdentityStatus (tim) {
     })
 }
 
-function newCustomerState () {
-  return {
+function newCustomerState (customerRootHash) {
+  var state = {
     pendingApplications: {},
     forms: {}
   }
+
+  state[ROOT_HASH] = customerRootHash
+  return state
 }
 
 function newVerificationFor (obj) {
+  var doc = obj.parsed.data
   var verification = {
-    document: obj[ROOT_HASH],
-    documentOwner: obj.from[ROOT_HASH],
-    documentType: obj.parsed.data[TYPE]
+    document: {
+      id: doc[TYPE] + '_' + obj[ROOT_HASH],
+      title: doc.title || doc[TYPE]
+    },
+    documentOwner: {
+      id: types.IDENTITY + '_' + obj.from[ROOT_HASH],
+      title: obj.from.identity.name()
+    }
   }
 
   verification[TYPE] = types.VERIFICATION

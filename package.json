@@ -24,6 +24,7 @@
     "q": "^1.4.1",
     "rimraf": "^2.4.3",
     "simple-wallet": "tradle/simple-wallet",
+    "stream-collector": "^1.0.1",
     "tim": "tradle/tim",
     "tradle-constants": "^1.1.0",
     "tradle-utils": "tradle/tradle-utils",
