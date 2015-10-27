@@ -164,8 +164,8 @@ Bank.prototype._handleDocument = function (obj, state) {
 }
 
 Bank.prototype._handleVerification = function (obj, state) {
-  var type = obj[TYPE]
   var verification = obj.parsed.data
+  var type = verification.documentType
   var docState = state.forms[type] = state.forms[type] || {}
   // var formHash = verification.document
   // var formState = docState[formHash] = docState[formHash] || {
