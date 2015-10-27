@@ -9,6 +9,7 @@ var map = require('map-stream')
 var typeforce = require('typeforce')
 var collect = require('stream-collector')
 var tutils = require('tradle-utils')
+var Builder = require('chained-obj').Builder
 var utils = require('./lib/utils')
 var Q = require('q')
 var constants = require('tradle-constants')
@@ -33,11 +34,7 @@ var APP_TYPES = [
 
 var DOC_TYPES = APP_TYPES.map(function (a) {
   var model = MODELS_BY_ID[a]
-  try {
-    return model.forms || model.properties.forms.items
-  } catch (err) {
-    return []
-  }
+  return getForms(model)
 }).reduce(function (memo, next) {
   return memo.concat(next)
 }, [])
@@ -242,7 +239,7 @@ Bank.prototype._handleDocument = function (obj, state) {
   // }
 
   // pretend we verified it
-  var verification = newVerificationFor(obj)
+  var verification = this._newVerificationFor(obj)
   var stored = {
     txId: null,
     body: verification
@@ -256,6 +253,30 @@ Bank.prototype._handleDocument = function (obj, state) {
       return self._continue(obj, state)
     })
 }
+
+Bank.prototype._newVerificationFor = function (obj) {
+  var doc = obj.parsed.data
+  var verification = {
+    document: {
+      id: doc[TYPE] + '_' + obj[ROOT_HASH],
+      title: doc.title || doc[TYPE]
+    },
+    documentOwner: {
+      id: types.IDENTITY + '_' + obj.from[ROOT_HASH],
+      title: obj.from.identity.name()
+    }
+  }
+
+  var org = this._tim.identityJSON.organization
+  if (org) {
+    debugger
+    verification.organization = org
+  }
+
+  verification[TYPE] = types.VERIFICATION
+  return verification
+}
+
 
 Bank.prototype._handleVerification = function (obj, state) {
   var verification = obj.parsed.data
@@ -284,9 +305,11 @@ Bank.prototype._sendNextFormOrApprove = function (obj, state, productType) {
     Object.keys(state.pendingApplications)[0]
 
   var productModel = MODELS_BY_ID[productType]
-  if (!productModel) return Q.reject('no such product model: ' + productType)
+  if (!productModel) {
+    return Q.reject(new Error('no such product model: ' + productType))
+  }
 
-  var reqdForms = productModel.properties.forms.items
+  var reqdForms = getForms(productModel)
   var missing = reqdForms.filter(function (fType) {
     var existing = state.forms[fType]
     if (existing) {
@@ -311,9 +334,7 @@ Bank.prototype._sendNextFormOrApprove = function (obj, state, productType) {
     resp = {}
     resp[TYPE] = productType + 'Confirmation'
     resp.message = 'Congratulations! You were approved for: ' + MODELS_BY_ID[productType].title
-    if (--state.pendingApplications[productType] === 0) {
-      delete state.pendingApplications[productType]
-    }
+    delete state.pendingApplications[productType]
   }
 
   return this._respond(obj, resp, opts)
@@ -321,14 +342,13 @@ Bank.prototype._sendNextFormOrApprove = function (obj, state, productType) {
 
 Bank.prototype._handleNewApplication = function (obj, state, productType) {
   var pending = state.pendingApplications
-  pending[productType] = pending[productType] || 0
-  pending[productType]++ // keep it simple for now
+  pending[productType] = true
   return this._sendNextFormOrApprove(obj, state, productType)
 }
 
 Bank.prototype._chainReceivedMsg = function (app) {
   if (app.chain || app.tx || app.dateUnchained || app[TYPE] === types.VERIFICATION) {
-    return Q.resolve()
+    return Q()
   }
 
   // chain message on behalf of customer
@@ -387,7 +407,14 @@ Bank.prototype._respond = function (req, resp, opts) {
 //   resp[OWNER] = this._tim.myCurrentHash()
   resp.time = Date.now()
 
-  return this._tim.sign(resp)
+  var addNonce = NONCE in resp
+    ? Q()
+    : Q.ninvoke(Builder, 'addNonce', resp)
+
+  return addNonce
+    .then(function () {
+      return self._tim.sign(resp)
+    })
     .then(function (signed) {
       return self._tim.send(extend({
         to: [getSender(req)],
@@ -442,6 +469,14 @@ Bank.prototype.destroy = function () {
   ])
 }
 
+function getForms (model) {
+  try {
+    return model.forms || model.properties.forms.items
+  } catch (err) {
+    return []
+  }
+}
+
 function getSender (msg) {
   var sender = {}
   sender[ROOT_HASH] = msg.from[ROOT_HASH]
@@ -493,23 +528,6 @@ function newCustomerState (customerRootHash) {
 
   state[ROOT_HASH] = customerRootHash
   return state
-}
-
-function newVerificationFor (obj) {
-  var doc = obj.parsed.data
-  var verification = {
-    document: {
-      id: doc[TYPE] + '_' + obj[ROOT_HASH],
-      title: doc.title || doc[TYPE]
-    },
-    documentOwner: {
-      id: types.IDENTITY + '_' + obj.from[ROOT_HASH],
-      title: obj.from.identity.name()
-    }
-  }
-
-  verification[TYPE] = types.VERIFICATION
-  return verification
 }
 
 // clear(function () {
