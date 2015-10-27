@@ -5,6 +5,7 @@ var assert = require('assert')
 var debug = require('debug')('bank')
 var extend = require('xtend')
 var levelup = require('levelup')
+var map = require('map-stream')
 var typeforce = require('typeforce')
 var collect = require('stream-collector')
 var tutils = require('tradle-utils')
@@ -17,6 +18,7 @@ var TYPE = constants.TYPE
 var OWNER = constants.OWNER
 var NONCE = constants.NONCE
 var types = constants.TYPES
+var CUSTOMER = 'tradle.Customer'
 // var types = require('./lib/types')
 var MODELS = require('./lib/models')
 var MODELS_BY_ID = {}
@@ -97,14 +99,22 @@ function Bank (options) {
 
 Bank.prototype.list = function (type) {
   var start = prefixKey(type, '')
-  return Q.nfcall(collect, this._db.createValueStream({
-    start: start,
-    end: start + '\xff'
-  }))
+  var stream = this._db.createReadStream({
+      start: start,
+      end: start + '\xff'
+    })
+    .pipe(map(function (data, cb) {
+      cb(null, {
+        key: unprefixKey(type, data.key),
+        value: data.value
+      })
+    }))
+
+  return Q.nfcall(collect, stream)
 }
 
 Bank.prototype.customers = function () {
-  return this.list(types.IDENTITY)
+  return this.list(CUSTOMER)
 }
 
 Bank.prototype.verifications = function () {
@@ -112,15 +122,18 @@ Bank.prototype.verifications = function () {
 }
 
 Bank.prototype._getCustomerState = function (customerRootHash) {
-  return this._getResource(types.IDENTITY, customerRootHash)
+  return this._getResource(CUSTOMER, customerRootHash)
 }
 
 Bank.prototype._setCustomerState = function (customerRootHash, state) {
-  return this._setResource(types.IDENTITY, customerRootHash, state)
+  return this._setResource(CUSTOMER, customerRootHash, state)
 }
 
 Bank.prototype._updateChained = function (obj) {
-  this._setResource(obj.parsed.data[TYPE], obj[ROOT_HASH], obj.parsed)
+  this._setResource(obj.parsed.data[TYPE], obj[ROOT_HASH], {
+    txId: obj.txId,
+    body: obj.parsed
+  })
 }
 
 // very inefficient for now
@@ -442,6 +455,10 @@ function getSender (msg) {
 
 function prefixKey(type, key) {
   return type + '!' + key
+}
+
+function unprefixKey(type, key) {
+  return key.slice(type.length + 1)
 }
 
 function dumpDBs (tim) {

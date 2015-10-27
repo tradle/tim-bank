@@ -48,6 +48,7 @@ var DEV = process.env.NODE_ENV === 'development'
 
 var server
 var selfDestructing
+var destroy
 process.on('exit', cleanup)
 process.on('SIGINT', cleanup)
 process.on('SIGTERM', cleanup)
@@ -96,7 +97,7 @@ function run () {
     var app = express()
     server = app.listen(argv.port)
 
-    createServer({
+    destroy = createServer({
       tim: tim,
       app: app,
       public: argv.public
@@ -135,7 +136,7 @@ function printIdentityPublishStatus (tim) {
 }
 
 function cleanup () {
-  if (selfDestructing) return
+  if (selfDestructing || !server) return
 
   selfDestructing = true
   debug('cleaning up before shut down...')

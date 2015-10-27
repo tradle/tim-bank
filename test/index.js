@@ -116,16 +116,40 @@ test('current account', function (t) {
     .then(step3)
     .then(step4)
     .then(function () {
-      bankCoords = getCoords(BANKS[1]._tim)
+      bank = BANKS[1]
+      bankCoords = getCoords(bank._tim)
       return verificationsDefer.promise
     })
     .then(bank2step1)
     .then(bank2step2)
     .then(bank2step3)
     .then(bank2step4)
+    // .then(dumpDBs.bind(null, BANKS[0]))
     .done(function () {
       t.end()
     })
+
+  function dumpDBs (bank) {
+    var lists = [
+      'tradle.AboutYou',
+      'tradle.YourMoney',
+      'tradle.LicenseVerification',
+      'tradle.CurrentAccountsConfirmation',
+      'tradle.Verification'
+    ]
+
+    return Q.all(lists.map(function (name) {
+        return bank.list(name)
+      }))
+      .then(function (results) {
+        results.forEach(function (list, i) {
+          console.log('list of ' + lists[i])
+          list.forEach(function (item) {
+            console.log(JSON.stringify(item.value, null, 2))
+          })
+        })
+      })
+  }
 
   function step1 () {
     var msg = utils.buildSimpleMsg(
