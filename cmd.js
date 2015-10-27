@@ -73,7 +73,7 @@ function run () {
       networkName: 'testnet',
       identity: Identity.fromJSON(identity),
       identityKeys: keys,
-      afterBlockTimestamp: 1445955177,
+      afterBlockTimestamp: 1445976998,
       relay: {
         address: addrs[0],
         port: 25778
