@@ -1,6 +1,32 @@
 #!/usr/bin/env node
 
 // var ppfile = require('ppfile')
+var argv = require('minimist')(process.argv.slice(2), {
+  alias: {
+    i: 'identity',
+    k: 'keys',
+    t: 'tim-port',
+    p: 'port',
+    h: 'help'
+  },
+  default: {
+    port: 33333,
+    'tim-port': 44444
+  }
+})
+
+if (argv.help) {
+  return printUsage()
+}
+
+if (!(argv.identity && argv.keys)) {
+  console.error('identity and keys are required')
+  return printUsage()
+}
+
+// moved requires for these after arg processing
+// to speed up --help query
+
 require('multiplex-utp')
 
 var express = require('express')
@@ -11,19 +37,6 @@ var Bank = require('./')
 var buildNode = require('./lib/buildNode')
 var Identity = require('tim').Identity
 var createServer = require('tim-server')
-var DEFAULT_TIM_PORT = 51086
-var argv = require('minimist')(process.argv.slice(2), {
-  alias: {
-    i: 'identity',
-    k: 'keys',
-    t: 'tim-port',
-    p: 'port'
-  }
-})
-
-if (!(argv.identity && argv.keys)) {
-  throw new Error('specify input file')
-}
 
 // ppfile.decrypt(argv, function (err, contents) {
 //   console.log(err || contents)
@@ -38,7 +51,7 @@ var identity = JSON.parse(fs.readFileSync(path.resolve(argv.identity)))
 
     var tim = buildNode({
       ip: addrs[0],
-      port: argv['tim-port'] || DEFAULT_TIM_PORT,
+      port: argv['tim-port'],
       networkName: 'testnet',
       identity: Identity.fromJSON(identity),
       identityKeys: keys,
@@ -60,24 +73,44 @@ var identity = JSON.parse(fs.readFileSync(path.resolve(argv.identity)))
     if (!argv.port) return
 
     var app = express()
-    if (argv.local) {
-      app.use(function (req, res, next) {
-        console.log(req)
-        next()
-      })
-    }
-
     var server = app.listen(argv.port)
 
     createServer({
       tim: tim,
-      app: app
+      app: app,
+      public: argv.public,
+
     })
 
     console.log('Server running on port', argv.port)
   })
 // })
 
+
+function printUsage () {
+  console.log(function () {
+  /*
+  BANK SIMULATOR, DO NOT USE IN PRODUCTION
+
+  Usage:
+      bank -i ./identity.json -k ./keys.json <options>
+
+  Example:
+      bank -i ./identity.json -k ./keys.json -p 12345 -t 54321
+
+  Options:
+      -h, --help              print usage
+      -i, --identity [path]   path to identity JSON [REQUIRED]
+      -k, --keys [path]       path to private keys file (for identity) [REQUIRED]
+      -p, --port [number]     server port (default: 33333)
+      -t, --tim-port [number] port tim will run on (default: 44444)
+      --public                expose the server to non-local requests
+
+  Please report bugs!  https://github.com/tradle/tim-bank/issues
+  */
+  }.toString().split(/\n/).slice(2, -2).join('\n'))
+  process.exit(0)
+}
 
 // function print (cb) {
 //   walk('./', function (err, results) {
