@@ -13,6 +13,7 @@ var Builder = require('chained-obj').Builder
 var utils = require('./lib/utils')
 var Q = require('q')
 var constants = require('tradle-constants')
+var elistener = require('elistener')
 var CUR_HASH = constants.CUR_HASH
 var ROOT_HASH = constants.ROOT_HASH
 var TYPE = constants.TYPE
@@ -40,6 +41,7 @@ var DOC_TYPES = APP_TYPES.map(function (a) {
 }, [])
 
 module.exports = Bank
+elistener(Bank.prototype)
 
 function Bank (options) {
   var self = this
@@ -55,17 +57,17 @@ function Bank (options) {
   var tim = this._tim = options.tim
   this.wallet = tim.wallet
 
-  tim.on('error', function (err) {
+  this.listenTo(tim, 'error', function (err) {
     self._debug('error', err)
   })
 
-  tim.on('message', function (info) {
+  this.listenTo(tim, 'message', function (info) {
     tim.lookupObject(info)
       .done(self._onMessage)
   })
 
   ;['chained', 'unchained'].forEach(function (e) {
-    tim.on(e, function (info) {
+    self.listenTo(tim, e, function (info) {
       if (info[TYPE] === types.IDENTITY) return
 
       tim.lookupObject(info)
@@ -76,7 +78,7 @@ function Bank (options) {
   var readyDefer = Q.defer()
   this._readyPromise = readyDefer.promise
 
-  tim.once('ready', function () {
+  this.listenOnce(tim, 'ready', function () {
     self._ready = true
     readyDefer.resolve()
     // printIdentityStatus(tim)
@@ -171,7 +173,8 @@ Bank.prototype._onMessage = function (obj) {
     .catch(function (err) {
       if (!err.notFound) throw err
 
-      return newCustomerState(obj.from[ROOT_HASH])
+      var rh = obj.from[ROOT_HASH]
+      return self._setCustomerState(rh, newCustomerState(rh))
     })
     .then(function (_state) {
       return state = _state
@@ -363,6 +366,9 @@ Bank.prototype._setResource = function (type, rootHash, val) {
   typeforce('String', rootHash)
   assert(val !== null, 'missing value')
   return Q.ninvoke(this._db, 'put', prefixKey(type, rootHash), val)
+    .then(function () {
+      return val // convenience for next link in the promise chain
+    })
 }
 
 Bank.prototype._getResource = function (type, rootHash) {
@@ -463,6 +469,7 @@ Bank.prototype._respond = function (req, resp, opts) {
 Bank.prototype.destroy = function () {
   if (this._destroyPromise) return this._destroyPromise
 
+  this.stopListening(this._tim)
   return this._destroyPromise = Q.all([
     this._tim.destroy(),
     Q.ninvoke(this._db, 'close')
