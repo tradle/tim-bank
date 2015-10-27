@@ -11,7 +11,8 @@ var argv = require('minimist')(process.argv.slice(2), {
   },
   default: {
     port: 33333,
-    'tim-port': 44444
+    'tim-port': 44444,
+    storage: './storage'
   }
 })
 
@@ -29,10 +30,11 @@ if (!(argv.identity && argv.keys)) {
 
 require('multiplex-utp')
 
-var express = require('express')
 var path = require('path')
 var fs = require('fs')
 var dns = require('dns')
+var express = require('express')
+var leveldown = require('leveldown')
 var Bank = require('./')
 var buildNode = require('./lib/buildNode')
 var Identity = require('tim').Identity
@@ -42,7 +44,11 @@ var createServer = require('tim-server')
 //   console.log(err || contents)
 // })
 
-var identity = JSON.parse(fs.readFileSync(path.resolve(argv.identity)))
+run()
+
+function run () {
+
+  var identity = JSON.parse(fs.readFileSync(path.resolve(argv.identity)))
 // ppfile.decrypt({ in: argv.keys }, function () {
   var keys = JSON.parse(fs.readFileSync(path.resolve(argv.keys)))
 
@@ -62,13 +68,17 @@ var identity = JSON.parse(fs.readFileSync(path.resolve(argv.identity)))
     })
 
     var bank = new Bank({
-      tim: tim
+      tim: tim,
+      path: argv.storage,
+      leveldown: leveldown
     })
 
     bank.wallet.balance(function (err, balance) {
       console.log('Balance: ', balance)
       console.log('Send coins to: ', bank.wallet.addressString)
     })
+
+    printIdentityPublishStatus(tim)
 
     if (!argv.port) return
 
@@ -85,7 +95,23 @@ var identity = JSON.parse(fs.readFileSync(path.resolve(argv.identity)))
     console.log('Server running on port', argv.port)
   })
 // })
+}
 
+function printIdentityPublishStatus (tim) {
+  tim.identityPublishStatus()
+    .then(function (status) {
+      var msg = 'identity status: '
+      if (status.current) msg += 'published latest'
+      else if (status.queued) msg += 'queued for publishing'
+      else if (!status.ever) msg += 'unpublished'
+      else msg += 'published, needs republish'
+
+      console.log(msg)
+    })
+    .catch(function (err) {
+      console.error('failed to get identity status', err.message)
+    })
+}
 
 function printUsage () {
   console.log(function () {
@@ -104,6 +130,7 @@ function printUsage () {
       -k, --keys [path]       path to private keys file (for identity) [REQUIRED]
       -p, --port [number]     server port (default: 33333)
       -t, --tim-port [number] port tim will run on (default: 44444)
+      -s                      storage path (default: './storage')
       --public                expose the server to non-local requests
 
   Please report bugs!  https://github.com/tradle/tim-bank/issues
