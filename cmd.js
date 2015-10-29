@@ -36,10 +36,14 @@ var dns = require('dns')
 var debug = require('debug')('bankd')
 var express = require('express')
 var leveldown = require('leveldown')
+var constants = require('tradle-constants')
 var Bank = require('./')
 var buildNode = require('./lib/buildNode')
 var Identity = require('tim').Identity
 var createServer = require('tim-server')
+var Zlorp = require('tim').Zlorp
+Zlorp.ANNOUNCE_INTERVAL = 10000
+Zlorp.LOOKUP_INTERVAL = 10000
 var DEV = process.env.NODE_ENV === 'development'
 
 // ppfile.decrypt(argv, function (err, contents) {
@@ -73,7 +77,8 @@ function run () {
       networkName: 'testnet',
       identity: Identity.fromJSON(identity),
       identityKeys: keys,
-      afterBlockTimestamp: 1445976998,
+      syncInterval: 300000,
+      afterBlockTimestamp: constants.afterBlockTimestamp,
       relay: {
         address: addrs[0],
         port: 25778
