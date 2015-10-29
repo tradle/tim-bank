@@ -28,6 +28,7 @@
     "simple-wallet": "tradle/simple-wallet",
     "stream-collector": "^1.0.1",
     "tim": "tradle/tim",
+    "tim-server": "mvayngrib/tim-server",
     "tradle-constants": "^1.1.2",
     "tradle-utils": "tradle/tradle-utils",
     "typeforce": "^1.3.6",
