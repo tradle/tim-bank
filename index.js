@@ -30,7 +30,8 @@ MODELS.getModels().forEach(function (m) {
 
 var APP_TYPES = [
   'tradle.CurrentAccount',
-  'tradle.HomeInsurance'
+  'tradle.HomeInsurance',
+  'tradle.Loans'
 ]
 
 var DOC_TYPES = APP_TYPES.map(function (a) {
@@ -242,6 +243,7 @@ Bank.prototype._handleDocument = function (obj, state) {
   // }
 
   // pretend we verified it
+  debugger
   var verification = this._newVerificationFor(obj)
   var stored = {
     txId: null,
