@@ -11,7 +11,7 @@ var leveldown = require('leveldown')
 var DHT = require('bittorrent-dht')
 var Tim = require('tim')
 Tim.CATCH_UP_INTERVAL = 1000
-Tim.Zlorp.ANNOUNCE_INTERVAL = Tim.Zlorp.LOOKUP_INTERVAL = 1000
+Tim.Zlorp.ANNOUNCE_INTERVAL = Tim.Zlorp.LOOKUP_INTERVAL = 5000
 var Identity = require('midentity').Identity
 var TYPE = constants.TYPE
 var NONCE = constants.NONCE
@@ -436,11 +436,13 @@ function init () {
       port: port
     })
 
-    return new Bank({
+    var bank = new Bank({
       tim: tim,
       path: 'storage' + (initCount++),
       leveldown: memdown
     })
+
+    return bank
   })
 
   return Q.all(getTims().map(function (t) {

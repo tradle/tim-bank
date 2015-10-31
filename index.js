@@ -11,6 +11,7 @@ var collect = require('stream-collector')
 var tutils = require('tradle-utils')
 var Builder = require('chained-obj').Builder
 var utils = require('./lib/utils')
+var timUtils = require('tim/lib/utils')
 var Q = require('q')
 var constants = require('tradle-constants')
 var elistener = require('elistener')
@@ -49,7 +50,8 @@ function Bank (options) {
   typeforce({
     tim: 'Object',
     path: 'String',
-    leveldown: 'Function'
+    leveldown: 'Function',
+    manual: '?Boolean'
   }, options)
 
   tutils.bindPrototypeFunctions(this)
@@ -61,10 +63,12 @@ function Bank (options) {
     self._debug('error', err)
   })
 
-  this.listenTo(tim, 'message', function (info) {
-    tim.lookupObject(info)
-      .done(self._onMessage)
-  })
+  if (!options.manual) {
+    this.listenTo(tim, 'message', function (info) {
+      tim.lookupObject(info)
+        .done(self._onMessage)
+    })
+  }
 
   ;['chained', 'unchained'].forEach(function (e) {
     self.listenTo(tim, e, function (info) {
@@ -161,6 +165,17 @@ Bank.prototype._debug = function () {
   return debug.apply(null, args)
 }
 
+Bank.prototype.receiveMsg = function (msgBuf, senderInfo) {
+  var self = this
+  return this._tim.receiveMsg(msgBuf, senderInfo)
+    .then(function (entry) {
+      return self._tim.lookupObject(entry.toJSON())
+    })
+    .then(function (obj) {
+      return self._onMessage(obj)
+    })
+}
+
 Bank.prototype._onMessage = function (obj) {
   var self = this
   if (!this._ready) {
@@ -168,8 +183,9 @@ Bank.prototype._onMessage = function (obj) {
   }
 
   var state
+  var promises = []
   var customerHash = obj.from[ROOT_HASH]
-  this._getCustomerState(customerHash)
+  return this._getCustomerState(customerHash)
     .catch(function (err) {
       if (!err.notFound) throw err
 
@@ -177,13 +193,18 @@ Bank.prototype._onMessage = function (obj) {
       return self._setCustomerState(rh, newCustomerState(rh))
     })
     .then(function (_state) {
-      return state = _state
+      state = _state
+      state.promises = promises
+      return state
     })
     .then(this._onMessageFromCustomer.bind(this, obj))
     .then(function () {
+      delete state.promises
       return self._setCustomerState(obj.from[ROOT_HASH], state)
     })
-    .done()
+    .then(function () {
+      return Q.all(promises)
+    })
 }
 
 Bank.prototype._onMessageFromCustomer = function (obj, state) {
@@ -193,12 +214,14 @@ Bank.prototype._onMessageFromCustomer = function (obj, state) {
   switch (msgType) {
     case types.SIMPLE_MESSAGE:
       var msg = obj.parsed.data.message
-      var parsed = utils.parseSimpleMsg(msg)
-      if (APP_TYPES.indexOf(parsed.type) !== -1) {
-        return this._handleNewApplication(obj, state, parsed.type)
-      } else {
-        return this._debug('ignoring simple message: ', msg)
+      if (msg) {
+        var parsed = utils.parseSimpleMsg(msg)
+        if (APP_TYPES.indexOf(parsed.type) !== -1) {
+          return this._handleNewApplication(obj, state, parsed.type)
+        }
       }
+
+      return this._debug('ignoring simple message: ', msg)
     case 'tradle.Verification':
       return this._handleVerification(obj, state)
     // case types.CurrentAccountApplication:
@@ -249,7 +272,7 @@ Bank.prototype._handleDocument = function (obj, state) {
   }
 
   docState.verifications.push(stored)
-  return this._respond(obj, verification)
+  return this._respond(obj, state, verification)
     .then(function (entries) {
       var rootHash = entries[0].toJSON()[ROOT_HASH]
       stored[ROOT_HASH] = obj[ROOT_HASH]
@@ -272,7 +295,6 @@ Bank.prototype._newVerificationFor = function (obj) {
 
   var org = this._tim.identityJSON.organization
   if (org) {
-    debugger
     verification.organization = org
   }
 
@@ -340,7 +362,7 @@ Bank.prototype._sendNextFormOrApprove = function (obj, state, productType) {
     delete state.pendingApplications[productType]
   }
 
-  return this._respond(obj, resp, opts)
+  return this._respond(obj, state, resp, opts)
 }
 
 Bank.prototype._handleNewApplication = function (obj, state, productType) {
@@ -406,7 +428,7 @@ Bank.prototype._getResource = function (type, rootHash) {
 //   ]).done()
 // }
 
-Bank.prototype._respond = function (req, resp, opts) {
+Bank.prototype._respond = function (obj, state, resp, opts) {
   var self = this
   opts = opts || {}
 
@@ -423,12 +445,35 @@ Bank.prototype._respond = function (req, resp, opts) {
     })
     .then(function (signed) {
       return self._tim.send(extend({
-        to: [getSender(req)],
+        to: [getSender(obj)],
         msg: signed,
         chain: true,
         deliver: true
       }, opts))
     })
+    .then(function (entries) {
+      entries.forEach(function (e) {
+        var getSent = self._waitForEvent('sent', e)
+        state.promises.push(getSent)
+      })
+
+      return entries
+    })
+}
+
+Bank.prototype._waitForEvent = function (event, entry) {
+  var self = this
+  var uid = entry.get('uid')
+  this._tim.on(event, handler)
+  var defer = Q.defer()
+  return defer.promise
+
+  function handler (metadata) {
+    if (metadata.uid === uid) {
+      self._tim.removeListener(event, handler)
+      defer.resolve(metadata)
+    }
+  }
 }
 
 // Bank.prototype._handleCurrentAccountApplication = function (app) {
