@@ -2,6 +2,7 @@
 require('multiplex-utp')
 
 var test = require('tape')
+var express = require('express')
 var Q = require('q')
 var extend = require('xtend')
 var find = require('array-find')
@@ -12,6 +13,9 @@ var DHT = require('bittorrent-dht')
 var Tim = require('tim')
 Tim.CATCH_UP_INTERVAL = 1000
 Tim.Zlorp.ANNOUNCE_INTERVAL = Tim.Zlorp.LOOKUP_INTERVAL = 5000
+var HttpClient = require('tim/lib/messengers').HttpClient
+var HttpServer = require('../lib/httpMessengerServer')
+var get = require('simple-get')
 var Identity = require('midentity').Identity
 var TYPE = constants.TYPE
 var NONCE = constants.NONCE
@@ -54,6 +58,7 @@ var COMMON_OPTS = {
 }
 
 var APPLICANT
+var bankServer
 var BANK_REPS = [{
   pub: tedPub,
   priv: tedPriv
@@ -389,6 +394,7 @@ function buildNode (opts) {
 }
 
 function teardown () {
+  bankServer.close()
   return Q.all(BANKS.concat(APPLICANT).map(function (entity) {
       return entity.destroy()
     }))
@@ -414,32 +420,59 @@ function init () {
   aDHT.listen(aPort)
 
   var applicantWallet = walletFor(billPriv, null, 'messaging')
+
   APPLICANT = buildNode({
     dht: aDHT,
     wallet: applicantWallet,
     blockchain: applicantWallet.blockchain,
+    messenger: new HttpClient(),
     identity: Identity.fromJSON(billPub),
     identityKeys: billPriv,
     port: aPort
   })
+
+  APPLICANT.once('ready', function () {
+    APPLICANT.messenger.setRootHash(APPLICANT.myRootHash())
+  })
+
+  var serverPort = BASE_PORT++
+  var bankApp = express()
+  bankServer = bankApp.listen(serverPort)
 
   BANKS = BANK_REPS.map(function (rep) {
     var port = BASE_PORT++
     var dht = new DHT(dhtConf)
     dht.listen(port)
 
+    var router = express.Router()
+    var httpServer = new HttpServer({
+      router: router
+    })
+
     var tim = buildNode({
       dht: dht,
       blockchain: applicantWallet.blockchain,
       identity: Identity.fromJSON(rep.pub),
       identityKeys: rep.priv,
-      port: port
+      port: port,
+      messenger: httpServer
     })
 
     var bank = new Bank({
       tim: tim,
+      manual: true,
       path: 'storage' + (initCount++),
       leveldown: memdown
+    })
+
+    httpServer.receive = bank.receiveMsg.bind(bank)
+
+    tim.once('ready', function () {
+      var rh = tim.myRootHash()
+      bankApp.use('/' + rh, router)
+      var url = 'http://127.0.0.1:' + serverPort + '/' + rh
+      // var url = 'http://localhost:' + serverPort + '/' + rh
+      APPLICANT.messenger.addRecipient(rh, url)
     })
 
     return bank
