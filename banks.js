@@ -1,5 +1,17 @@
 #!/usr/bin/env node
 
+var argv = require('minimist')(process.argv.slice(2), {
+  alias: {
+    p: 'public',
+    h: 'help'
+  }
+})
+
+if (argv.help) {
+  printUsage()
+  process.exit(0)
+}
+
 var path = require('path')
 var fs = require('fs')
 var typeforce = require('typeforce')
@@ -23,12 +35,6 @@ var DEFAULT_TIM_PORT = 34343
 var confPath = process.argv[2]
 var conf = require(path.resolve(confPath))
 if (!conf) throw new Error('specify conf file path')
-
-var argv = require('minimist')(process.argv.slice(2), {
-  alias: {
-    p: 'public'
-  }
-})
 
 var express = require('express')
 var server
@@ -188,4 +194,40 @@ function cleanup () {
 
 function loadJSON (filePath) {
   return JSON.parse(fs.readFileSync(path.resolve(filePath)))
+}
+
+function printUsage () {
+  console.log(function () {
+  /*
+  BANK SIMULATOR, DO NOT USE IN PRODUCTION
+
+  Usage:
+      banks path/to/conf.json
+
+  Example conf.json:
+      {
+        "port": 44444,
+        "banks": {
+          "Lloyds": {
+            "priv": "/path/to/lloyds-priv.json",
+            "pub": "/path/to/lloyds-pub.json",
+            "port": 12321
+          },
+          "Rabobank": {
+            "run": false,
+            "priv": "/path/to/rabo-priv.json",
+            "pub": "/path/to/rabo-pub.json",
+            "port": 32123
+          }
+        }
+      }
+
+  Options:
+      -h, --help              print usage
+      --public                expose the server to non-local requests
+
+  Please report bugs!  https://github.com/tradle/tim-bank/issues
+  */
+  }.toString().split(/\n/).slice(2, -2).join('\n'))
+  process.exit(0)
 }
