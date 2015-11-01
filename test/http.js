@@ -9,9 +9,9 @@ var find = require('array-find')
 var constants = require('tradle-constants')
 var memdown = require('memdown')
 var leveldown = require('leveldown')
-var DHT = require('bittorrent-dht')
+// var DHT = require('bittorrent-dht')
 var Tim = require('tim')
-Tim.CATCH_UP_INTERVAL = 1000
+Tim.CATCH_UP_INTERVAL = 2000
 Tim.Zlorp.ANNOUNCE_INTERVAL = Tim.Zlorp.LOOKUP_INTERVAL = 5000
 var HttpClient = require('tim/lib/messengers').HttpClient
 var HttpServer = require('../lib/httpMessengerServer')
@@ -37,7 +37,7 @@ var FakeKeeper = helpers.fakeKeeper
 var createFakeWallet = helpers.fakeWallet
 var NETWORK_NAME = 'testnet'
 var BASE_PORT = 22222
-var bootstrapDHT
+// var bootstrapDHT
 var initCount = 0
 var nonce = 0
 var MODELS = require('../lib/models')
@@ -398,31 +398,31 @@ function teardown () {
   return Q.all(BANKS.concat(APPLICANT).map(function (entity) {
       return entity.destroy()
     }))
-    .then(function () {
-      getTims().forEach(function (t) {
-        t.dht.destroy()
-      })
+    // .then(function () {
+    //   getTims().forEach(function (t) {
+    //     t.dht.destroy()
+    //   })
 
-      bootstrapDHT.destroy()
-    })
+    //   bootstrapDHT.destroy()
+    // })
 }
 
 function init () {
-  var bootstrapDHTPort = BASE_PORT++
-  bootstrapDHT = new DHT({ bootstrap: false })
-  bootstrapDHT.listen(bootstrapDHTPort)
-  var dhtConf = {
-    bootstrap: ['127.0.0.1:' + bootstrapDHTPort]
-  }
+  // var bootstrapDHTPort = BASE_PORT++
+  // bootstrapDHT = new DHT({ bootstrap: false })
+  // bootstrapDHT.listen(bootstrapDHTPort)
+  // var dhtConf = {
+  //   bootstrap: ['127.0.0.1:' + bootstrapDHTPort]
+  // }
 
   var aPort = BASE_PORT++
-  var aDHT = new DHT(dhtConf)
-  aDHT.listen(aPort)
+  // var aDHT = new DHT(dhtConf)
+  // aDHT.listen(aPort)
 
   var applicantWallet = walletFor(billPriv, null, 'messaging')
 
   APPLICANT = buildNode({
-    dht: aDHT,
+    dht: false,
     wallet: applicantWallet,
     blockchain: applicantWallet.blockchain,
     messenger: new HttpClient(),
@@ -441,8 +441,8 @@ function init () {
 
   BANKS = BANK_REPS.map(function (rep) {
     var port = BASE_PORT++
-    var dht = new DHT(dhtConf)
-    dht.listen(port)
+    // var dht = new DHT(dhtConf)
+    // dht.listen(port)
 
     var router = express.Router()
     var httpServer = new HttpServer({
@@ -450,7 +450,7 @@ function init () {
     })
 
     var tim = buildNode({
-      dht: dht,
+      dht: false,
       blockchain: applicantWallet.blockchain,
       identity: Identity.fromJSON(rep.pub),
       identityKeys: rep.priv,
