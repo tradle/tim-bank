@@ -276,7 +276,6 @@ Bank.prototype._handleDocument = function (obj, state) {
   // }
 
   // pretend we verified it
-  debugger
   var verification = this._newVerificationFor(obj)
   var stored = {
     txId: null,
