@@ -38,7 +38,6 @@
   },
   "devDependencies": {
     "array-find": "^1.0.0",
-    "express": "^4.13.3",
     "memdown": "^1.1.0",
     "offline-keeper": "^1.5.0",
     "simple-get": "^1.4.3",

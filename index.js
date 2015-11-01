@@ -128,7 +128,7 @@ Bank.prototype._setCustomerState = function (customerRootHash, state) {
   return this._setResource(CUSTOMER, customerRootHash, state)
 }
 
-Bank.prototype._updateChained = function (obj) {
+Bank.prototype._saveParsedObject = function (obj) {
   this._setResource(obj.parsed.data[TYPE], obj[ROOT_HASH], {
     txId: obj.txId,
     body: obj.parsed
@@ -192,6 +192,7 @@ Bank.prototype._onMessage = function (obj) {
 
       var rh = obj.from[ROOT_HASH]
       return self._setCustomerState(rh, newCustomerState(rh))
+      // return newCustomerState(obj.from[ROOT_HASH])
     })
     .then(function (_state) {
       state = _state
@@ -201,7 +202,10 @@ Bank.prototype._onMessage = function (obj) {
     .then(this._onMessageFromCustomer.bind(this, obj))
     .then(function () {
       delete state.promises
-      return self._setCustomerState(obj.from[ROOT_HASH], state)
+      return Q.all([
+        self._saveParsedObject(obj),
+        self._setCustomerState(obj.from[ROOT_HASH], state)
+      ])
     })
     .then(function () {
       return Q.all(promises)
@@ -246,6 +250,12 @@ Bank.prototype._continue = function (obj, state) {
       return self._sendNextFormOrApprove(obj, state)
     })
 }
+
+// Bank.prototype._saveChainedObj = function (obj) {
+//   var rh = obj[ROOT_HASH]
+//   var data = obj.parsed.data
+//   this._setResource(data[TYPE], rh, data)
+// }
 
 Bank.prototype._handleDocument = function (obj, state) {
   var self = this
@@ -459,6 +469,8 @@ Bank.prototype._respond = function (obj, state, resp, opts) {
         state.promises.push(getSent)
       })
 
+      var rh = entries[0].get(ROOT_HASH)
+      self._setResource(resp[TYPE], rh, resp)
       return entries
     })
 }
@@ -466,12 +478,14 @@ Bank.prototype._respond = function (obj, state, resp, opts) {
 Bank.prototype._waitForEvent = function (event, entry) {
   var self = this
   var uid = entry.get('uid')
+  debug('waiting for', uid)
   this._tim.on(event, handler)
   var defer = Q.defer()
   return defer.promise
 
   function handler (metadata) {
     if (metadata.uid === uid) {
+      debug('got what I was waiting for', uid)
       self._tim.removeListener(event, handler)
       defer.resolve(metadata)
     }
