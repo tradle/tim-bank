@@ -213,12 +213,16 @@ Bank.prototype._onMessage = function (obj) {
     .then(this._onMessageFromCustomer.bind(this, obj))
     .then(function () {
       delete state.promises
-      return Q.all([
-        self._saveParsedObject(obj),
-        self._setCustomerState(obj.from[ROOT_HASH], state)
-      ])
+      return self._setCustomerState(obj.from[ROOT_HASH], state)
     })
     .then(function () {
+      // hacky way to make sure sending response
+      // is prioritized
+      setTimeout(function () {
+        self._chainReceivedMsg(obj)
+        self._saveParsedObject(obj)
+      }, 100)
+
       return Q.all(promises)
     })
 }
@@ -260,12 +264,7 @@ Bank.prototype._onMessageFromCustomer = function (obj, state) {
 // }
 
 Bank.prototype._continue = function (obj, state) {
-  var self = this
-
-  return this._chainReceivedMsg(obj)
-    .then(function () {
-      return self._sendNextFormOrApprove(obj, state)
-    })
+  return this._sendNextFormOrApprove(obj, state)
 }
 
 // Bank.prototype._saveChainedObj = function (obj) {
@@ -508,7 +507,7 @@ Bank.prototype._waitForEvent = function (event, entry) {
 
   function handler (metadata) {
     if (metadata.uid === uid) {
-      debug('got what I was waiting for', uid)
+      debug('done waiting for', uid)
       self._tim.removeListener(event, handler)
       defer.resolve(metadata)
     }
