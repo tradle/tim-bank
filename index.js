@@ -1,6 +1,5 @@
 require('multiplex-utp')
 
-var path = require('path')
 var assert = require('assert')
 var debug = require('debug')('bank')
 var extend = require('xtend')
@@ -11,14 +10,15 @@ var collect = require('stream-collector')
 var tutils = require('tradle-utils')
 var Builder = require('chained-obj').Builder
 var utils = require('./lib/utils')
-var timUtils = require('tim/lib/utils')
 var Q = require('q')
 var constants = require('tradle-constants')
 var elistener = require('elistener')
+var Tim = require('tim')
+var EventType = Tim.EventType
 var CUR_HASH = constants.CUR_HASH
 var ROOT_HASH = constants.ROOT_HASH
 var TYPE = constants.TYPE
-var OWNER = constants.OWNER
+// var OWNER = constants.OWNER
 var NONCE = constants.NONCE
 var types = constants.TYPES
 var CUSTOMER = 'tradle.Customer'
@@ -181,6 +181,11 @@ Bank.prototype.receiveMsg = function (msgBuf, senderInfo) {
   var self = this
   return this._tim.receiveMsg(msgBuf, senderInfo)
     .then(function (entry) {
+      if (entry.get('type') !== EventType.msg.receivedValid) {
+        self._debug('invalid message:', entry.get('errors').receive)
+        throw new Error('received invalid message:' + msgBuf.toString())
+      }
+
       return self._tim.lookupObject(entry.toJSON())
     })
     .then(function (obj) {
@@ -277,7 +282,6 @@ Bank.prototype._handleDocument = function (obj, state) {
   var self = this
   var type = obj[TYPE]
   var docState = state.forms[type] = state.forms[type] || {}
-  var verifications = []
 
   docState.form = {
     body: obj.parsed.data,
@@ -302,7 +306,8 @@ Bank.prototype._handleDocument = function (obj, state) {
   return this._respond(obj, state, verification)
     .then(function (entries) {
       var rootHash = entries[0].toJSON()[ROOT_HASH]
-      stored[ROOT_HASH] = obj[ROOT_HASH]
+      // stored[ROOT_HASH] = obj[ROOT_HASH]
+      stored[ROOT_HASH] = rootHash
       return self._continue(obj, state)
     })
 }
@@ -328,7 +333,6 @@ Bank.prototype._newVerificationFor = function (obj) {
   verification[TYPE] = types.VERIFICATION
   return verification
 }
-
 
 Bank.prototype._handleVerification = function (obj, state) {
   var verification = obj.parsed.data
@@ -376,6 +380,7 @@ Bank.prototype._sendNextFormOrApprove = function (obj, state, productType) {
     return true
   })
 
+  var opts = {}
   var next = missing[0]
   var resp
   if (next) {
@@ -433,35 +438,6 @@ Bank.prototype._getResource = function (type, rootHash) {
   return Q.ninvoke(this._db, 'get', prefixKey(type, rootHash))
 }
 
-// Bank.prototype._handleDriverLicense = function (license) {
-//   var self = this
-//   var curHash = license[CUR_HASH]
-//   var appHash = license.application
-
-//   // assume valid at this point
-
-//   var resp = {}
-//   resp[TYPE] = constants.TYPES.VERIFICATION
-
-//   Q.all([
-//     this._chainReceivedMsg(license),
-//     this._respond(license, resp)
-//   ]).done()
-// }
-
-// Bank.prototype._handleCurrentAccountApplication2 = function (app) {
-//   var self = this
-//   var curHash = app[CUR_HASH]
-
-//   var resp = {}
-//   resp[TYPE] = types.CurrentAccountConfirmation
-
-//   Q.all([
-//     this._chainReceivedMsg(app),
-//     this._respond(app, resp)
-//   ]).done()
-// }
-
 Bank.prototype._respond = function (obj, state, resp, opts) {
   var self = this
   opts = opts || {}
@@ -514,49 +490,16 @@ Bank.prototype._waitForEvent = function (event, entry) {
   }
 }
 
-// Bank.prototype._handleCurrentAccountApplication = function (app) {
-//   var self = this
-//   var curHash = app[CUR_HASH]
-
-//   // this simulation clearly takes
-//   // financial inclusion very seriously
-//   var resp = {
-//     application: curHash,
-//     status: 'accepted'
-//   }
-
-//   resp[TYPE] = types.CurrentAccountConfirmation
-//   resp[OWNER] = this._tim.myCurrentHash()
-
-//   var reply = this._tim.sign(resp)
-//     .then(function (signed) {
-//       return self._tim.send({
-//         to: [getSender(app)],
-//         msg: signed,
-//         chain: true,
-//         deliver: true
-//       })
-//     })
-
-//   Q.all([
-//     this._chainReceivedMsg(app),
-//     reply
-//   ]).done()
-// }
-
-// Bank.prototype._handleSharedKYC = function (app) {
-//   // same for now
-//   return this._handleCurrentAccountApplication(app)
-// }
-
 Bank.prototype.destroy = function () {
   if (this._destroyPromise) return this._destroyPromise
 
   this.stopListening(this._tim)
-  return this._destroyPromise = Q.all([
+  this._destroyPromise = Q.all([
     this._tim.destroy(),
     Q.ninvoke(this._db, 'close')
   ])
+
+  return this._destroyPromise
 }
 
 function getForms (model) {
@@ -573,11 +516,11 @@ function getSender (msg) {
   return sender
 }
 
-function prefixKey(type, key) {
+function prefixKey (type, key) {
   return type + '!' + key
 }
 
-function unprefixKey(type, key) {
+function unprefixKey (type, key) {
   return key.slice(type.length + 1)
 }
 
@@ -603,13 +546,6 @@ function dumpDBs (tim) {
   })
 }
 
-function printIdentityStatus (tim) {
-  return tim.identityPublishStatus()
-    .then(function (status) {
-      console.log(tim.name(), 'identity publish status', status)
-    })
-}
-
 function newCustomerState (customerRootHash) {
   var state = {
     pendingApplications: {},
@@ -619,59 +555,3 @@ function newCustomerState (customerRootHash) {
   state[ROOT_HASH] = customerRootHash
   return state
 }
-
-// clear(function () {
-  // print(init)
-// })
-
-// clear(init)
-// init()
-
-// ;['bill', 'ted'].forEach(function (prefix) {
-//   var keeper = new Keeper({
-//     storage: prefix + '-storage',
-//     fallbacks: ['http://tradle.io:25667']
-//   })
-
-//   keeper.getAll()
-//     .then(function (map) {
-//       for (var key in map) {
-//         keeper.push({
-//           key: key,
-//           value: map[key]
-//         })
-//       }
-//     })
-// })
-
-// clear(function () {
-//   var keeper = new Keeper({
-//     storage: 'blah',
-//     fallbacks: ['http://tradle.io:25667']
-//   })
-
-//   keeper.put(new Buffer('1'))
-//     .then(function () {
-//       return keeper.getAll()
-//     })
-//     .then(function (map) {
-//       debugger
-//       for (var key in map) {
-//         keeper.push({
-//           key: key,
-//           value: map[key]
-//         })
-//       }
-//     })
-//     .catch(function (err) {
-//       debugger
-//     })
-// })
-
-// function init () {
-//   setInterval(printIdentityStatus, 30000)
-// }
-
-// function onTimReady () {
-//   console.log(tim.name(), 'is ready')
-// }

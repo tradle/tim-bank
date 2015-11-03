@@ -6,7 +6,8 @@
   "main": "./index.js",
   "bin": "./cmd.js",
   "scripts": {
-    "test": "node test"
+    "test": "node test",
+    "style": "standard"
   },
   "author": "Mark Vayngrib <mark.vayngrib@lablz.com> (http://github.com/mvayngrib)",
   "license": "ISC",
@@ -27,7 +28,6 @@
     "multiplex-utp": "^1.0.1",
     "q": "^1.4.1",
     "rimraf": "^2.4.3",
-    "simple-wallet": "tradle/simple-wallet",
     "stream-collector": "^1.0.1",
     "tim": "tradle/tim#talko2",
     "tim-server": "mvayngrib/tim-server",
@@ -40,7 +40,6 @@
   "devDependencies": {
     "array-find": "^1.0.0",
     "memdown": "^1.1.0",
-    "offline-keeper": "^1.5.0",
     "simple-get": "^1.4.3",
     "tape": "^4.2.2",
     "tradle-test-helpers": "tradle/test-helpers"

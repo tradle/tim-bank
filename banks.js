@@ -18,7 +18,6 @@ var fs = require('fs')
 var typeforce = require('typeforce')
 var Q = require('q')
 var debug = require('debug')('bankd')
-var express = require('express')
 var leveldown = require('leveldown')
 var constants = require('tradle-constants')
 var Bank = require('./')
@@ -141,6 +140,7 @@ function runBank (opts) {
   })
 
   bank.wallet.balance(function (err, balance) {
+    if (err) return
     console.log(opts.name, ' Balance: ', balance)
     console.log(opts.name, ': Send coins to', bank.wallet.addressString)
   })
@@ -170,7 +170,7 @@ function runBank (opts) {
 
 function sendErr (res, err) {
   var msg = DEV ? err.message : 'something went horribly wrong'
-  res.status(500).send(err.message + '\n' + err.stack)
+  res.status(500).send(msg + '\n' + err.stack)
 }
 
 function getIdentityPublishStatus (tim) {
