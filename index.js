@@ -465,7 +465,7 @@ Bank.prototype._respond = function (obj, state, resp, opts) {
     .then(function (entries) {
       entries.forEach(function (e) {
         var getSent = self._waitForEvent('sent', e)
-        state.promises.push(getSent)
+        state.promises.unshift(getSent)
       })
 
       var rh = entries[0].get(ROOT_HASH)
