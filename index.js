@@ -29,11 +29,12 @@ MODELS.getModels().forEach(function (m) {
   MODELS_BY_ID[m.id] = m
 })
 
-var APP_TYPES = [
-  'tradle.CurrentAccount',
-  'tradle.HomeInsurance',
-  'tradle.Loans'
-]
+var ALLOW_CHAINING = true
+var APP_TYPES = MODELS.getModels().filter(function (m) {
+  return m.subClassOf === 'tradle.FinancialProduct'
+}).map(function (m) {
+  return m.id
+})
 
 var DOC_TYPES = APP_TYPES.map(function (a) {
   var model = MODELS_BY_ID[a]
@@ -383,6 +384,8 @@ Bank.prototype._handleNewApplication = function (obj, state, productType) {
 }
 
 Bank.prototype._chainReceivedMsg = function (app) {
+  if (!ALLOW_CHAINING) return Q()
+
   if (app.chain || app.tx || app.dateUnchained || app[TYPE] === types.VERIFICATION) {
     return Q()
   }
@@ -458,7 +461,7 @@ Bank.prototype._respond = function (obj, state, resp, opts) {
       return self._tim.send(extend({
         to: [getSender(obj)],
         msg: signed,
-        chain: true,
+        chain: ALLOW_CHAINING,
         deliver: true
       }, opts))
     })
