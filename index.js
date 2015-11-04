@@ -336,10 +336,15 @@ Bank.prototype._handleVerification = function (obj, state) {
 }
 
 Bank.prototype._sendNextFormOrApprove = function (obj, state, productType) {
+  var pendingApps = Object.keys(state.pendingApplications)
+  if (!pendingApps.length) {
+    return Q()
+  }
+
   var app = obj.parsed.data
   productType = productType ||
     app.productType ||
-    Object.keys(state.pendingApplications)[0]
+    pendingApps[0]
 
   var productModel = MODELS_BY_ID[productType]
   if (!productModel) {
