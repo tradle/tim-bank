@@ -68,7 +68,12 @@ function Bank (options) {
   if (!options.manual) {
     this.listenTo(tim, 'message', function (info) {
       tim.lookupObject(info)
-        .done(self._onMessage)
+        .catch(function (err) {
+          self._debug('unable to retrieve object', info)
+          throw err
+        })
+        .then(self._onMessage)
+        .done()
     })
   }
 
@@ -77,7 +82,12 @@ function Bank (options) {
       if (info[TYPE] === types.IDENTITY) return
 
       tim.lookupObject(info)
-        .done(self._updateChained)
+        .catch(function (err) {
+          self._debug('unable to retrieve object', info)
+          throw err
+        })
+        .then(self._updateChained)
+        .done()
     })
   })
 
@@ -227,6 +237,7 @@ Bank.prototype._onMessageFromCustomer = function (obj, state) {
         }
       }
 
+      // return this.echo(obj)
       return this._debug('ignoring simple message: ', msg)
     case 'tradle.Verification':
       return this._handleVerification(obj, state)
@@ -242,6 +253,11 @@ Bank.prototype._onMessageFromCustomer = function (obj, state) {
       }
   }
 }
+
+// Bank.prototype.echo = function (obj, state) {
+//   this._debug('echoing back', obj[TYPE])
+//   return this._respond(obj, state, obj.parsed.data)
+// }
 
 Bank.prototype._continue = function (obj, state) {
   var self = this
