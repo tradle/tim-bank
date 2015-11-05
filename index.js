@@ -70,7 +70,7 @@ function Bank (options) {
       tim.lookupObject(info)
         .catch(function (err) {
           self._debug('unable to retrieve object', info)
-          throw err
+          if (!self._destroying) throw err
         })
         .then(self._onMessage)
         .done()
@@ -84,7 +84,7 @@ function Bank (options) {
       tim.lookupObject(info)
         .catch(function (err) {
           self._debug('unable to retrieve object', info)
-          throw err
+          if (!self._destroying) throw err
         })
         .then(self._updateChained)
         .done()
@@ -493,6 +493,7 @@ Bank.prototype._waitForEvent = function (event, entry) {
 Bank.prototype.destroy = function () {
   if (this._destroyPromise) return this._destroyPromise
 
+  this._destroying = true
   this.stopListening(this._tim)
   this._destroyPromise = Q.all([
     this._tim.destroy(),
