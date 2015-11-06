@@ -31,6 +31,7 @@
     "stream-collector": "^1.0.1",
     "tim": "tradle/tim#talko2",
     "tim-server": "mvayngrib/tim-server",
+    "time-method": "^2.0.0",
     "tradle-constants": "^1.1.3",
     "tradle-models": "git+https://github.com/tradle/models.git",
     "tradle-utils": "^0.2.2",
@@ -42,6 +43,7 @@
     "memdown": "^1.1.0",
     "simple-get": "^1.4.3",
     "tape": "^4.2.2",
+    "time-method": "^1.0.1",
     "tradle-test-helpers": "tradle/test-helpers"
   }
 }

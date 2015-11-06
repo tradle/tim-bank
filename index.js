@@ -30,18 +30,20 @@ MODELS.forEach(function (m) {
 })
 
 var ALLOW_CHAINING = true
-var APP_TYPES = MODELS.filter(function (m) {
+var PRODUCT_TYPES = MODELS.getModels().filter(function (m) {
   return m.subClassOf === 'tradle.FinancialProduct'
 }).map(function (m) {
   return m.id
 })
 
-var DOC_TYPES = APP_TYPES.map(function (a) {
-  var model = MODELS_BY_ID[a]
-  return getForms(model)
-}).reduce(function (memo, next) {
-  return memo.concat(next)
-}, [])
+var PRODUCT_TO_DOCS = {}
+var DOC_TYPES = []
+PRODUCT_TYPES.forEach(function (productType) {
+  var model = MODELS_BY_ID[productType]
+  var docTypes = getForms(model)
+  PRODUCT_TO_DOCS[productType] = docTypes
+  DOC_TYPES.push.apply(DOC_TYPES, docTypes)
+})
 
 module.exports = Bank
 elistener(Bank.prototype)
@@ -135,14 +137,14 @@ Bank.prototype._getCustomerState = function (customerRootHash) {
   return this._getResource(CUSTOMER, customerRootHash)
 }
 
-Bank.prototype._setCustomerState = function (customerRootHash, state) {
-  return this._setResource(CUSTOMER, customerRootHash, state)
+Bank.prototype._setCustomerState = function (reqState) {
+  return this._setResource(CUSTOMER, reqState.from, reqState.state)
 }
 
-Bank.prototype._saveParsedObject = function (obj) {
-  this._setResource(obj.parsed.data[TYPE], obj[ROOT_HASH], {
-    txId: obj.txId,
-    body: obj.parsed
+Bank.prototype._saveParsedReq = function (req) {
+  this._setResource(req.parsed.data[TYPE], req[ROOT_HASH], {
+    txId: req.txId,
+    body: req.parsed
   })
 }
 
@@ -188,143 +190,145 @@ Bank.prototype.receiveMsg = function (msgBuf, senderInfo) {
 
       return self._tim.lookupObject(entry.toJSON())
     })
-    .then(function (obj) {
-      return self._onMessage(obj)
+    .then(function (req) {
+      return self._onMessage(req)
     })
 }
 
-Bank.prototype._onMessage = function (obj) {
+// TODO: lock on sender hash to avoid race conditions
+Bank.prototype._onMessage = function (req) {
   var self = this
   if (!this._ready) {
-    return this._readyPromise.then(this._onMessage.bind(this, obj))
+    return this._readyPromise.then(this._onMessage.bind(this, req))
   }
 
-  var state
-  var promises = []
-  var customerHash = obj.from[ROOT_HASH]
-  return this._getCustomerState(customerHash)
+  var reqState = new RequestState(req)
+  var from = reqState.from
+  return this._getCustomerState(from)
     .catch(function (err) {
       if (!err.notFound) throw err
 
-      var rh = obj.from[ROOT_HASH]
-      return self._setCustomerState(rh, newCustomerState(rh))
-      // return newCustomerState(obj.from[ROOT_HASH])
+      reqState.state = newCustomerState(reqState.from)
+      return self._setCustomerState(reqState)
+      // return newCustomerState(reqState)
     })
-    .then(function (_state) {
-      state = _state
-      state.promises = promises
-      return state
+    .then(function (state) {
+      reqState.state = state
+      return self._onMessageFromCustomer(reqState)
     })
-    .then(this._onMessageFromCustomer.bind(this, obj))
     .then(function () {
-      delete state.promises
-      return self._setCustomerState(obj.from[ROOT_HASH], state)
+      return self._setCustomerState(reqState)
     })
     .then(function () {
       // hacky way to make sure sending response
       // is prioritized
       setTimeout(function () {
-        self._chainReceivedMsg(obj)
-        self._saveParsedObject(obj)
+        self._chainReceivedMsg(req)
+        self._saveParsedReq(req)
       }, 100)
 
-      return Q.all(promises)
+      return reqState.end()
     })
 }
 
-Bank.prototype._onMessageFromCustomer = function (obj, state) {
-  var msgType = obj[TYPE]
+Bank.prototype._onMessageFromCustomer = function (reqState) {
+  var msgType = reqState.type
   this._debug('received message of type', msgType)
 
   switch (msgType) {
     case types.SIMPLE_MESSAGE:
-      var msg = obj.parsed.data.message
+      var msg = reqState.parsed.data.message
       if (msg) {
         var parsed = utils.parseSimpleMsg(msg)
-        if (APP_TYPES.indexOf(parsed.type) !== -1) {
-          return this._handleNewApplication(obj, state, parsed.type)
+        if (PRODUCT_TYPES.indexOf(parsed.type) !== -1) {
+          reqState.productType = parsed.type
+          return this._handleNewApplication(reqState)
         }
       }
 
-      // return this.echo(obj)
+      // return this.echo(req)
       return this._debug('ignoring simple message: ', msg)
     case 'tradle.Verification':
-      return this._handleVerification(obj, state)
+      return this._handleVerification(reqState)
     // case types.CurrentAccountApplication:
-    //   return this._handleCurrentAccountApplication(obj)
+    //   return this._handleCurrentAccountApplication(req)
     // case types.SharedKYC:
-    //   return this._handleSharedKYC(obj)
+    //   return this._handleSharedKYC(req)
     default:
       if (DOC_TYPES.indexOf(msgType) !== -1) {
-        return this._handleDocument(obj, state)
+        return this._handleDocument(reqState)
       } else {
         return this._debug('ignoring message of type', msgType)
       }
   }
 }
 
-// Bank.prototype.echo = function (obj, state) {
-//   this._debug('echoing back', obj[TYPE])
-//   return this._respond(obj, state, obj.parsed.data)
+// Bank.prototype.echo = function (reqState) {
+//   this._debug('echoing back', req[TYPE])
+//   return this._send(reqState, req.parsed.data)
 // }
 
-Bank.prototype._continue = function (obj, state) {
-  return this._sendNextFormOrApprove(obj, state)
+Bank.prototype._continue = function (reqState) {
+  return this._sendNextFormOrApprove(reqState)
 }
 
-// Bank.prototype._saveChainedObj = function (obj) {
-//   var rh = obj[ROOT_HASH]
-//   var data = obj.parsed.data
+// Bank.prototype._saveChainedreq = function (req) {
+//   var rh = req[ROOT_HASH]
+//   var data = req.parsed.data
 //   this._setResource(data[TYPE], rh, data)
 // }
 
-Bank.prototype._handleDocument = function (obj, state) {
+Bank.prototype._handleDocument = function (reqState) {
   var self = this
-  var type = obj[TYPE]
+  var type = reqState.type
+  var state = reqState.state
+  var req = reqState.req
   var docState = state.forms[type] = state.forms[type] || {}
 
   docState.form = {
-    body: obj.parsed.data,
-    txId: obj.txId
+    body: reqState.data, // raw buffer
+    txId: reqState.txId
   }
 
-  docState.form[ROOT_HASH] = obj[ROOT_HASH]
+  docState.form[ROOT_HASH] = reqState[ROOT_HASH]
   docState.verifications = docState.verifications || []
-  // docState[obj[ROOT_HASH]] = {
-  //   form: obj.parsed.data,
+  // docState[req[ROOT_HASH]] = {
+  //   form: req.parsed.data,
   //   verifications: verifications
   // }
 
   // pretend we verified it
-  var verification = this._newVerificationFor(obj)
+  var verification = this._newVerificationFor(req)
   var stored = {
     txId: null,
     body: verification
   }
 
   docState.verifications.push(stored)
-  return this._respond(obj, state, verification)
+  return this._send(reqState, verification)
     .then(function (entries) {
       var rootHash = entries[0].toJSON()[ROOT_HASH]
-      // stored[ROOT_HASH] = obj[ROOT_HASH]
+      // stored[ROOT_HASH] = req[ROOT_HASH]
       stored[ROOT_HASH] = rootHash
-      return self._continue(obj, state)
+      return self._continue(reqState)
     })
 }
 
-Bank.prototype._newVerificationFor = function (obj) {
-  var doc = obj.parsed.data
+Bank.prototype._newVerificationFor = function (req) {
+  var doc = req.parsed.data
   var verification = {
     document: {
-      id: doc[TYPE] + '_' + obj[ROOT_HASH],
+      id: doc[TYPE] + '_' + req[ROOT_HASH],
       title: doc.title || doc[TYPE]
     },
     documentOwner: {
-      id: types.IDENTITY + '_' + obj.from[ROOT_HASH],
-      title: obj.from.identity.name()
+      id: types.IDENTITY + '_' + req.from[ROOT_HASH],
+      title: req.from.identity.name()
     }
   }
 
+  // verification.document[TYPE] = doc[TYPE]
+  // verification.documentOwner[TYPE] = types.IDENTITY
   var org = this._tim.identityJSON.organization
   if (org) {
     verification.organization = org
@@ -334,36 +338,36 @@ Bank.prototype._newVerificationFor = function (obj) {
   return verification
 }
 
-Bank.prototype._handleVerification = function (obj, state) {
-  var verification = obj.parsed.data
+Bank.prototype._handleVerification = function (reqState) {
+  var req = reqState.req
+  var state = reqState.state
+  var verification = req.parsed.data
   var type = verification.document.id.split('_')[0]
   var docState = state.forms[type] = state.forms[type] || {}
-  // var formHash = verification.document
-  // var formState = docState[formHash] = docState[formHash] || {
-  //   form: null,
-  //   verifications: []
-  // }
 
   docState.verifications = docState.verifications || []
   docState.verifications.push({
-    rootHash: obj[ROOT_HASH],
-    txId: obj.txId,
+    rootHash: req[ROOT_HASH],
+    txId: req.txId,
     body: verification
   })
 
-  return this._continue(obj, state)
+  return this._continue(reqState)
 }
 
-Bank.prototype._sendNextFormOrApprove = function (obj, state, productType) {
-  var pendingApps = Object.keys(state.pendingApplications)
+Bank.prototype._sendNextFormOrApprove = function (reqState) {
+  var state = reqState.state
+  var pendingApps = state.pendingApplications
   if (!pendingApps.length) {
     return Q()
   }
 
-  var app = obj.parsed.data
-  productType = productType ||
-    app.productType ||
-    pendingApps[0]
+  var req = reqState.req
+  var app = req.parsed.data
+  var productType = reqState.productType || getRelevantPending(pendingApps, reqState)
+  if (!productType) {
+    return Q.reject(new Error('unable to determine product requested'))
+  }
 
   var productModel = MODELS_BY_ID[productType]
   if (!productModel) {
@@ -396,16 +400,24 @@ Bank.prototype._sendNextFormOrApprove = function (obj, state, productType) {
     resp = {}
     resp[TYPE] = productType + 'Confirmation'
     resp.message = 'Congratulations! You were approved for: ' + MODELS_BY_ID[productType].title
-    delete state.pendingApplications[productType]
+    var idx = pendingApps.indexOf(productType)
+    pendingApps.splice(idx, 1)
   }
 
-  return this._respond(obj, state, resp, opts)
+  return this._send(reqState, resp, opts)
 }
 
-Bank.prototype._handleNewApplication = function (obj, state, productType) {
-  var pending = state.pendingApplications
-  pending[productType] = true
-  return this._sendNextFormOrApprove(obj, state, productType)
+Bank.prototype._handleNewApplication = function (reqState) {
+  typeforce({
+    productType: 'String'
+  }, reqState)
+
+  var pending = reqState.state.pendingApplications
+  var idx = pending.indexOf(reqState.productType)
+  if (idx !== -1) pending.splice(idx, 1)
+
+  pending.unshift(reqState.productType)
+  return this._sendNextFormOrApprove(reqState)
 }
 
 Bank.prototype._chainReceivedMsg = function (app) {
@@ -438,7 +450,7 @@ Bank.prototype._getResource = function (type, rootHash) {
   return Q.ninvoke(this._db, 'get', prefixKey(type, rootHash))
 }
 
-Bank.prototype._respond = function (obj, state, resp, opts) {
+Bank.prototype._send = function (reqState, resp, opts) {
   var self = this
   opts = opts || {}
 
@@ -455,7 +467,7 @@ Bank.prototype._respond = function (obj, state, resp, opts) {
     })
     .then(function (signed) {
       return self._tim.send(extend({
-        to: [getSender(obj)],
+        to: [getSender(reqState.req)],
         msg: signed,
         chain: ALLOW_CHAINING,
         deliver: true
@@ -464,7 +476,7 @@ Bank.prototype._respond = function (obj, state, resp, opts) {
     .then(function (entries) {
       entries.forEach(function (e) {
         var getSent = self._waitForEvent('sent', e)
-        state.promises.unshift(getSent)
+        reqState.addPromise(getSent)
       })
 
       var rh = entries[0].get(ROOT_HASH)
@@ -501,6 +513,29 @@ Bank.prototype.destroy = function () {
   ])
 
   return this._destroyPromise
+}
+
+function getRelevantPending (pending, reqState) {
+  // debugger
+  var found
+  var docType = reqState[TYPE] === types.VERIFICATION
+    ? getType(reqState.parsed.data.document)
+    : reqState[TYPE]
+
+  pending.some(function (productType) {
+    if (PRODUCT_TO_DOCS[productType].indexOf(docType) !== -1) {
+      found = productType
+      return true
+    }
+  })
+
+  return found
+}
+
+function getType (obj) {
+  if (obj[TYPE]) return obj[TYPE]
+  if (!obj.id) return
+  return obj.id.split('_')[0]
 }
 
 function getForms (model) {
@@ -540,8 +575,8 @@ function dumpDBs (tim) {
     messages.createValueStream()
       .on('data', function (data) {
         tim.lookupObject(data)
-          .then(function (obj) {
-            console.log('msg', obj[CUR_HASH])
+          .then(function (req) {
+            console.log('msg', req[CUR_HASH])
           })
       })
   })
@@ -549,10 +584,34 @@ function dumpDBs (tim) {
 
 function newCustomerState (customerRootHash) {
   var state = {
-    pendingApplications: {},
+    pendingApplications: [],
     forms: {}
   }
 
   state[ROOT_HASH] = customerRootHash
   return state
+}
+
+function RequestState (req) {
+  this.app = null
+  this.req = req
+  this.txId = req.txId
+  this.from = req.from[ROOT_HASH]
+  this[TYPE] = req[TYPE]
+  this.type = req[TYPE]
+  this.data = req.data
+  this.parsed = req.parsed
+  this[ROOT_HASH] = req[ROOT_HASH]
+  this[CUR_HASH] = req[CUR_HASH]
+  this.state = null
+  this.resp = null
+  this.promises = []
+}
+
+RequestState.prototype.addPromise = function (promise) {
+  this.promises.push(promise)
+}
+
+RequestState.prototype.end = function () {
+  return Q.all(this.promises)
 }
