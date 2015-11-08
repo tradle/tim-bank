@@ -4,7 +4,11 @@ var argv = require('minimist')(process.argv.slice(2), {
   alias: {
     p: 'public',
     h: 'help',
-    s: 'seq'
+    s: 'seq',
+    c: 'chain'
+  },
+  default: {
+    chain: true
   }
 })
 
@@ -21,6 +25,7 @@ var debug = require('debug')('bankd')
 var leveldown = require('leveldown')
 var constants = require('tradle-constants')
 var Bank = require('./')
+Bank.ALLOW_CHAINING = argv.chain
 var buildNode = require('./lib/buildNode')
 var HttpServer = require('./lib/httpMessengerServer')
 var Identity = require('tim').Identity

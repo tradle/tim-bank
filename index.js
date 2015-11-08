@@ -29,7 +29,6 @@ MODELS.forEach(function (m) {
   MODELS_BY_ID[m.id] = m
 })
 
-var ALLOW_CHAINING = true
 var PRODUCT_TYPES = MODELS.getModels().filter(function (m) {
   return m.subClassOf === 'tradle.FinancialProduct'
 }).map(function (m) {
@@ -47,6 +46,7 @@ PRODUCT_TYPES.forEach(function (productType) {
 
 module.exports = Bank
 elistener(Bank.prototype)
+Bank.ALLOW_CHAINING = true
 
 function Bank (options) {
   var self = this
@@ -421,7 +421,7 @@ Bank.prototype._handleNewApplication = function (reqState) {
 }
 
 Bank.prototype._chainReceivedMsg = function (app) {
-  if (!ALLOW_CHAINING) return Q()
+  if (!Bank.ALLOW_CHAINING) return Q()
 
   if (app.chain || app.tx || app.dateUnchained || app[TYPE] === types.VERIFICATION) {
     return Q()
@@ -469,7 +469,7 @@ Bank.prototype._send = function (reqState, resp, opts) {
       return self._tim.send(extend({
         to: [getSender(reqState.req)],
         msg: signed,
-        chain: ALLOW_CHAINING,
+        chain: Bank.ALLOW_CHAINING,
         deliver: true
       }, opts))
     })
