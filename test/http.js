@@ -1,6 +1,21 @@
 
 require('multiplex-utp')
 
+// overwrite models for tests
+var MODELS = require('tradle-models')
+var MODELS_BY_ID = {}
+MODELS.forEach(function (m) {
+  MODELS_BY_ID[m.id] = m
+})
+
+var CurrentAccount = MODELS_BY_ID['tradle.CurrentAccount']
+var currentAccountForms = CurrentAccount.forms
+CurrentAccount.forms = [
+  'tradle.AboutYou',
+  'tradle.YourMoney',
+  'tradle.LicenseVerification'
+]
+
 var test = require('tape')
 var express = require('express')
 var Q = require('q')
@@ -40,11 +55,6 @@ var BASE_PORT = 22222
 // var bootstrapDHT
 var initCount = 0
 var nonce = 0
-var MODELS = require('../lib/models')
-var MODELS_BY_ID = {}
-MODELS.getModels().forEach(function (m) {
-  MODELS_BY_ID[m.id] = m
-})
 
 var COMMON_OPTS = {
   leveldown: memdown,
@@ -135,13 +145,10 @@ test('current account', function (t) {
     })
 
   function dumpDBs (bank) {
-    var lists = [
-      'tradle.AboutYou',
-      'tradle.YourMoney',
-      'tradle.LicenseVerification',
+    var lists = CurrentAccount.forms.concat([
       'tradle.CurrentAccountConfirmation',
       'tradle.Verification'
-    ]
+    ])
 
     return Q.all(lists.map(function (name) {
         return bank.list(name)
