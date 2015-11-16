@@ -23,14 +23,14 @@ var NONCE = constants.NONCE
 var types = constants.TYPES
 var CUSTOMER = 'tradle.Customer'
 // var types = require('./lib/types')
-var MODELS = require('./lib/models')
+var MODELS = require('tradle-models')
 var MODELS_BY_ID = {}
-MODELS.getModels().forEach(function (m) {
+MODELS.forEach(function (m) {
   MODELS_BY_ID[m.id] = m
 })
 
 var ALLOW_CHAINING = true
-var APP_TYPES = MODELS.getModels().filter(function (m) {
+var APP_TYPES = MODELS.filter(function (m) {
   return m.subClassOf === 'tradle.FinancialProduct'
 }).map(function (m) {
   return m.id
