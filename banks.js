@@ -3,7 +3,8 @@
 var argv = require('minimist')(process.argv.slice(2), {
   alias: {
     p: 'public',
-    h: 'help'
+    h: 'help',
+    s: 'seq'
   }
 })
 
@@ -55,22 +56,37 @@ function run () {
   var port = Number(conf.port) || DEFAULT_PORT
   server = app.listen(port)
 
-  // destroy = installServer({
-  //   tim: tim,
-  //   app: app,
-  //   public: argv.public
-  // })
-
-  Object.keys(conf.banks).forEach(function (name) {
-    runBank({
-      name: name,
-      conf: conf.banks[name],
-      app: app
-    })
-    .then(function () {
-      console.log(name, 'is live at http://127.0.0.1:' + port + '/' + name.toLowerCase())
-    })
+  var bankNames = Object.keys(conf.banks).filter(function (name) {
+    return conf.banks[name].run !== false
   })
+
+  if (argv.seq) {
+    // start one at a time to avoid
+    // straining blockchain APIs
+    bankNames.reduce(function (prev, name) {
+      return prev.finally(function () {
+        return runBank({
+          name: name,
+          conf: conf.banks[name],
+          app: app
+        })
+        .then(function () {
+          console.log(name, 'is live at http://127.0.0.1:' + port + '/' + name.toLowerCase())
+        })
+      })
+    }, Q())
+  } else {
+    bankNames.forEach(function (name) {
+      return runBank({
+        name: name,
+        conf: conf.banks[name],
+        app: app
+      })
+      .then(function () {
+        console.log(name, 'is live at http://127.0.0.1:' + port + '/' + name.toLowerCase())
+      })
+    })
+  }
 
   console.log('Server running on port', port)
 }
@@ -88,12 +104,10 @@ function runBank (opts) {
     port: '?Number'
   }, opts.conf)
 
-  if (opts.conf.run === false) {
-    return Q.reject(new Error('not running'))
-  }
-
   var app = opts.app
   var name = opts.name.toLowerCase()
+  console.log('running', name)
+
   var conf = opts.conf
   var port = conf.port || (DEFAULT_TIM_PORT++)
   var identity = loadJSON(conf.pub)
@@ -109,7 +123,7 @@ function runBank (opts) {
     networkName: 'testnet',
     identity: Identity.fromJSON(identity),
     identityKeys: keys,
-    syncInterval: 60000,
+    syncInterval: 120000,
     afterBlockTimestamp: constants.afterBlockTimestamp,
     messenger: httpServer
   })
@@ -148,10 +162,10 @@ function runBank (opts) {
 
   onDestroy.push(bank.destroy)
 
-  getIdentityPublishStatus(tim)
-    .then(console.log.bind(console, opts.name))
+  // getIdentityPublishStatus(tim)
 
-  return tim.ready()
+  return tim.identityPublishStatus()
+    .then(console.log.bind(console, opts.name))
 }
 
 function sendErr (res, err) {
@@ -224,6 +238,7 @@ function printUsage () {
 
   Options:
       -h, --help              print usage
+      -s, --seq               start banks sequentially
       --public                expose the server to non-local requests
 
   Please report bugs!  https://github.com/tradle/tim-bank/issues
