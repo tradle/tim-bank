@@ -1,4 +1,4 @@
-require('multiplex-utp')
+require('@tradle/multiplex-utp')
 
 var assert = require('assert')
 var debug = require('debug')('bank')
@@ -7,11 +7,11 @@ var levelup = require('levelup')
 var map = require('map-stream')
 var typeforce = require('typeforce')
 var collect = require('stream-collector')
-var tutils = require('tradle-utils')
-var Builder = require('chained-obj').Builder
+var tutils = require('@tradle/utils')
+var Builder = require('@tradle/chained-obj').Builder
 var utils = require('./lib/utils')
 var Q = require('q')
-var constants = require('tradle-constants')
+var constants = require('@tradle/constants')
 var elistener = require('elistener')
 var Tim = require('tim')
 var EventType = Tim.EventType
@@ -23,13 +23,13 @@ var NONCE = constants.NONCE
 var types = constants.TYPES
 var CUSTOMER = 'tradle.Customer'
 // var types = require('./lib/types')
-var MODELS = require('tradle-models')
+var MODELS = require('@tradle/models')
 var MODELS_BY_ID = {}
 MODELS.forEach(function (m) {
   MODELS_BY_ID[m.id] = m
 })
 
-var PRODUCT_TYPES = MODELS.getModels().filter(function (m) {
+var PRODUCT_TYPES = MODELS.filter(function (m) {
   return m.subClassOf === 'tradle.FinancialProduct'
 }).map(function (m) {
   return m.id

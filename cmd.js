@@ -28,7 +28,7 @@ if (!(argv.identity && argv.keys)) {
 // moved requires for these after arg processing
 // to speed up --help query
 
-require('multiplex-utp')
+require('@tradle/multiplex-utp')
 
 var path = require('path')
 var fs = require('fs')
@@ -36,7 +36,7 @@ var dns = require('dns')
 var debug = require('debug')('bankd')
 var express = require('express')
 var leveldown = require('leveldown')
-var constants = require('tradle-constants')
+var constants = require('@tradle/constants')
 var Bank = require('./')
 var buildNode = require('./lib/buildNode')
 var Identity = require('tim').Identity

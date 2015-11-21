@@ -1,8 +1,8 @@
 
-require('multiplex-utp')
+require('@tradle/multiplex-utp')
 
 // overwrite models for tests
-var MODELS = require('tradle-models')
+var MODELS = require('@tradle/models')
 var MODELS_BY_ID = {}
 MODELS.forEach(function (m) {
   MODELS_BY_ID[m.id] = m
@@ -21,17 +21,20 @@ var express = require('express')
 var Q = require('q')
 var extend = require('xtend')
 var find = require('array-find')
-var constants = require('tradle-constants')
+var constants = require('@tradle/constants')
 var memdown = require('memdown')
 var leveldown = require('leveldown')
 // var DHT = require('bittorrent-dht')
 var Tim = require('tim')
 Tim.CATCH_UP_INTERVAL = 2000
 Tim.Zlorp.ANNOUNCE_INTERVAL = Tim.Zlorp.LOOKUP_INTERVAL = 5000
+Tim.CHAIN_WRITE_THROTTLE = 0
+Tim.CHAIN_READ_THROTTLE = 0
+Tim.SEND_THROTTLE = 0
 var HttpClient = require('tim/lib/messengers').HttpClient
 var HttpServer = require('../lib/httpMessengerServer')
 var get = require('simple-get')
-var Identity = require('midentity').Identity
+var Identity = require('@tradle/identity').Identity
 var TYPE = constants.TYPE
 var NONCE = constants.NONCE
 var CUR_HASH = constants.CUR_HASH
@@ -46,7 +49,7 @@ var tedPriv = require('./fixtures/ted-priv')
 var rufusPub = require('./fixtures/rufus-pub')
 var rufusPriv = require('./fixtures/rufus-priv')
 var types = constants.TYPES
-var helpers = require('tradle-test-helpers')
+var helpers = require('@tradle/test-helpers')
 // var Keeper = require('offline-keeper')
 var FakeKeeper = helpers.fakeKeeper
 var createFakeWallet = helpers.fakeWallet
