@@ -1,7 +1,23 @@
 
 require('@tradle/multiplex-utp')
 
+// overwrite models for tests
+var MODELS = require('@tradle/models')
+var MODELS_BY_ID = {}
+MODELS.forEach(function (m) {
+  MODELS_BY_ID[m.id] = m
+})
+
+var CurrentAccount = MODELS_BY_ID['tradle.CurrentAccount']
+var currentAccountForms = CurrentAccount.forms
+CurrentAccount.forms = [
+  'tradle.AboutYou',
+  'tradle.YourMoney',
+  'tradle.LicenseVerification'
+]
+
 var test = require('tape')
+var express = require('express')
 var Q = require('q')
 var extend = require('xtend')
 var find = require('array-find')
@@ -10,8 +26,14 @@ var memdown = require('memdown')
 var leveldown = require('leveldown')
 var DHT = require('@tradle/bittorrent-dht')
 var Tim = require('tim')
-Tim.CATCH_UP_INTERVAL = 1000
+Tim.CATCH_UP_INTERVAL = 2000
 Tim.Zlorp.ANNOUNCE_INTERVAL = Tim.Zlorp.LOOKUP_INTERVAL = 5000
+Tim.CHAIN_WRITE_THROTTLE = 0
+Tim.CHAIN_READ_THROTTLE = 0
+Tim.SEND_THROTTLE = 0
+var HttpClient = require('tim/lib/messengers').HttpClient
+var HttpServer = require('../lib/httpMessengerServer')
+var get = require('simple-get')
 var Identity = require('@tradle/identity').Identity
 var TYPE = constants.TYPE
 var NONCE = constants.NONCE
@@ -36,11 +58,6 @@ var BASE_PORT = 22222
 var bootstrapDHT
 var initCount = 0
 var nonce = 0
-var MODELS = require('@tradle/models')
-var MODELS_BY_ID = {}
-MODELS.getModels().forEach(function (m) {
-  MODELS_BY_ID[m.id] = m
-})
 
 var COMMON_OPTS = {
   leveldown: memdown,
@@ -54,6 +71,7 @@ var COMMON_OPTS = {
 }
 
 var APPLICANT
+var BANK_SERVER
 var BANK_REPS = [{
   pub: tedPub,
   priv: tedPriv
@@ -62,321 +80,324 @@ var BANK_REPS = [{
   priv: rufusPriv
 }]
 
-var BANKS = []
+var BANKS
 
-test('setup', function (t) {
-  init()
-    .then(function () {
-      var everyone = getTims()
-      return publishIdentities(everyone)
-    })
-    .finally(function () {
-      t.end()
-    })
-})
+;[init, initP2P].forEach(runTests)
 
-test('current account', function (t) {
-  var bank = BANKS[0]
-  var bankCoords = getCoords(bank._tim)
-  var verifications = {}
-  var verificationsTogo = 3
-  var verificationsDefer = Q.defer()
-
-  // logging
-  // getTims().forEach(function (tim) {
-  //   var who = tim === APPLICANT ? 'applicant' : tim === BANKS[0]._tim ? 'bank1' : 'bank2'
-  //   tim.on('message', function (info) {
-  //     tim.lookupObject(info)
-  //       .then(function (obj) {
-  //         console.log(who, 'received', JSON.stringify(obj.parsed.data, null, 2))
-  //       })
-  //   })
-  // })
-
-  APPLICANT.on('unchained', function (info) {
-    if (info[TYPE] !== 'tradle.Verification') return
-
-    APPLICANT.lookupObject(info)
-      .then(function (obj) {
-        var documentHash = obj.parsed.data.document.id.split('_')[1]
-        return APPLICANT.lookupObjectByCurHash(documentHash)
+function runTests (reinit, idx) {
+  BANKS = []
+  APPLICANT = null
+  test('setup', function (t) {
+    reinit()
+      .then(function () {
+        var everyone = getTims()
+        return publishIdentities(everyone)
       })
-      .then(function (obj) {
-        var vType = obj.parsed.data[TYPE]
-        verifications[vType] = info[CUR_HASH]
-        if (--verificationsTogo) return
-
-        verificationsDefer.resolve()
+      .finally(function () {
+        t.end()
       })
-      .done()
   })
 
-  step1()
-    .then(step2)
-    .then(step3)
-    .then(step4)
-    .then(function () {
-      bank = BANKS[1]
-      bankCoords = getCoords(bank._tim)
-      return verificationsDefer.promise
-    })
-    .then(bank2step1)
-    .then(bank2step2)
-    .then(bank2step3)
-    .then(bank2step4)
-    // .then(dumpDBs.bind(null, BANKS[0]))
-    .done(function () {
-      t.end()
-    })
+  test('current account', function (t) {
+    var bank = BANKS[0]
+    var bankCoords = getCoords(bank._tim)
+    var verifications = {}
+    var verificationsTogo = 3
+    var verificationsDefer = Q.defer()
 
-  function dumpDBs (bank) {
-    var lists = [
-      'tradle.AboutYou',
-      'tradle.YourMoney',
-      'tradle.LicenseVerification',
-      'tradle.CurrentAccountConfirmation',
-      'tradle.Verification'
-    ]
+    // logging
+    // getTims().forEach(function (tim) {
+    //   var who = tim === APPLICANT ? 'applicant' : tim === BANKS[0]._tim ? 'bank1' : 'bank2'
+    //   tim.on('message', function (info) {
+    //     tim.lookupObject(info)
+    //       .then(function (obj) {
+    //         console.log(who, 'received', JSON.stringify(obj.parsed.data, null, 2))
+    //       })
+    //   })
+    // })
 
-    return Q.all(lists.map(function (name) {
-        return bank.list(name)
-      }))
-      .then(function (results) {
-        results.forEach(function (list, i) {
-          console.log('list of ' + lists[i])
-          list.forEach(function (item) {
-            console.log(JSON.stringify(item.value, null, 2))
-          })
-        })
-      })
-  }
-
-  function step1 () {
-    var msg = utils.buildSimpleMsg(
-      'application for',
-      'tradle.CurrentAccount'
-    )
-
-    signNSend(msg)
-    return await('tradle.AboutYou')
-  }
-
-  function step2 () {
-    var msg = {
-      nationality: 'British',
-      residentialStatus: 'Living with parents',
-      maritalStatus: 'Single'
-    }
-
-    msg[NONCE] = '' + (nonce++)
-    msg[TYPE] = 'tradle.AboutYou'
-
-    signNSend(msg)
-    return Q.all([
-      await('tradle.YourMoney'),
-      awaitVerification()
-    ])
-  }
-
-  function step3 () {
-    var msg = {
-      monthlyIncome: '5000 pounds',
-      whenHired: 1414342441249
-    }
-
-    msg[NONCE] = '' + (nonce++)
-    msg[TYPE] = 'tradle.YourMoney'
-
-    signNSend(msg)
-    return Q.all([
-      await('tradle.LicenseVerification'),
-      awaitVerification()
-    ])
-  }
-
-  function step4 () {
-    var msg = {
-      licenseNumber: 'abc',
-      dateOfIssue: 1414342441249
-    }
-
-    msg[NONCE] = '' + (nonce++)
-    msg[TYPE] = 'tradle.LicenseVerification'
-
-    signNSend(msg)
-    return Q.all([
-      awaitVerification(),
-      awaitConfirmation()
-    ])
-  }
-
-  function bank2step1 () {
-    var msg = utils.buildSimpleMsg(
-      'application for',
-      'tradle.CurrentAccount'
-    )
-
-    signNSend(msg)
-    return await('tradle.AboutYou')
-  }
-
-  function bank2step2 () {
-    shareVerification('tradle.AboutYou')
-    return await('tradle.YourMoney')
-  }
-
-  function bank2step3 () {
-    shareVerification('tradle.YourMoney')
-    return await('tradle.LicenseVerification')
-  }
-
-  function bank2step4 () {
-    shareVerification('tradle.LicenseVerification')
-    return awaitConfirmation()
-  }
-
-  function signNSend (msg) {
-    APPLICANT.sign(msg)
-      .then(function (signed) {
-        return APPLICANT.send({
-          msg: signed,
-          to: bankCoords,
-          deliver: true
-        })
-      })
-      .done()
-  }
-
-  function shareVerification (type) {
-    var opts = {
-      chain: true,
-      deliver: true,
-      to: bankCoords
-    }
-
-    opts[CUR_HASH] = verifications[type]
-    APPLICANT.share(opts)
-  }
-
-  function awaitVerification () {
-    return awaitType('tradle.Verification')
-  }
-
-  function awaitConfirmation () {
-    return awaitType('tradle.CurrentAccountConfirmation')
-  }
-
-  function awaitType (type) {
-    var defer = Q.defer()
-    APPLICANT.on('message', onmessage)
-    return defer.promise
-      .then(function () {
-        APPLICANT.removeListener('message', onmessage)
-      })
-
-    function onmessage (info) {
-      if (info[TYPE] === type) {
-        defer.resolve()
-      }
-    }
-  }
-
-  function await (nextFormType) {
-    var defer = Q.defer()
-    APPLICANT.on('message', onmessage)
-    return defer.promise
-      .then(function () {
-        APPLICANT.removeListener('message', onmessage)
-      })
-
-    function onmessage (info) {
-      if (info[TYPE] !== types.SIMPLE_MESSAGE) {
-        return
-      }
+    APPLICANT.on('unchained', function (info) {
+      if (info[TYPE] !== 'tradle.Verification') return
 
       APPLICANT.lookupObject(info)
-        .done(function (obj) {
-          var text = obj.parsed.data.message
-          t.equal(utils.parseSimpleMsg(text).type, nextFormType)
-          defer.resolve()
+        .then(function (obj) {
+          var documentHash = obj.parsed.data.document.id.split('_')[1]
+          return APPLICANT.lookupObjectByCurHash(documentHash)
+        })
+        .then(function (obj) {
+          var vType = obj.parsed.data[TYPE]
+          verifications[vType] = info[CUR_HASH]
+          if (--verificationsTogo) return
+
+          verificationsDefer.resolve()
+        })
+        .done()
+    })
+
+    step1()
+      .then(step2)
+      .then(step3)
+      .then(step4)
+      .then(function () {
+        bank = BANKS[1]
+        bankCoords = getCoords(bank._tim)
+        return verificationsDefer.promise
+      })
+      .then(bank2step1)
+      .then(bank2step2)
+      .then(bank2step3)
+      .then(bank2step4)
+      // .then(dumpDBs.bind(null, BANKS[0]))
+      .done(function () {
+        t.end()
+      })
+
+    function dumpDBs (bank) {
+      var lists = CurrentAccount.forms.concat([
+        'tradle.CurrentAccountConfirmation',
+        'tradle.Verification'
+      ])
+
+      return Q.all(lists.map(function (name) {
+          return bank.list(name)
+        }))
+        .then(function (results) {
+          results.forEach(function (list, i) {
+            console.log('list of ' + lists[i])
+            list.forEach(function (item) {
+              console.log(JSON.stringify(item.value, null, 2))
+            })
+          })
         })
     }
-  }
-})
 
-// test('current account app and share', function (t) {
-//   t.plan(5)
+    function step1 () {
+      var msg = utils.buildSimpleMsg(
+        'application for',
+        'tradle.CurrentAccount'
+      )
 
-//   var msg = {}
-//   msg[TYPE] = types.CurrentAccountApplication
-//   msg[NONCE] = '123'
+      signNSend(msg)
+      return await('tradle.AboutYou')
+    }
 
-//   var signed
-//   APPLICANT.sign(msg)
-//     .then(function (_signed) {
-//       signed = _signed
-//       return APPLICANT.send({
-//         msg: signed,
-//         to: getCoords(BANKS[0]._tim),
-//         deliver: true
-//       })
-//     })
-//     .done()
+    function step2 () {
+      var msg = {
+        nationality: 'British',
+        residentialStatus: 'Living with parents',
+        maritalStatus: 'Single'
+      }
 
-//   var typesDetected = { unchained: {}, message: {} }
-//   ;['unchained', 'message'].forEach(function (event) {
-//     APPLICANT.on(event, function (info) {
-//       // confirmation of appliation
-//       var type = info[TYPE]
-//       if (typesDetected[event][type]) return
+      msg[NONCE] = '' + (nonce++)
+      msg[TYPE] = 'tradle.AboutYou'
 
-//       typesDetected[event][type] = true
-//       switch (type) {
-//         case types.CurrentAccountApplication:
-//           return APPLICANT.lookupObject(info)
-//             .done(function (obj) {
-//               t.deepEqual(obj.data, signed)
-//             })
-//         case types.CurrentAccountConfirmation:
-//           return APPLICANT.lookupObject(info)
-//             .then(function (obj) {
-//               t.equal(obj[TYPE], types.CurrentAccountConfirmation)
-//               var applicationHash = obj.parsed.data.application
-//               var msgDB = APPLICANT.messages()
-//               return Q.ninvoke(msgDB, 'byCurHash', applicationHash)
-//             })
-//             .then(APPLICANT.lookupObject)
-//             .done(function (application) {
-//               t.deepEqual(application.data, signed)
-//             })
-//         // case types.SharedKYC:
-//         //   return APPLICANT.lookupObject(info)
-//         //     .done(function (obj) {
-//         //       t.deepEqual(obj.data, signed)
-//         //     })
-//       }
-//     })
-//   })
+      signNSend(msg)
+      return Q.all([
+        await('tradle.YourMoney'),
+        awaitVerification()
+      ])
+    }
 
-//   // APPLICANT.on('unchained', function (info) {
-//   //   if (info[TYPE] !== types.CurrentAccountConfirmation) return
+    function step3 () {
+      var msg = {
+        monthlyIncome: '5000 pounds',
+        whenHired: 1414342441249
+      }
 
-//   //   var opts = {
-//   //     to: getCoords(BANKS[1]._tim)
-//   //   }
+      msg[NONCE] = '' + (nonce++)
+      msg[TYPE] = 'tradle.YourMoney'
 
-//   //   opts[CUR_HASH] = info[CUR_HASH]
-//   //   APPLICANT.share(opts)
-//   //     .done()
-//   // })
-// })
+      signNSend(msg)
+      return Q.all([
+        await('tradle.LicenseVerification'),
+        awaitVerification()
+      ])
+    }
 
-test('teardown', function (t) {
-  teardown()
-    .done(function () {
-      t.end()
-    })
-})
+    function step4 () {
+      var msg = {
+        licenseNumber: 'abc',
+        dateOfIssue: 1414342441249
+      }
+
+      msg[NONCE] = '' + (nonce++)
+      msg[TYPE] = 'tradle.LicenseVerification'
+
+      signNSend(msg)
+      return Q.all([
+        awaitVerification(),
+        awaitConfirmation()
+      ])
+    }
+
+    function bank2step1 () {
+      var msg = utils.buildSimpleMsg(
+        'application for',
+        'tradle.CurrentAccount'
+      )
+
+      signNSend(msg)
+      return await('tradle.AboutYou')
+    }
+
+    function bank2step2 () {
+      shareVerification('tradle.AboutYou')
+      return await('tradle.YourMoney')
+    }
+
+    function bank2step3 () {
+      shareVerification('tradle.YourMoney')
+      return await('tradle.LicenseVerification')
+    }
+
+    function bank2step4 () {
+      shareVerification('tradle.LicenseVerification')
+      return awaitConfirmation()
+    }
+
+    function signNSend (msg) {
+      APPLICANT.sign(msg)
+        .then(function (signed) {
+          return APPLICANT.send({
+            msg: signed,
+            to: bankCoords,
+            deliver: true
+          })
+        })
+        .done()
+    }
+
+    function shareVerification (type) {
+      var opts = {
+        chain: true,
+        deliver: true,
+        to: bankCoords
+      }
+
+      opts[CUR_HASH] = verifications[type]
+      APPLICANT.share(opts)
+    }
+
+    function awaitVerification () {
+      return awaitType('tradle.Verification')
+    }
+
+    function awaitConfirmation () {
+      return awaitType('tradle.CurrentAccountConfirmation')
+    }
+
+    function awaitType (type) {
+      var defer = Q.defer()
+      APPLICANT.on('message', onmessage)
+      return defer.promise
+        .then(function () {
+          APPLICANT.removeListener('message', onmessage)
+        })
+
+      function onmessage (info) {
+        if (info[TYPE] === type) {
+          defer.resolve()
+        }
+      }
+    }
+
+    function await (nextFormType) {
+      var defer = Q.defer()
+      APPLICANT.on('message', onmessage)
+      return defer.promise
+        .then(function () {
+          APPLICANT.removeListener('message', onmessage)
+        })
+
+      function onmessage (info) {
+        if (info[TYPE] !== types.SIMPLE_MESSAGE) {
+          return
+        }
+
+        APPLICANT.lookupObject(info)
+          .done(function (obj) {
+            var text = obj.parsed.data.message
+            t.equal(utils.parseSimpleMsg(text).type, nextFormType)
+            defer.resolve()
+          })
+      }
+    }
+  })
+
+  // test('current account app and share', function (t) {
+  //   t.plan(5)
+
+  //   var msg = {}
+  //   msg[TYPE] = types.CurrentAccountApplication
+  //   msg[NONCE] = '123'
+
+  //   var signed
+  //   APPLICANT.sign(msg)
+  //     .then(function (_signed) {
+  //       signed = _signed
+  //       return APPLICANT.send({
+  //         msg: signed,
+  //         to: getCoords(BANKS[0]._tim),
+  //         deliver: true
+  //       })
+  //     })
+  //     .done()
+
+  //   var typesDetected = { unchained: {}, message: {} }
+  //   ;['unchained', 'message'].forEach(function (event) {
+  //     APPLICANT.on(event, function (info) {
+  //       // confirmation of appliation
+  //       var type = info[TYPE]
+  //       if (typesDetected[event][type]) return
+
+  //       typesDetected[event][type] = true
+  //       switch (type) {
+  //         case types.CurrentAccountApplication:
+  //           return APPLICANT.lookupObject(info)
+  //             .done(function (obj) {
+  //               t.deepEqual(obj.data, signed)
+  //             })
+  //         case types.CurrentAccountConfirmation:
+  //           return APPLICANT.lookupObject(info)
+  //             .then(function (obj) {
+  //               t.equal(obj[TYPE], types.CurrentAccountConfirmation)
+  //               var applicationHash = obj.parsed.data.application
+  //               var msgDB = APPLICANT.messages()
+  //               return Q.ninvoke(msgDB, 'byCurHash', applicationHash)
+  //             })
+  //             .then(APPLICANT.lookupObject)
+  //             .done(function (application) {
+  //               t.deepEqual(application.data, signed)
+  //             })
+  //         // case types.SharedKYC:
+  //         //   return APPLICANT.lookupObject(info)
+  //         //     .done(function (obj) {
+  //         //       t.deepEqual(obj.data, signed)
+  //         //     })
+  //       }
+  //     })
+  //   })
+
+  //   // APPLICANT.on('unchained', function (info) {
+  //   //   if (info[TYPE] !== types.CurrentAccountConfirmation) return
+
+  //   //   var opts = {
+  //   //     to: getCoords(BANKS[1]._tim)
+  //   //   }
+
+  //   //   opts[CUR_HASH] = info[CUR_HASH]
+  //   //   APPLICANT.share(opts)
+  //   //     .done()
+  //   // })
+  // })
+
+  test('teardown', function (t) {
+    teardown()
+      .done(function () {
+        t.end()
+      })
+  })
+}
 
 function getTims () {
   return BANKS.map(function (b) {
@@ -385,23 +406,26 @@ function getTims () {
 }
 
 function buildNode (opts) {
-  return origBuildNode(extend(COMMON_OPTS, opts))
+  return origBuildNode(extend(COMMON_OPTS, {
+    pathPrefix: opts.identity.name() + initCount
+  }, opts))
 }
 
 function teardown () {
+  if (BANK_SERVER) BANK_SERVER.close()
   return Q.all(BANKS.concat(APPLICANT).map(function (entity) {
       return entity.destroy()
     }))
     .then(function () {
       getTims().forEach(function (t) {
-        t.dht.destroy()
+        if (t.dht) t.dht.destroy()
       })
 
-      bootstrapDHT.destroy()
+      if (bootstrapDHT) bootstrapDHT.destroy()
     })
 }
 
-function init () {
+function initP2P () {
   var bootstrapDHTPort = BASE_PORT++
   bootstrapDHT = new DHT({ bootstrap: false })
   bootstrapDHT.listen(bootstrapDHTPort)
@@ -440,6 +464,82 @@ function init () {
       tim: tim,
       path: 'storage' + (initCount++),
       leveldown: memdown
+    })
+
+    return bank
+  })
+
+  return Q.all(getTims().map(function (t) {
+    return t.ready()
+  }))
+}
+
+function init () {
+  // var bootstrapDHTPort = BASE_PORT++
+  // bootstrapDHT = new DHT({ bootstrap: false })
+  // bootstrapDHT.listen(bootstrapDHTPort)
+  // var dhtConf = {
+  //   bootstrap: ['127.0.0.1:' + bootstrapDHTPort]
+  // }
+
+  var aPort = BASE_PORT++
+  // var aDHT = new DHT(dhtConf)
+  // aDHT.listen(aPort)
+
+  var applicantWallet = walletFor(billPriv, null, 'messaging')
+
+  APPLICANT = buildNode({
+    dht: false,
+    wallet: applicantWallet,
+    blockchain: applicantWallet.blockchain,
+    messenger: new HttpClient(),
+    identity: Identity.fromJSON(billPub),
+    identityKeys: billPriv,
+    port: aPort
+  })
+
+  APPLICANT.once('ready', function () {
+    APPLICANT.messenger.setRootHash(APPLICANT.myRootHash())
+  })
+
+  var serverPort = BASE_PORT++
+  var bankApp = express()
+  BANK_SERVER = bankApp.listen(serverPort)
+
+  BANKS = BANK_REPS.map(function (rep) {
+    var port = BASE_PORT++
+    // var dht = new DHT(dhtConf)
+    // dht.listen(port)
+
+    var router = express.Router()
+    var httpServer = new HttpServer({
+      router: router
+    })
+
+    var tim = buildNode({
+      dht: false,
+      blockchain: applicantWallet.blockchain,
+      identity: Identity.fromJSON(rep.pub),
+      identityKeys: rep.priv,
+      port: port,
+      messenger: httpServer
+    })
+
+    var bank = new Bank({
+      tim: tim,
+      manual: true,
+      path: 'storage' + (initCount++),
+      leveldown: memdown
+    })
+
+    httpServer.receive = bank.receiveMsg.bind(bank)
+
+    tim.once('ready', function () {
+      var rh = tim.myRootHash()
+      bankApp.use('/' + rh, router)
+      var url = 'http://127.0.0.1:' + serverPort + '/' + rh
+      // var url = 'http://localhost:' + serverPort + '/' + rh
+      APPLICANT.messenger.addRecipient(rh, url)
     })
 
     return bank
