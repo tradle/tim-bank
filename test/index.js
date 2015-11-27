@@ -1,5 +1,11 @@
 
+// require('q-to-bluebird')
 require('@tradle/multiplex-utp')
+
+var constants = require('@tradle/constants')
+// for now
+constants.TYPES.GET_MESSAGE = 'tradle.getMessage'
+constants.TYPES.GET_HISTORY = 'tradle.getHistory'
 
 // overwrite models for tests
 var MODELS = require('@tradle/models')
@@ -21,18 +27,17 @@ var express = require('express')
 var Q = require('q')
 var extend = require('xtend')
 var find = require('array-find')
-var constants = require('@tradle/constants')
 var memdown = require('memdown')
 var leveldown = require('leveldown')
 var DHT = require('@tradle/bittorrent-dht')
 var Tim = require('tim')
 Tim.CATCH_UP_INTERVAL = 2000
-Tim.Zlorp.ANNOUNCE_INTERVAL = Tim.Zlorp.LOOKUP_INTERVAL = 5000
+// Tim.Zlorp.ANNOUNCE_INTERVAL = Tim.Zlorp.LOOKUP_INTERVAL = 5000
 Tim.CHAIN_WRITE_THROTTLE = 0
 Tim.CHAIN_READ_THROTTLE = 0
 Tim.SEND_THROTTLE = 0
-var HttpClient = require('tim/lib/messengers').HttpClient
-var HttpServer = require('../lib/httpMessengerServer')
+var HttpClient = Tim.Messengers.HttpClient
+var HttpServer = Tim.Messengers.HttpServer
 var get = require('simple-get')
 var Identity = require('@tradle/identity').Identity
 var TYPE = constants.TYPE
@@ -116,23 +121,7 @@ function runTests (reinit, idx) {
     //   })
     // })
 
-    APPLICANT.on('unchained', function (info) {
-      if (info[TYPE] !== 'tradle.Verification') return
-
-      APPLICANT.lookupObject(info)
-        .then(function (obj) {
-          var documentHash = obj.parsed.data.document.id.split('_')[1]
-          return APPLICANT.lookupObjectByCurHash(documentHash)
-        })
-        .then(function (obj) {
-          var vType = obj.parsed.data[TYPE]
-          verifications[vType] = info[CUR_HASH]
-          if (--verificationsTogo) return
-
-          verificationsDefer.resolve()
-        })
-        .done()
-    })
+    APPLICANT.on('unchained', onUnchained)
 
     step1()
       .then(step2)
@@ -149,8 +138,27 @@ function runTests (reinit, idx) {
       .then(bank2step4)
       // .then(dumpDBs.bind(null, BANKS[0]))
       .done(function () {
+        APPLICANT.removeListener('unchained', onUnchained)
         t.end()
       })
+
+    function onUnchained (info) {
+      if (info[TYPE] !== 'tradle.Verification') return
+
+      APPLICANT.lookupObject(info)
+        .then(function (obj) {
+          var documentHash = obj.parsed.data.document.id.split('_')[1]
+          return APPLICANT.lookupObjectByCurHash(documentHash)
+        })
+        .then(function (obj) {
+          var vType = obj.parsed.data[TYPE]
+          verifications[vType] = info[CUR_HASH]
+          if (--verificationsTogo) return
+
+          verificationsDefer.resolve()
+        })
+        .done()
+    }
 
     function dumpDBs (bank) {
       var lists = CurrentAccount.forms.concat([
@@ -163,7 +171,6 @@ function runTests (reinit, idx) {
         }))
         .then(function (results) {
           results.forEach(function (list, i) {
-            console.log('list of ' + lists[i])
             list.forEach(function (item) {
               console.log(JSON.stringify(item.value, null, 2))
             })
@@ -324,71 +331,52 @@ function runTests (reinit, idx) {
     }
   })
 
-  // test('current account app and share', function (t) {
-  //   t.plan(5)
+  // test('wipe and recover', function (t) {
+  //   var backup
+  //   var bank = BANKS[0]
+  //   var bankCoords = {}
+  //   bankCoords[ROOT_HASH] = bank._tim.myRootHash()
+  //   var options = APPLICANT.options()
+  //   APPLICANT.history(bankCoords)
+  //     .then(function (msgs) {
+  //       backup = msgs
+  //       return APPLICANT.destroy()
+  //     })
+  //     .then(function () {
+  //       APPLICANT = new Tim(options)
+  //       return APPLICANT.ready()
+  //     })
+  //     .then(function () {
+  //       APPLICANT.on('message', oneDown)
 
-  //   var msg = {}
-  //   msg[TYPE] = types.CurrentAccountApplication
-  //   msg[NONCE] = '123'
-
-  //   var signed
-  //   APPLICANT.sign(msg)
-  //     .then(function (_signed) {
-  //       signed = _signed
+  //       var msg = {}
+  //       msg[TYPE] = constants.TYPES.GET_HISTORY
+  //       msg[NONCE] = '' + nonce++
   //       return APPLICANT.send({
-  //         msg: signed,
-  //         to: getCoords(BANKS[0]._tim),
+  //         msg: msg,
+  //         to: [bankCoords],
   //         deliver: true
   //       })
   //     })
   //     .done()
 
-  //   var typesDetected = { unchained: {}, message: {} }
-  //   ;['unchained', 'message'].forEach(function (event) {
-  //     APPLICANT.on(event, function (info) {
-  //       // confirmation of appliation
-  //       var type = info[TYPE]
-  //       if (typesDetected[event][type]) return
-
-  //       typesDetected[event][type] = true
-  //       switch (type) {
-  //         case types.CurrentAccountApplication:
-  //           return APPLICANT.lookupObject(info)
-  //             .done(function (obj) {
-  //               t.deepEqual(obj.data, signed)
-  //             })
-  //         case types.CurrentAccountConfirmation:
-  //           return APPLICANT.lookupObject(info)
-  //             .then(function (obj) {
-  //               t.equal(obj[TYPE], types.CurrentAccountConfirmation)
-  //               var applicationHash = obj.parsed.data.application
-  //               var msgDB = APPLICANT.messages()
-  //               return Q.ninvoke(msgDB, 'byCurHash', applicationHash)
-  //             })
-  //             .then(APPLICANT.lookupObject)
-  //             .done(function (application) {
-  //               t.deepEqual(application.data, signed)
-  //             })
-  //         // case types.SharedKYC:
-  //         //   return APPLICANT.lookupObject(info)
-  //         //     .done(function (obj) {
-  //         //       t.deepEqual(obj.data, signed)
-  //         //     })
+  //   function oneDown (info) {
+  //     var idx
+  //     backup.some(function (msg, i) {
+  //       if (msg[ROOT_HASH] === info[ROOT_HASH]) {
+  //         idx = i
+  //         t.pass('retrieved backed up msg')
+  //         return true
   //       }
   //     })
-  //   })
 
-  //   // APPLICANT.on('unchained', function (info) {
-  //   //   if (info[TYPE] !== types.CurrentAccountConfirmation) return
-
-  //   //   var opts = {
-  //   //     to: getCoords(BANKS[1]._tim)
-  //   //   }
-
-  //   //   opts[CUR_HASH] = info[CUR_HASH]
-  //   //   APPLICANT.share(opts)
-  //   //     .done()
-  //   // })
+  //     t.notEqual(idx, -1)
+  //     backup.splice(idx, 1)
+  //     if (!backup.length) {
+  //       APPLICANT.removeListener('message', oneDown)
+  //       t.end()
+  //     }
+  //   }
   // })
 
   test('teardown', function (t) {

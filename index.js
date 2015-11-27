@@ -236,6 +236,10 @@ Bank.prototype._onMessageFromCustomer = function (reqState) {
   this._debug('received message of type', msgType)
 
   switch (msgType) {
+    case types.GET_MESSAGE:
+      return this._lookupAndSend(reqState)
+    case types.GET_HISTORY:
+      return this._sendHistory(reqState)
     case types.SIMPLE_MESSAGE:
       var msg = reqState.parsed.data.message
       if (msg) {
@@ -261,6 +265,29 @@ Bank.prototype._onMessageFromCustomer = function (reqState) {
         return this._debug('ignoring message of type', msgType)
       }
   }
+}
+
+Bank.prototype._lookupAndSend = function (reqState) {
+  var self = this
+  var info = {}
+  info[CUR_HASH] = reqState.parsed.data.hash
+  return this._tim.lookupObject(info)
+    .then(function (obj) {
+      return self._send(reqState, obj.parsed.data, { chain: false })
+    })
+}
+
+Bank.prototype._sendHistory = function (reqState) {
+  var self = this
+  var senderRootHash = reqState.from
+  var from = {}
+  from[ROOT_HASH] = senderRootHash
+  return this._tim.history(from)
+    .then(function (objs) {
+      return Q.all(objs.map(function (obj) {
+        return self._send(reqState, obj.parsed.data, { chain: false })
+      }))
+    })
 }
 
 // Bank.prototype.echo = function (reqState) {
@@ -452,19 +479,23 @@ Bank.prototype._getResource = function (type, rootHash) {
 
 Bank.prototype._send = function (reqState, resp, opts) {
   var self = this
+  typeforce('RequestState', reqState)
+  typeforce('Object', resp)
+
   opts = opts || {}
 
-//   resp[OWNER] = this._tim.myCurrentHash()
-  resp.time = Date.now()
+  if (!('time' in resp)) {
+    resp.time = Date.now()
+  }
 
-  var addNonce = NONCE in resp
-    ? Q()
-    : Q.ninvoke(Builder, 'addNonce', resp)
+  var maybeSign
+  if (!(constants.SIG in resp)) {
+    maybeSign = this._tim.sign(resp)
+  } else {
+    maybeSign = Q(resp)
+  }
 
-  return addNonce
-    .then(function () {
-      return self._tim.sign(resp)
-    })
+  return maybeSign
     .then(function (signed) {
       return self._tim.send(extend({
         to: [getSender(reqState.req)],
