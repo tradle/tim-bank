@@ -46,7 +46,7 @@ var CUR_HASH = constants.CUR_HASH
 var ROOT_HASH = constants.ROOT_HASH
 var origBuildNode = require('../lib/buildNode')
 var utils = require('../lib/utils')
-var Bank = require('../')
+var Bank = require('../simple')
 var billPub = require('./fixtures/bill-pub')
 var billPriv = require('./fixtures/bill-priv')
 var tedPub = require('./fixtures/ted-pub')
@@ -105,14 +105,14 @@ function runTests (reinit, idx) {
 
   test('current account', function (t) {
     var bank = BANKS[0]
-    var bankCoords = getCoords(bank._tim)
+    var bankCoords = getCoords(bank.tim)
     var verifications = {}
     var verificationsTogo = 3
     var verificationsDefer = Q.defer()
 
     // logging
     // getTims().forEach(function (tim) {
-    //   var who = tim === APPLICANT ? 'applicant' : tim === BANKS[0]._tim ? 'bank1' : 'bank2'
+    //   var who = tim === APPLICANT ? 'applicant' : tim === BANKS[0].tim ? 'bank1' : 'bank2'
     //   tim.on('message', function (info) {
     //     tim.lookupObject(info)
     //       .then(function (obj) {
@@ -129,7 +129,7 @@ function runTests (reinit, idx) {
       .then(step4)
       .then(function () {
         bank = BANKS[1]
-        bankCoords = getCoords(bank._tim)
+        bankCoords = getCoords(bank.tim)
         return verificationsDefer.promise
       })
       .then(bank2step1)
@@ -335,7 +335,7 @@ function runTests (reinit, idx) {
   //   var backup
   //   var bank = BANKS[0]
   //   var bankCoords = {}
-  //   bankCoords[ROOT_HASH] = bank._tim.myRootHash()
+  //   bankCoords[ROOT_HASH] = bank.tim.myRootHash()
   //   var options = APPLICANT.options()
   //   APPLICANT.history(bankCoords)
   //     .then(function (msgs) {
@@ -389,7 +389,7 @@ function runTests (reinit, idx) {
 
 function getTims () {
   return BANKS.map(function (b) {
-    return b._tim
+    return b.tim
   }).concat(APPLICANT)
 }
 
