@@ -31,11 +31,11 @@ module.exports = function buildNode (options) {
     options.dht = dht
   }
 
-  var leveldown = options.leveldown || leveldown
+  var db = options.leveldown || leveldown
   if (!options.keeper) {
     options.keeper = new Keeper({
       storeOnFetch: true,
-      db: levelup(options.pathPrefix + '-keeper', { db: leveldown }),
+      db: levelup(options.pathPrefix + '-keeper', { db: db }),
       fallbacks: ['http://tradle.io:25667']
     })
   }
@@ -49,7 +49,7 @@ module.exports = function buildNode (options) {
   }
 
   var d = new Driver(extend({
-    leveldown: leveldown,
+    leveldown: db,
     syncInterval: 60000
   }, options))
 

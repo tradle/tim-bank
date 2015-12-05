@@ -1,6 +1,6 @@
 
 // require('q-to-bluebird')
-require('babel-polyfill')
+// require('babel-polyfill')
 require('@tradle/multiplex-utp')
 
 var constants = require('@tradle/constants')
