@@ -4,7 +4,7 @@ var debug = require('debug')('bank:simple')
 var constants = require('@tradle/constants')
 var MODELS = require('@tradle/models')
 var Bank = require('./')
-var utils = require('./lib/utils')
+var utils = require('./utils')
 
 var ROOT_HASH = constants.ROOT_HASH
 var CUR_HASH = constants.CUR_HASH

@@ -1,5 +1,6 @@
 
 // require('q-to-bluebird')
+require('babel-polyfill')
 require('@tradle/multiplex-utp')
 
 var constants = require('@tradle/constants')
@@ -28,7 +29,6 @@ var Q = require('q')
 var extend = require('xtend')
 var find = require('array-find')
 var memdown = require('memdown')
-var leveldown = require('leveldown')
 var DHT = require('@tradle/bittorrent-dht')
 var Tim = require('tim')
 Tim.CATCH_UP_INTERVAL = 2000
@@ -46,7 +46,7 @@ var CUR_HASH = constants.CUR_HASH
 var ROOT_HASH = constants.ROOT_HASH
 var origBuildNode = require('../lib/buildNode')
 var utils = require('../lib/utils')
-var Bank = require('../simple')
+var Bank = require('../lib/simple')
 var billPub = require('./fixtures/bill-pub')
 var billPriv = require('./fixtures/bill-priv')
 var tedPub = require('./fixtures/ted-pub')
@@ -185,7 +185,7 @@ function runTests (reinit, idx) {
       )
 
       signNSend(msg)
-      return await('tradle.AboutYou')
+      return awaitForm('tradle.AboutYou')
     }
 
     function step2 () {
@@ -200,7 +200,7 @@ function runTests (reinit, idx) {
 
       signNSend(msg)
       return Q.all([
-        await('tradle.YourMoney'),
+        awaitForm('tradle.YourMoney'),
         awaitVerification()
       ])
     }
@@ -216,7 +216,7 @@ function runTests (reinit, idx) {
 
       signNSend(msg)
       return Q.all([
-        await('tradle.LicenseVerification'),
+        awaitForm('tradle.LicenseVerification'),
         awaitVerification()
       ])
     }
@@ -244,17 +244,17 @@ function runTests (reinit, idx) {
       )
 
       signNSend(msg)
-      return await('tradle.AboutYou')
+      return awaitForm('tradle.AboutYou')
     }
 
     function bank2step2 () {
       shareVerification('tradle.AboutYou')
-      return await('tradle.YourMoney')
+      return awaitForm('tradle.YourMoney')
     }
 
     function bank2step3 () {
       shareVerification('tradle.YourMoney')
-      return await('tradle.LicenseVerification')
+      return awaitForm('tradle.LicenseVerification')
     }
 
     function bank2step4 () {
@@ -308,7 +308,7 @@ function runTests (reinit, idx) {
       }
     }
 
-    function await (nextFormType) {
+    function awaitForm (nextFormType) {
       var defer = Q.defer()
       APPLICANT.on('message', onmessage)
       return defer.promise
@@ -561,7 +561,7 @@ function publishIdentities (/* drivers */) {
         // .catch(function (err) {
         //   if (!/already/.test(err.message)) throw err
         // })
-        .done()
+        // .done()
     })
   // })
 

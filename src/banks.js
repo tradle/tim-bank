@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+require('babel-polyfill')
 var argv = require('minimist')(process.argv.slice(2), {
   alias: {
     p: 'public',
@@ -124,6 +125,7 @@ function runBank (opts) {
   })
 
   var tim = buildNode({
+    dht: false,
     port: port,
     networkName: 'testnet',
     identity: Identity.fromJSON(identity),

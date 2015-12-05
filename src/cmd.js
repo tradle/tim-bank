@@ -17,12 +17,14 @@ var argv = require('minimist')(process.argv.slice(2), {
 })
 
 if (argv.help) {
-  return printUsage()
+  printUsage()
+  process.exit(0)
 }
 
 if (!(argv.identity && argv.keys)) {
   console.error('identity and keys are required')
-  return printUsage()
+  printUsage()
+  process.exit(0)
 }
 
 // moved requires for these after arg processing

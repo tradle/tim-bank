@@ -9,12 +9,12 @@ var typeforce = require('typeforce')
 var collect = require('stream-collector')
 var tutils = require('@tradle/utils')
 var Builder = require('@tradle/chained-obj').Builder
-var utils = require('./lib/utils')
+var utils = require('./utils')
 var Q = require('q')
 var constants = require('@tradle/constants')
 var elistener = require('elistener')
 var Tim = require('tim')
-var RequestState = require('./lib/requestState')
+var RequestState = require('./requestState')
 var EventType = Tim.EventType
 var CUR_HASH = constants.CUR_HASH
 var ROOT_HASH = constants.ROOT_HASH
@@ -23,7 +23,7 @@ var TYPE = constants.TYPE
 var NONCE = constants.NONCE
 var types = constants.TYPES
 var CUSTOMER = 'tradle.Customer'
-// var types = require('./lib/types')
+// var types = require('./types')
 
 module.exports = Bank
 elistener(Bank.prototype)
