@@ -10,7 +10,8 @@ var argv = require('minimist')(process.argv.slice(2), {
   },
   default: {
     chain: true
-  }
+  },
+  boolean: ['chain', 'seq']
 })
 
 if (argv.help) {
