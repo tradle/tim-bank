@@ -39,7 +39,7 @@
     "q": "^1.4.1",
     "rimraf": "^2.4.3",
     "stream-collector": "^1.0.1",
-    "tim": "tradle/tim#dev",
+    "tim": "tradle/tim#es6",
     "tim-server": "mvayngrib/tim-server",
     "time-method": "^2.0.0",
     "typeforce": "^1.4.0",
