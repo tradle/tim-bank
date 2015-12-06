@@ -9,7 +9,8 @@ var argv = require('minimist')(process.argv.slice(2), {
   },
   default: {
     chain: true
-  }
+  },
+  boolean: ['chain', 'seq']
 })
 
 if (argv.help) {
@@ -26,6 +27,7 @@ var leveldown = require('leveldown')
 var constants = require('@tradle/constants')
 var Bank = require('./')
 Bank.ALLOW_CHAINING = argv.chain
+var newSimpleBank = require('./simple')
 var buildNode = require('./lib/buildNode')
 var Tim = require('tim')
 var HttpServer = Tim.Messengers.HttpServer
@@ -133,7 +135,7 @@ function runBank (opts) {
     messenger: httpServer
   })
 
-  var bank = new Bank({
+  var bank = newSimpleBank({
     tim: tim,
     path: conf.storage || (name + '-storage'),
     leveldown: leveldown,
