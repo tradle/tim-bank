@@ -69,13 +69,12 @@ function Bank (options) {
     self.listenTo(tim, e, function (info) {
       if (info[TYPE] === types.IDENTITY) return
 
-      tim.lookupObject(info)
+      // ignore forgotten customers
+      return tim.lookupObject(info)
         .catch(function (err) {
-          self._debug('unable to retrieve object', info)
-          if (!self._destroying) throw err
+          self._debug('unable to retrieve object', err)
         })
         .then(self._updateChained)
-        .done()
     })
   })
 
@@ -150,7 +149,30 @@ Bank.prototype._getCustomerState = function (customerRootHash) {
 }
 
 Bank.prototype._setCustomerState = function (req) {
-  return this._setResource(CUSTOMER, req.from, req.state)
+  return req.state == null
+    ? this._delResource(CUSTOMER, req.from)
+    : this._setResource(CUSTOMER, req.from, req.state);
+}
+
+/**
+ * Delete customer state and customer data from keeper
+ * @param  {[type]} req [description]
+ * @return {[type]}     [description]
+ */
+Bank.prototype.forgetCustomer = function (req) {
+  var self = this
+  delete req.state // will get deleted on end of message processing
+  this.tim.forget(req.from)
+  this.tim.on('forgot', onForgot)
+  var defer = Q.defer()
+  return defer.promise
+
+  function onForgot(who) {
+    if (who === req.from) {
+      self.tim.removeListener('forgot', onForgot)
+      defer.resolve()
+    }
+  }
 }
 
 Bank.prototype._saveParsedMsg = function (msg) {
@@ -314,6 +336,12 @@ Bank.prototype._getResource = function (type, rootHash) {
   typeforce('String', rootHash)
   return Q.ninvoke(this._db, 'get', prefixKey(type, rootHash))
 }
+
+Bank.prototype._delResource = function (type, rootHash) {
+  typeforce('String', type)
+  typeforce('String', rootHash)
+  return Q.ninvoke(this._db, 'del', prefixKey(type, rootHash))
+};
 
 Bank.prototype.send = function (req, resp, opts) {
   var self = this

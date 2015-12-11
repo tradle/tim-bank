@@ -33,7 +33,7 @@ var Tim = require('tim')
 var HttpServer = Tim.Messengers.HttpServer
 var Identity = Tim.Identity
 var installServer = require('tim-server')
-var Zlorp = require('tim').Zlorp
+var Zlorp = Tim.Zlorp;
 Zlorp.ANNOUNCE_INTERVAL = 10000
 Zlorp.LOOKUP_INTERVAL = 10000
 var DEV = process.env.NODE_ENV === 'development'

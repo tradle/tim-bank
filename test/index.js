@@ -136,6 +136,12 @@ function runTests (reinit, idx) {
       .then(bank2step2)
       .then(bank2step3)
       .then(bank2step4)
+      .then(function () {
+        bank = BANKS[0]
+        forget()
+      })
+      .then(forget)
+      .then(step1)
       // .then(dumpDBs.bind(null, BANKS[0]))
       .done(function () {
         APPLICANT.removeListener('unchained', onUnchained)
@@ -185,7 +191,7 @@ function runTests (reinit, idx) {
       )
 
       signNSend(msg)
-      return await('tradle.AboutYou')
+      return awaitForm('tradle.AboutYou')
     }
 
     function step2 () {
@@ -200,7 +206,7 @@ function runTests (reinit, idx) {
 
       signNSend(msg)
       return Q.all([
-        await('tradle.YourMoney'),
+        awaitForm('tradle.YourMoney'),
         awaitVerification()
       ])
     }
@@ -216,7 +222,7 @@ function runTests (reinit, idx) {
 
       signNSend(msg)
       return Q.all([
-        await('tradle.LicenseVerification'),
+        awaitForm('tradle.LicenseVerification'),
         awaitVerification()
       ])
     }
@@ -244,22 +250,33 @@ function runTests (reinit, idx) {
       )
 
       signNSend(msg)
-      return await('tradle.AboutYou')
+      return awaitForm('tradle.AboutYou')
     }
 
     function bank2step2 () {
       shareVerification('tradle.AboutYou')
-      return await('tradle.YourMoney')
+      return awaitForm('tradle.YourMoney')
     }
 
     function bank2step3 () {
       shareVerification('tradle.YourMoney')
-      return await('tradle.LicenseVerification')
+      return awaitForm('tradle.LicenseVerification')
     }
 
     function bank2step4 () {
       shareVerification('tradle.LicenseVerification')
       return awaitConfirmation()
+    }
+
+    function forget () {
+      var msg = {
+        reason: 'none of your business'
+      }
+
+      msg[NONCE] = '' + (nonce++)
+      msg[TYPE] = 'tradle.ForgetMe'
+      signNSend(msg)
+      return awaitType('tradle.ForgotYou')
     }
 
     function signNSend (msg) {
@@ -308,7 +325,7 @@ function runTests (reinit, idx) {
       }
     }
 
-    function await (nextFormType) {
+    function awaitForm (nextFormType) {
       var defer = Q.defer()
       APPLICANT.on('message', onmessage)
       return defer.promise

@@ -5,11 +5,12 @@ var constants = require('@tradle/constants')
 var MODELS = require('@tradle/models')
 var Bank = require('./')
 var utils = require('./lib/utils')
-
 var ROOT_HASH = constants.ROOT_HASH
 var CUR_HASH = constants.CUR_HASH
 var TYPE = constants.TYPE
 var types = constants.TYPES
+var FORGET_ME = 'tradle.ForgetMe'
+var FORGOT_YOU = 'tradle.ForgotYou'
 var MODELS_BY_ID = {}
 MODELS.forEach(function (m) {
   MODELS_BY_ID[m.id] = m
@@ -42,6 +43,7 @@ function simpleBank (opts) {
 
   bank.use('tradle.GeMessage', lookupAndSend.bind(bank))
   bank.use('tradle.GetHistory', sendHistory.bind(bank))
+  bank.use('tradle.ForgetMe', forgetMe.bind(bank))
   bank.use(types.VERIFICATION, handleVerification.bind(bank))
   bank.use(types.SIMPLE_MESSAGE, function (req) {
     var msg = req.parsed.data.message
@@ -226,6 +228,16 @@ function handleVerification (req) {
   })
 
   return sendNextFormOrApprove.call(bank, req)
+}
+
+function forgetMe (req) {
+  var bank = this
+  return bank.forgetCustomer(req)
+    .then(function () {
+      var forgotYou = {}
+      forgotYou[TYPE] = FORGOT_YOU
+      return bank.send(req, forgotYou)
+    })
 }
 
 function getForms (model) {
