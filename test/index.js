@@ -28,7 +28,6 @@ var Q = require('q')
 var extend = require('xtend')
 var find = require('array-find')
 var memdown = require('memdown')
-var leveldown = require('leveldown')
 var DHT = require('@tradle/bittorrent-dht')
 var Tim = require('tim')
 Tim.CATCH_UP_INTERVAL = 2000
@@ -61,6 +60,7 @@ var createFakeWallet = helpers.fakeWallet
 var NETWORK_NAME = 'testnet'
 var BASE_PORT = 22222
 var bootstrapDHT
+var pathCounter = 0
 var initCount = 0
 var nonce = 0
 
@@ -87,16 +87,26 @@ var BANK_REPS = [{
 
 var BANKS
 
-;[init, initP2P].forEach(runTests)
+;[
+  {
+    name: 'client/server',
+    init: init
+  }, {
+    name: 'p2p',
+    init: initP2P
+  }
+].forEach(runTests)
 
-function runTests (reinit, idx) {
+function runTests (setup, idx) {
   BANKS = []
   APPLICANT = null
-  test('setup', function (t) {
-    reinit()
+  test('setup ' + setup.name, function (t) {
+    initCount++
+    setup.init()
       .then(function () {
-        var everyone = getTims()
-        return publishIdentities(everyone)
+        // var everyone = getTims()
+        var bankTims = BANKS.map(function (b) { return b.tim })
+        return publishIdentities(bankTims)
       })
       .finally(function () {
         t.end()
@@ -123,25 +133,28 @@ function runTests (reinit, idx) {
 
     APPLICANT.on('unchained', onUnchained)
 
-    step1()
-      .then(step2)
-      .then(step3)
-      .then(step4)
+    sendIdentity()
+      // bank shouldn't publish you twice
+      .then(sendIdentityAgain)
+      .then(startApplication)
+      .then(sendAboutYou)
+      .then(sendYourMoney)
+      .then(sendLicense)
       .then(function () {
         bank = BANKS[1]
         bankCoords = getCoords(bank.tim)
         return verificationsDefer.promise
       })
-      .then(bank2step1)
-      .then(bank2step2)
-      .then(bank2step3)
-      .then(bank2step4)
+      .then(bank2startApplication)
+      .then(bank2sendAboutYou)
+      .then(bank2sendYourMoney)
+      .then(bank2sendLicense)
       .then(function () {
         bank = BANKS[0]
         forget()
       })
       .then(forget)
-      .then(step1)
+      .then(startApplication)
       // .then(dumpDBs.bind(null, BANKS[0]))
       .done(function () {
         APPLICANT.removeListener('unchained', onUnchained)
@@ -184,7 +197,45 @@ function runTests (reinit, idx) {
         })
     }
 
-    function step1 () {
+    function sendIdentity () {
+      if (setup.init === initP2P) {
+        // not implemented, publish manually
+        return publishIdentities(APPLICANT)
+      }
+
+      var identityPubReq = {
+        identity: APPLICANT.identityJSON
+      }
+
+      identityPubReq[NONCE] = '' + nonce++
+      identityPubReq[TYPE] = 'tradle.PublishIdentityRequest'
+      signNSend(identityPubReq, { public: true })
+      return Q.all([
+          awaitTypeUnchained('tradle.Identity'),
+          awaitType('tradle.IdentityPublished')
+        ])
+        .then(function () {
+          t.pass('customer\'s identity was published')
+        })
+    }
+
+    function sendIdentityAgain () {
+      if (setup.init === initP2P) return
+
+      var identityPubReq = {
+        identity: APPLICANT.identityJSON
+      }
+
+      identityPubReq[NONCE] = '' + nonce++
+      identityPubReq[TYPE] = 'tradle.PublishIdentityRequest'
+      signNSend(identityPubReq, { public: true })
+      return awaitForm('tradle.Identity')
+        .then(function () {
+          t.pass('customer\'s identity was not published twice')
+        })
+    }
+
+    function startApplication () {
       var msg = utils.buildSimpleMsg(
         'application for',
         'tradle.CurrentAccount'
@@ -192,9 +243,12 @@ function runTests (reinit, idx) {
 
       signNSend(msg)
       return awaitForm('tradle.AboutYou')
+        .then(function () {
+          t.pass('got next form')
+        })
     }
 
-    function step2 () {
+    function sendAboutYou () {
       var msg = {
         nationality: 'British',
         residentialStatus: 'Living with parents',
@@ -206,12 +260,15 @@ function runTests (reinit, idx) {
 
       signNSend(msg)
       return Q.all([
-        awaitForm('tradle.YourMoney'),
-        awaitVerification()
-      ])
+          awaitForm('tradle.YourMoney'),
+          awaitVerification()
+        ])
+        .then(function () {
+          t.pass('got next form')
+        })
     }
 
-    function step3 () {
+    function sendYourMoney () {
       var msg = {
         monthlyIncome: '5000 pounds',
         whenHired: 1414342441249
@@ -222,12 +279,15 @@ function runTests (reinit, idx) {
 
       signNSend(msg)
       return Q.all([
-        awaitForm('tradle.LicenseVerification'),
-        awaitVerification()
-      ])
+          awaitForm('tradle.LicenseVerification'),
+          awaitVerification()
+        ])
+        .then(function () {
+          t.pass('got next form')
+        })
     }
 
-    function step4 () {
+    function sendLicense () {
       var msg = {
         licenseNumber: 'abc',
         dateOfIssue: 1414342441249
@@ -243,7 +303,7 @@ function runTests (reinit, idx) {
       ])
     }
 
-    function bank2step1 () {
+    function bank2startApplication () {
       var msg = utils.buildSimpleMsg(
         'application for',
         'tradle.CurrentAccount'
@@ -253,17 +313,17 @@ function runTests (reinit, idx) {
       return awaitForm('tradle.AboutYou')
     }
 
-    function bank2step2 () {
+    function bank2sendAboutYou () {
       shareVerification('tradle.AboutYou')
       return awaitForm('tradle.YourMoney')
     }
 
-    function bank2step3 () {
+    function bank2sendYourMoney () {
       shareVerification('tradle.YourMoney')
       return awaitForm('tradle.LicenseVerification')
     }
 
-    function bank2step4 () {
+    function bank2sendLicense () {
       shareVerification('tradle.LicenseVerification')
       return awaitConfirmation()
     }
@@ -279,14 +339,14 @@ function runTests (reinit, idx) {
       return awaitType('tradle.ForgotYou')
     }
 
-    function signNSend (msg) {
+    function signNSend (msg, opts) {
       APPLICANT.sign(msg)
         .then(function (signed) {
-          return APPLICANT.send({
+          return APPLICANT.send(extend({
             msg: signed,
             to: bankCoords,
             deliver: true
-          })
+          }, opts || {}))
         })
         .done()
     }
@@ -304,10 +364,16 @@ function runTests (reinit, idx) {
 
     function awaitVerification () {
       return awaitType('tradle.Verification')
+        .then(function () {
+          t.pass('verified')
+        })
     }
 
     function awaitConfirmation () {
       return awaitType('tradle.CurrentAccountConfirmation')
+        .then(function () {
+          t.pass('customer got account')
+        })
     }
 
     function awaitType (type) {
@@ -319,6 +385,21 @@ function runTests (reinit, idx) {
         })
 
       function onmessage (info) {
+        if (info[TYPE] === type) {
+          defer.resolve()
+        }
+      }
+    }
+
+    function awaitTypeUnchained (type) {
+      var defer = Q.defer()
+      APPLICANT.on('unchained', unchainedHandler)
+      return defer.promise
+        .then(function () {
+          APPLICANT.removeListener('message', unchainedHandler)
+        })
+
+      function unchainedHandler (info) {
         if (info[TYPE] === type) {
           defer.resolve()
         }
@@ -452,7 +533,7 @@ function initP2P () {
     port: aPort
   })
 
-  BANKS = BANK_REPS.map(function (rep) {
+  BANKS = BANK_REPS.map(function (rep, i) {
     var port = BASE_PORT++
     var dht = new DHT(dhtConf)
     dht.listen(port)
@@ -467,7 +548,7 @@ function initP2P () {
 
     var bank = new Bank({
       tim: tim,
-      path: 'storage' + (initCount++),
+      path: getNextBankPath(),
       leveldown: memdown
     })
 
@@ -477,6 +558,10 @@ function initP2P () {
   return Q.all(getTims().map(function (t) {
     return t.ready()
   }))
+}
+
+function getNextBankPath () {
+  return 'storage' + pathCounter++
 }
 
 function init () {
@@ -511,7 +596,7 @@ function init () {
   var bankApp = express()
   BANK_SERVER = bankApp.listen(serverPort)
 
-  BANKS = BANK_REPS.map(function (rep) {
+  BANKS = BANK_REPS.map(function (rep, i) {
     var port = BASE_PORT++
     // var dht = new DHT(dhtConf)
     // dht.listen(port)
@@ -533,7 +618,7 @@ function init () {
     var bank = new Bank({
       tim: tim,
       manual: true,
-      path: 'storage' + (initCount++),
+      path: getNextBankPath(),
       leveldown: memdown
     })
 

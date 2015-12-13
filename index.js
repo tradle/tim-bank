@@ -190,6 +190,17 @@ Bank.prototype._debug = function () {
 
 Bank.prototype.receiveMsg = function (msgBuf, senderInfo) {
   var self = this
+  var msg
+  try {
+    var wrapper = JSON.parse(msgBuf)
+    msg = JSON.parse(new Buffer(wrapper.data, 'base64'))
+  } catch (err) {}
+
+  // if it's an identity, store it
+  if (msg && msg[TYPE] === 'tradle.PublishIdentityRequest') {
+    return this.publishCustomerIdentity(msg.identity, senderInfo)
+  }
+
   return this.tim.receiveMsg(msgBuf, senderInfo)
     .then(function (entry) {
       if (entry.get('type') !== EventType.msg.receivedValid) {
@@ -202,6 +213,58 @@ Bank.prototype.receiveMsg = function (msgBuf, senderInfo) {
     .then(function (msg) {
       return self._onMessage(msg)
     })
+}
+
+Bank.prototype.publishCustomerIdentity = function (msg, senderInfo) {
+  var self = this
+  if (msg[ROOT_HASH] && senderInfo[ROOT_HASH] && msg[ROOT_HASH] !== senderInfo[ROOT_HASH]) {
+    return Q.reject(new Error('authentication failed'))
+  }
+
+  var req = new RequestState({
+    from: senderInfo,
+    msg: msg
+  })
+
+  var tim = this.tim
+  var rootHash
+  var curHash
+  return Builder().data(msg).build()
+    .then(function (buf) {
+      return Q.ninvoke(tutils, 'getStorageKeyFor', buf)
+    })
+    .then(function (_curHash) {
+      curHash = _curHash.toString('hex')
+      rootHash = msg[ROOT_HASH] || curHash
+      return tim.addContactIdentity(msg)
+    })
+    .then(function () {
+      return Q.ninvoke(tim.messages(), 'byCurHash', curHash)
+    })
+    .then(function (obj) {
+      if (obj.chain) {
+        // if (obj.dateChained) // actually chained
+        // may not be published yet, but def queued
+        var resp = utils.buildSimpleMsg('already published', types.IDENTITY)
+        return self.send(req, resp, { chain: false })
+      } else {
+        self._debug('publishing customer identity', curHash)
+        return publish()
+      }
+    })
+    .then(function () {
+      return req.end()
+    })
+
+  function publish () {
+    return tim.publishIdentity(msg)
+      .then(function () {
+        var resp = {}
+        resp[TYPE] = 'tradle.IdentityPublished'
+        resp.identity = curHash
+        return self.send(req, resp, { chain: false })
+      })
+  }
 }
 
 // TODO: lock on sender hash to avoid race conditions
@@ -232,79 +295,14 @@ Bank.prototype._onMessage = function (msg) {
       return self._setCustomerState(req)
     })
     .then(function () {
-      // hacky way to make sure sending response
-      // is prioritized
-      setTimeout(function () {
-        self._chainReceivedMsg(msg)
-        self._saveParsedMsg(msg)
-      }, 100)
-
+      self._chainReceivedMsg(msg)
+      self._saveParsedMsg(msg)
       return req.end()
     })
 }
 
 Bank.prototype._continue = function (req) {
   return this._sendNextFormOrApprove(req)
-}
-
-Bank.prototype._handleDocument = function (req) {
-  var self = this
-  var type = req.type
-  var state = req.state
-  var msg = req.msg
-  var docState = state.forms[type] = state.forms[type] || {}
-
-  docState.form = {
-    body: req.data, // raw buffer
-    txId: req.txId
-  }
-
-  docState.form[ROOT_HASH] = req[ROOT_HASH]
-  docState.verifications = docState.verifications || []
-  // docState[req[ROOT_HASH]] = {
-  //   form: req.parsed.data,
-  //   verifications: verifications
-  // }
-
-  // pretend we verified it
-  var verification = this._newVerificationFor(msg)
-  var stored = {
-    txId: null,
-    body: verification
-  }
-
-  docState.verifications.push(stored)
-  return this._send(req, verification)
-    .then(function (entries) {
-      var rootHash = entries[0].toJSON()[ROOT_HASH]
-      // stored[ROOT_HASH] = req[ROOT_HASH]
-      stored[ROOT_HASH] = rootHash
-      return self._continue(req)
-    })
-}
-
-Bank.prototype._newVerificationFor = function (msg) {
-  var doc = msg.parsed.data
-  var verification = {
-    document: {
-      id: doc[TYPE] + '_' + msg[ROOT_HASH],
-      title: doc.title || doc[TYPE]
-    },
-    documentOwner: {
-      id: types.IDENTITY + '_' + msg.from[ROOT_HASH],
-      title: msg.from.identity.name()
-    }
-  }
-
-  // verification.document[TYPE] = doc[TYPE]
-  // verification.documentOwner[TYPE] = types.IDENTITY
-  var org = this.tim.identityJSON.organization
-  if (org) {
-    verification.organization = org
-  }
-
-  verification[TYPE] = types.VERIFICATION
-  return verification
 }
 
 Bank.prototype._chainReceivedMsg = function (app) {
@@ -325,6 +323,7 @@ Bank.prototype._setResource = function (type, rootHash, val) {
   typeforce('String', type)
   typeforce('String', rootHash)
   assert(val !== null, 'missing value')
+  if (this._destroying) debugger
   return Q.ninvoke(this._db, 'put', prefixKey(type, rootHash), val)
     .then(function () {
       return val // convenience for next link in the promise chain
