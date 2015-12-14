@@ -1,5 +1,6 @@
 
 var typeforce = require('typeforce')
+var Q = require('q')
 var debug = require('debug')('bank:simple')
 var constants = require('@tradle/constants')
 var MODELS = require('@tradle/models')

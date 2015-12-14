@@ -153,7 +153,9 @@ function runBank (opts) {
     console.log(opts.name, ': Send coins to', bank.wallet.addressString)
   })
 
-  app.get('/' + name + '/list/:type', function (req, res, next) {
+  var byType = '/' + name + '/list/:type'
+  app.get(byType, installServer.middleware.localOnly)
+  app.get(byType, function (req, res, next) {
     bank.list(req.params.type)
       .then(res.json.bind(res))
       .catch(sendErr.bind(null, res))

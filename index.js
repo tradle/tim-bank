@@ -301,10 +301,6 @@ Bank.prototype._onMessage = function (msg) {
     })
 }
 
-Bank.prototype._continue = function (req) {
-  return this._sendNextFormOrApprove(req)
-}
-
 Bank.prototype._chainReceivedMsg = function (app) {
   if (!Bank.ALLOW_CHAINING) return Q()
 
