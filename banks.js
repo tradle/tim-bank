@@ -83,17 +83,17 @@ function run () {
     // start one at a time to avoid
     // straining blockchain APIs
     bankNames.reduce(function (prev, name) {
-      return Q(prev).finally(function () {
-        return runBank({
-          name: name,
-          conf: conf.banks[name],
-          app: app
+      return prev
+        .finally(function () {
+          return runBank({
+            name: name,
+            conf: conf.banks[name],
+            app: app
+          })
         })
         .then(function () {
           console.log(name, 'is live at http://127.0.0.1:' + port + '/' + name.toLowerCase())
         })
-      })
-      .done()
     }, Q())
   } else {
     bankNames.forEach(function (name) {
