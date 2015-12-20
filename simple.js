@@ -44,7 +44,7 @@ function simpleBank (opts) {
 
   bank.use('tradle.GeMessage', lookupAndSend.bind(bank))
   bank.use('tradle.GetHistory', sendHistory.bind(bank))
-  bank.use('tradle.ForgetMe', forgetMe.bind(bank))
+  bank.use(FORGET_ME, forgetMe.bind(bank))
   bank.use(types.VERIFICATION, handleVerification.bind(bank))
   bank.use(types.SIMPLE_MESSAGE, function (req) {
     var msg = req.parsed.data.message

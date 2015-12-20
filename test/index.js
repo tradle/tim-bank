@@ -46,6 +46,7 @@ var ROOT_HASH = constants.ROOT_HASH
 var origBuildNode = require('../lib/buildNode')
 var utils = require('../lib/utils')
 var Bank = require('../simple')
+Bank.ALLOW_CHAINING = true
 var billPub = require('./fixtures/bill-pub')
 var billPriv = require('./fixtures/bill-priv')
 var tedPub = require('./fixtures/ted-pub')
@@ -208,7 +209,7 @@ function runTests (setup, idx) {
       }
 
       identityPubReq[NONCE] = '' + nonce++
-      identityPubReq[TYPE] = 'tradle.PublishIdentityRequest'
+      identityPubReq[TYPE] = 'tradle.IdentityPublishRequest'
       signNSend(identityPubReq, { public: true })
       return Q.all([
           awaitTypeUnchained('tradle.Identity'),
@@ -227,7 +228,7 @@ function runTests (setup, idx) {
       }
 
       identityPubReq[NONCE] = '' + nonce++
-      identityPubReq[TYPE] = 'tradle.PublishIdentityRequest'
+      identityPubReq[TYPE] = 'tradle.IdentityPublishRequest'
       signNSend(identityPubReq, { public: true })
       return awaitForm('tradle.Identity')
         .then(function () {
@@ -493,7 +494,10 @@ function getTims () {
 
 function buildNode (opts) {
   return origBuildNode(extend(COMMON_OPTS, {
-    pathPrefix: opts.identity.name() + initCount
+    pathPrefix: opts.identity.name() + initCount,
+    syncInterval: 0,
+    chainThrottle: 0,
+    sendThrottle: 0
   }, opts))
 }
 

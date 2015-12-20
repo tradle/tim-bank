@@ -23,6 +23,8 @@ var TYPE = constants.TYPE
 var NONCE = constants.NONCE
 var types = constants.TYPES
 var CUSTOMER = 'tradle.Customer'
+var IDENTITY_PUBLISH_REQUEST_TYPE = 'tradle.IdentityPublishRequest'
+var noop = function () {}
 // var types = require('./lib/types')
 
 module.exports = Bank
@@ -197,8 +199,12 @@ Bank.prototype.receiveMsg = function (msgBuf, senderInfo) {
   } catch (err) {}
 
   // if it's an identity, store it
-  if (msg && msg[TYPE] === 'tradle.PublishIdentityRequest') {
-    return this.publishCustomerIdentity(msg.identity, senderInfo)
+  if (msg) {
+    if (msg[TYPE] === IDENTITY_PUBLISH_REQUEST_TYPE) {
+      return this.publishCustomerIdentity(msg.identity, senderInfo)
+    } else {
+      return Q.reject(new Error('unsupported message'))
+    }
   }
 
   return this.tim.receiveMsg(msgBuf, senderInfo)
@@ -221,6 +227,9 @@ Bank.prototype.publishCustomerIdentity = function (msg, senderInfo) {
     return Q.reject(new Error('authentication failed'))
   }
 
+  // TODO: verify that sig of identityPublishRequest comes from sign/update key
+  // of attached identity. Need to factor this out of @tradle/verifier
+
   var req = new RequestState({
     from: senderInfo,
     msg: msg
@@ -229,6 +238,7 @@ Bank.prototype.publishCustomerIdentity = function (msg, senderInfo) {
   var tim = this.tim
   var rootHash
   var curHash
+  var wasAlreadyPublished
   return Builder().data(msg).build()
     .then(function (buf) {
       return Q.ninvoke(tutils, 'getStorageKeyFor', buf)
@@ -236,13 +246,15 @@ Bank.prototype.publishCustomerIdentity = function (msg, senderInfo) {
     .then(function (_curHash) {
       curHash = _curHash.toString('hex')
       rootHash = msg[ROOT_HASH] || curHash
-      return tim.addContactIdentity(msg)
+      return Q.all([
+        Q.ninvoke(tim.messages(), 'byCurHash', curHash).catch(noop),
+        tim.addContactIdentity(msg)
+      ])
     })
-    .then(function () {
-      return Q.ninvoke(tim.messages(), 'byCurHash', curHash)
-    })
-    .then(function (obj) {
-      if (obj.chain) {
+    .spread(function (obj) {
+      // if obj is queued to be chained
+      // assume it's on its way to be published
+      if (obj && (obj.chain || obj.txId)) {
         // if (obj.dateChained) // actually chained
         // may not be published yet, but def queued
         var resp = utils.buildSimpleMsg('already published', types.IDENTITY)
@@ -319,7 +331,6 @@ Bank.prototype._setResource = function (type, rootHash, val) {
   typeforce('String', type)
   typeforce('String', rootHash)
   assert(val !== null, 'missing value')
-  if (this._destroying) debugger
   return Q.ninvoke(this._db, 'put', prefixKey(type, rootHash), val)
     .then(function () {
       return val // convenience for next link in the promise chain
