@@ -5,7 +5,8 @@ var argv = require('minimist')(process.argv.slice(2), {
     p: 'public',
     h: 'help',
     s: 'seq',
-    c: 'chain'
+    c: 'chain',
+    b: 'banks'
   },
   default: {
     chain: true
@@ -30,6 +31,7 @@ Bank.ALLOW_CHAINING = argv.chain
 var newSimpleBank = require('./simple')
 var buildNode = require('./lib/buildNode')
 var Tim = require('tim')
+Tim.enableOptimizations()
 var HttpServer = Tim.Messengers.HttpServer
 var Identity = Tim.Identity
 var installServer = require('tim-server')
@@ -48,6 +50,20 @@ var express = require('express')
 var server
 var selfDestructing
 var onDestroy = []
+var bankNames = argv.banks
+  ? argv.banks.split(',').map(function (b) {
+    return b.trim()
+  })
+  : Object.keys(conf.banks).filter(function (name) {
+    return conf.banks[name].run !== false
+  })
+
+bankNames.forEach(function (bankName) {
+  if (!(bankName in conf.banks)) {
+    throw new Error('no bank with name: ' + bankName)
+  }
+})
+
 process.on('exit', cleanup)
 process.on('SIGINT', cleanup)
 process.on('SIGTERM', cleanup)
@@ -63,15 +79,11 @@ function run () {
   var port = Number(conf.port) || DEFAULT_PORT
   server = app.listen(port)
 
-  var bankNames = Object.keys(conf.banks).filter(function (name) {
-    return conf.banks[name].run !== false
-  })
-
   if (argv.seq) {
     // start one at a time to avoid
     // straining blockchain APIs
     bankNames.reduce(function (prev, name) {
-      return prev.finally(function () {
+      return Q(prev).finally(function () {
         return runBank({
           name: name,
           conf: conf.banks[name],
@@ -81,6 +93,7 @@ function run () {
           console.log(name, 'is live at http://127.0.0.1:' + port + '/' + name.toLowerCase())
         })
       })
+      .done()
     }, Q())
   } else {
     bankNames.forEach(function (name) {
@@ -113,7 +126,7 @@ function runBank (opts) {
 
   var app = opts.app
   var name = opts.name.toLowerCase()
-  console.log('running', name)
+  console.log('running bank:', name)
 
   var conf = opts.conf
   var port = conf.port || (DEFAULT_TIM_PORT++)
@@ -249,6 +262,7 @@ function printUsage () {
   Options:
       -h, --help              print usage
       -s, --seq               start banks sequentially
+      -b, --banks             banks to run (defaults to banks in conf that don't have run: false)
       --public                expose the server to non-local requests
 
   Please report bugs!  https://github.com/tradle/tim-bank/issues
