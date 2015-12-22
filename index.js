@@ -152,8 +152,8 @@ Bank.prototype._getCustomerState = function (customerRootHash) {
 
 Bank.prototype._setCustomerState = function (req) {
   return req.state == null
-    ? this._delResource(CUSTOMER, req.from)
-    : this._setResource(CUSTOMER, req.from, req.state);
+    ? this._delResource(CUSTOMER, req.from[ROOT_HASH])
+    : this._setResource(CUSTOMER, req.from[ROOT_HASH], req.state);
 }
 
 /**
@@ -164,13 +164,13 @@ Bank.prototype._setCustomerState = function (req) {
 Bank.prototype.forgetCustomer = function (req) {
   var self = this
   delete req.state // will get deleted on end of message processing
-  this.tim.forget(req.from)
+  this.tim.forget(req.from[ROOT_HASH])
   this.tim.on('forgot', onForgot)
   var defer = Q.defer()
   return defer.promise
 
   function onForgot(who) {
-    if (who === req.from) {
+    if (who === req.from[ROOT_HASH]) {
       self.tim.removeListener('forgot', onForgot)
       defer.resolve()
     }
@@ -290,12 +290,12 @@ Bank.prototype._onMessage = function (msg) {
 
   var req = new RequestState(msg)
   var res = {}
-  var from = req.from
+  var from = req.from[ROOT_HASH]
   return this._getCustomerState(from)
     .catch(function (err) {
       if (!err.notFound) throw err
 
-      req.state = newCustomerState(req.from)
+      req.state = newCustomerState(from)
       return self._setCustomerState(req)
       // return newCustomerState(req)
     })

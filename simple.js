@@ -202,7 +202,7 @@ function lookupAndSend (req) {
 
 function sendHistory (req) {
   var bank = this
-  var senderRootHash = req.from
+  var senderRootHash = req.from[ROOT_HASH]
   var from = {}
   from[ROOT_HASH] = senderRootHash
   return bank.tim.history(from)
