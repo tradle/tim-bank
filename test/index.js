@@ -117,9 +117,9 @@ function runTests (setup, idx) {
   test('current account', function (t) {
     var bank = BANKS[0]
     var bankCoords = getCoords(bank.tim)
-    var verifications = {}
-    var verificationsTogo = 3
-    var verificationsDefer = Q.defer()
+    var verifications
+    var verificationsTogo
+    var verificationsDefer
 
     // logging
     // getTims().forEach(function (tim) {
@@ -134,33 +134,53 @@ function runTests (setup, idx) {
 
     APPLICANT.on('unchained', onUnchained)
 
+    cleanCache()
     sendIdentity()
       // bank shouldn't publish you twice
       .then(sendIdentityAgain)
-      .then(startApplication)
-      .then(sendAboutYou)
-      .then(sendYourMoney)
-      .then(sendLicense)
+      .then(runBank0Scenario)
       .then(function () {
         bank = BANKS[1]
         bankCoords = getCoords(bank.tim)
-        return verificationsDefer.promise
+        return runBank1Scenario()
       })
-      .then(bank2startApplication)
-      .then(bank2sendAboutYou)
-      .then(bank2sendYourMoney)
-      .then(bank2sendLicense)
       .then(function () {
         bank = BANKS[0]
         forget()
       })
-      .then(forget)
-      .then(startApplication)
+      .then(function () {
+        cleanCache()
+        console.log('exercising right to be forgotten')
+      })
+      .then(runBank0Scenario)
       // .then(dumpDBs.bind(null, BANKS[0]))
       .done(function () {
         APPLICANT.removeListener('unchained', onUnchained)
         t.end()
       })
+
+    function runBank0Scenario () {
+      return startApplication()
+        .then(sendAboutYou)
+        .then(sendYourMoney)
+        .then(sendLicense)
+        .then(function () {
+          return verificationsDefer.promise
+        })
+    }
+
+    function runBank1Scenario () {
+      return bank2startApplication()
+        .then(bank2sendAboutYouVer)
+        .then(bank2sendYourMoneyVer)
+        .then(bank2sendLicenseVer)
+    }
+
+    function cleanCache () {
+      verifications = {}
+      verificationsTogo = 3
+      verificationsDefer = Q.defer()
+    }
 
     function onUnchained (info) {
       if (info[TYPE] !== 'tradle.Verification') return
@@ -314,17 +334,17 @@ function runTests (setup, idx) {
       return awaitForm('tradle.AboutYou')
     }
 
-    function bank2sendAboutYou () {
+    function bank2sendAboutYouVer () {
       shareVerification('tradle.AboutYou')
       return awaitForm('tradle.YourMoney')
     }
 
-    function bank2sendYourMoney () {
+    function bank2sendYourMoneyVer () {
       shareVerification('tradle.YourMoney')
       return awaitForm('tradle.LicenseVerification')
     }
 
-    function bank2sendLicense () {
+    function bank2sendLicenseVer () {
       shareVerification('tradle.LicenseVerification')
       return awaitConfirmation()
     }
