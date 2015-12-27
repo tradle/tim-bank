@@ -46,14 +46,68 @@ function simpleBank (opts) {
   bank.use('tradle.GetHistory', sendHistory.bind(bank))
   bank.use(FORGET_ME, forgetMe.bind(bank))
   bank.use(types.VERIFICATION, handleVerification.bind(bank))
+  bank.use(types.CUSTOMER_WAITING, function(req) {
+    var formModels = {}
+    var list = PRODUCT_TYPES.map(function (a) {
+      var model = MODELS_BY_ID[a]
+      var forms = getForms(model)
+      forms.forEach(function(f) {
+        if (MODELS_BY_ID[f])
+          formModels[f] = MODELS_BY_ID[f]
+      })
+      return model
+    })
+
+    for (var p in formModels)
+      list.push(formModels[p])
+
+    return bank.send(req, {
+      _t: types.PRODUCT_LIST,
+      welcome: true,
+      // message: '[Hello! It very nice to meet you](Please choose the product)',
+      message: '[Hello ' + req.from.identity.toJSON().name.formatted + '! It is very nice to meet you](Please choose the product)',
+      list: JSON.stringify(list)
+    }, { chain: false })
+  })
   bank.use(types.SIMPLE_MESSAGE, function (req) {
     var msg = req.parsed.data.message
-    if (msg) {
-      var parsed = utils.parseSimpleMsg(msg)
+    if (!msg) return
+
+    var parsed = utils.parseSimpleMsg(msg)
+    // if (parsed.type === 'tradle.CustomerWaiting') {
+    //   var formModels = {}
+    //   var list = PRODUCT_TYPES.map(function (a) {
+    //     var model = MODELS_BY_ID[a]
+    //     var forms = getForms(model)
+    //     forms.forEach(function(f) {
+    //       if (MODELS_BY_ID[f])
+    //         formModels[f] = MODELS_BY_ID[f]
+    //     })
+    //     return model
+    //   })
+
+    //   for (var p in formModels)
+    //     list.push(formModels[p])
+
+    //   return bank.send(req, {
+    //     _t: 'tradle.ProductList',
+    //     welcome: true,
+    //     // message: '[Hello! It very nice to meet you](Please choose the product)',
+    //     message: '[Hello ' + req.from.identity.toJSON().name.formatted + '! It is very nice to meet you](Please choose the product)',
+    //     list: JSON.stringify(list)
+    //   }, { chain: false })
+    // }
+    if (parsed.type) {
       if (PRODUCT_TYPES.indexOf(parsed.type) !== -1) {
         req.productType = parsed.type
         return handleNewApplication.call(bank, req)
       }
+    }
+    else {
+      return bank.send(req, {
+        _t: 'tradle.RequestForRepresentative',
+        message: 'Would you like to speak to a representative?',
+      }, { chain: false })
     }
   })
 
