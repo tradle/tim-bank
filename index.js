@@ -106,11 +106,13 @@ function Bank (options) {
 Bank.prototype.use = function (type, fn) {
   if (typeof type === 'function') {
     fn = type
-    type = null
+    type = '*'
   }
 
+  if (!type) throw new Error('invalid type')
+
   var handler = fn
-  if (type) {
+  if (type !== '*') {
     handler = function (req) {
       if (req.type === type) {
         return fn.apply(this, arguments)
