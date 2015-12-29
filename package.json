@@ -33,7 +33,7 @@
     "q": "^1.4.1",
     "rimraf": "^2.4.3",
     "stream-collector": "^1.0.1",
-    "tim": "^3.0.0",
+    "tim": "^3.1.0",
     "tim-server": "mvayngrib/tim-server",
     "time-method": "^2.0.0",
     "typeforce": "^1.4.0",
