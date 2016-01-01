@@ -262,6 +262,7 @@ function printUsage () {
   Options:
       -h, --help              print usage
       -s, --seq               start banks sequentially
+      -c, --chain             whether to write to blockchain (default: true)
       -b, --banks             banks to run (defaults to banks in conf that don't have run: false)
       --public                expose the server to non-local requests
 
