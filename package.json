@@ -18,9 +18,8 @@
     "@tradle/constants": "^1.1.3",
     "@tradle/http-keeper": "^3.0.3",
     "@tradle/identity": "^1.0.8",
-    "@tradle/models": "^1.1.0",
+    "@tradle/models": "^1.2.0",
     "@tradle/multiplex-utp": "^1.0.1",
-    "@tradle/test-helpers": "^1.0.0",
     "@tradle/utils": "^1.0.0",
     "concat-stream": "^1.5.1",
     "debug": "^2.2.0",
@@ -35,18 +34,17 @@
     "stream-collector": "^1.0.1",
     "tim": "^3.1.0",
     "tim-server": "mvayngrib/tim-server",
-    "time-method": "^2.0.0",
     "typeforce": "^1.4.0",
     "xtend": "^4.0.0"
   },
   "devDependencies": {
     "@tradle/simple-wallet": "0.0.1",
-    "@tradle/test-helpers": "0.0.3",
+    "@tradle/test-helpers": "^1.0.0",
     "array-find": "^1.0.0",
     "cli-table": "^0.3.1",
     "memdown": "^1.1.0",
     "simple-get": "^1.4.3",
     "tape": "^4.2.2",
-    "time-method": "^1.0.1"
+    "time-method": "^2.0.0"
   }
 }
