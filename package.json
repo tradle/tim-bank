@@ -35,7 +35,6 @@
     "rimraf": "^2.4.3",
     "stream-collector": "^1.0.1",
     "tim": "^3.1.4",
-    "tim-server": "mvayngrib/tim-server",
     "typeforce": "^1.4.0",
     "xtend": "^4.0.0"
   },
