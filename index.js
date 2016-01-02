@@ -23,7 +23,6 @@ var TYPE = constants.TYPE
 var NONCE = constants.NONCE
 var types = constants.TYPES
 var CUSTOMER = 'tradle.Customer'
-var IDENTITY_PUBLISH_REQUEST_TYPE = 'tradle.IdentityPublishRequest'
 var noop = function () {}
 // var types = require('./lib/types')
 
@@ -213,6 +212,10 @@ Bank.prototype._onMessage = function (msg) {
   var self = this
   if (!this._ready) {
     return this._readyPromise.then(this._onMessage.bind(this, msg))
+  }
+
+  if (!msg[TYPE]) {
+    return utils.rejectWithHttpError(400, 'message missing ' + TYPE)
   }
 
   // TODO: move most of this out to implementation (e.g. simple.js)

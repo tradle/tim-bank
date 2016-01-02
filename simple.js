@@ -14,7 +14,6 @@ var ROOT_HASH = constants.ROOT_HASH
 var CUR_HASH = constants.CUR_HASH
 var TYPE = constants.TYPE
 var types = constants.TYPES
-var IDENTITY_PUBLISHING_REQUEST = types.IDENTITY_PUBLISHING_REQUEST
 var FORGET_ME = 'tradle.ForgetMe'
 var FORGOT_YOU = 'tradle.ForgotYou'
 var MODELS_BY_ID = {}
@@ -117,14 +116,15 @@ function receiveMsg (msgBuf, senderInfo) {
     return Bank.prototype.receiveMsg.apply(bank, arguments)
   }
 
-  if (msg[TYPE] !== IDENTITY_PUBLISHING_REQUEST) {
-    return Q.reject(new Error('unsupported message'))
+  if (msg[TYPE] !== types.IDENTITY_PUBLISHING_REQUEST) {
+    return utils.rejectWithHttpError(400, 'only ' + types.IDENTITY_PUBLISHING_REQUEST + ' plaintext messages accepted')
   }
 
   if (msg[ROOT_HASH] && senderInfo[ROOT_HASH] && msg[ROOT_HASH] !== senderInfo[ROOT_HASH]) {
-    return Q.reject(new Error('authentication failed'))
+    return utils.rejectWithHttpError(401, 'sender doesn\'t match identity embedded in message')
   }
 
+  // fake chainedObj format
   var req = new RequestState({
     from: senderInfo,
     parsed: {
@@ -136,7 +136,7 @@ function receiveMsg (msgBuf, senderInfo) {
   try {
     req.from.identity = Identity.fromJSON(msg.identity)
   } catch (err) {
-    return Q.reject(new Error('invalid identity'))
+    return utils.rejectWithHttpError(400, 'invalid identity')
   }
 
   return publishCustomerIdentity.call(bank, req)
@@ -313,12 +313,12 @@ function sendNextFormOrApprove (req) {
   var app = msg.parsed.data
   var productType = req.productType || getRelevantPending(pendingApps, req)
   if (!productType) {
-    return Q.reject(new Error('unable to determine product requested'))
+    return utils.rejectWithHttpError(400, 'unable to determine product requested')
   }
 
   var productModel = MODELS_BY_ID[productType]
   if (!productModel) {
-    return Q.reject(new Error('no such product model: ' + productType))
+    return utils.rejectWithHttpError(400, 'no such product model: ' + productType)
   }
 
   var reqdForms = getForms(productModel)
