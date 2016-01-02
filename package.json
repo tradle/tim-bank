@@ -10,7 +10,7 @@
     "style": "standard"
   },
   "author": "Mark Vayngrib <mark.vayngrib@lablz.com> (http://github.com/mvayngrib)",
-  "license": "ISC",
+  "license": "GPLv3",
   "dependencies": {
     "@tradle/bittorrent-dht": "^3.2.1",
     "@tradle/cb-blockr": "^3.1.1",
