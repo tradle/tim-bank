@@ -30,6 +30,7 @@ var Bank = require('./')
 Bank.ALLOW_CHAINING = argv.chain
 var newSimpleBank = require('./simple')
 var buildNode = require('./lib/buildNode')
+var watchBalanceAndRecharge = require('./lib/rechargePeriodically')
 var Tim = require('tim')
 Tim.enableOptimizations()
 var HttpServer = Tim.Messengers.HttpServer
@@ -41,6 +42,7 @@ Zlorp.LOOKUP_INTERVAL = 10000
 var DEV = process.env.NODE_ENV === 'development'
 var DEFAULT_PORT = 44444
 var DEFAULT_TIM_PORT = 34343
+var DEFAULT_NETWORK = 'testnet'
 
 var confPath = process.argv[2]
 var conf = require(path.resolve(confPath))
@@ -77,6 +79,7 @@ run()
 function run () {
   var app = express()
   var port = Number(conf.port) || DEFAULT_PORT
+  var networkName = conf.networkName || DEFAULT_NETWORK
   server = app.listen(port)
 
   if (argv.seq) {
@@ -88,11 +91,17 @@ function run () {
           return runBank({
             name: name,
             conf: conf.banks[name],
+            networkName: networkName,
             app: app
           })
         })
         .then(function () {
           console.log(name, 'is live at http://127.0.0.1:' + port + '/' + name.toLowerCase())
+        })
+        .catch(function (err) {
+          console.error(err)
+          console.log(err.stack)
+          throw err
         })
     }, Q())
   } else {
@@ -114,6 +123,7 @@ function run () {
 function runBank (opts) {
   typeforce({
     name: 'String',
+    networkName: 'String',
     conf: 'Object',
     app: 'EventEmitter'
   }, opts)
@@ -140,7 +150,7 @@ function runBank (opts) {
 
   var tim = buildNode({
     port: port,
-    networkName: 'testnet',
+    networkName: opts.networkName,
     identity: Identity.fromJSON(identity),
     identityKeys: keys,
     syncInterval: 120000,
@@ -165,6 +175,14 @@ function runBank (opts) {
     console.log(opts.name, ' Balance: ', balance)
     console.log(opts.name, ': Send coins to', bank.wallet.addressString)
   })
+
+  if (opts.networkName === 'testnet') {
+    watchBalanceAndRecharge({
+      wallet: bank.wallet,
+      interval: 60000,
+      minBalance: 10000000
+    })
+  }
 
   var byType = '/' + name + '/list/:type'
   app.get(byType, installServer.middleware.localOnly)
