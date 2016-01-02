@@ -92,7 +92,8 @@ var BANKS
   {
     name: 'client/server',
     init: init
-  }, {
+  },
+  {
     name: 'p2p',
     init: initP2P
   }
@@ -146,7 +147,7 @@ function runTests (setup, idx) {
       })
       .then(function () {
         bank = BANKS[0]
-        forget()
+        return forget()
       })
       .then(function () {
         cleanCache()

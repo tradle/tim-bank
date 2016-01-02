@@ -4,12 +4,17 @@ var Q = require('q')
 var debug = require('debug')('bank:simple')
 var constants = require('@tradle/constants')
 var MODELS = require('@tradle/models')
+var Builder = require('@tradle/chained-obj').Builder
+var tutils = require('@tradle/utils')
+var Identity = require('@tradle/identity').Identity
 var Bank = require('./')
 var utils = require('./lib/utils')
+var RequestState = require('./lib/requestState')
 var ROOT_HASH = constants.ROOT_HASH
 var CUR_HASH = constants.CUR_HASH
 var TYPE = constants.TYPE
 var types = constants.TYPES
+var IDENTITY_PUBLISHING_REQUEST = types.IDENTITY_PUBLISHING_REQUEST
 var FORGET_ME = 'tradle.ForgetMe'
 var FORGOT_YOU = 'tradle.ForgotYou'
 var MODELS_BY_ID = {}
@@ -32,43 +37,27 @@ PRODUCT_TYPES.forEach(function (productType) {
   DOC_TYPES.push.apply(DOC_TYPES, docTypes)
 })
 
+var noop = function () {}
+
 module.exports = simpleBank
 
 function simpleBank (opts) {
   var bank = new Bank(opts)
+  bank.shouldChainReceivedMessage = function (msg) {
+    return DOC_TYPES.indexOf(msg[TYPE]) !== -1
+  }
+
   bank.use(function (req, res) {
     if (DOC_TYPES.indexOf(req.type) !== -1) {
       return handleDocument.call(bank, req)
     }
   })
 
-  bank.use('tradle.GeMessage', lookupAndSend.bind(bank))
+  bank.use('tradle.GetMessage', lookupAndSend.bind(bank))
   bank.use('tradle.GetHistory', sendHistory.bind(bank))
   bank.use(FORGET_ME, forgetMe.bind(bank))
   bank.use(types.VERIFICATION, handleVerification.bind(bank))
-  bank.use(types.CUSTOMER_WAITING, function(req) {
-    var formModels = {}
-    var list = PRODUCT_TYPES.map(function (a) {
-      var model = MODELS_BY_ID[a]
-      var forms = getForms(model)
-      forms.forEach(function(f) {
-        if (MODELS_BY_ID[f])
-          formModels[f] = MODELS_BY_ID[f]
-      })
-      return model
-    })
-
-    for (var p in formModels)
-      list.push(formModels[p])
-
-    return bank.send(req, {
-      _t: types.PRODUCT_LIST,
-      welcome: true,
-      // message: '[Hello! It very nice to meet you](Please choose the product)',
-      message: '[Hello ' + req.from.identity.toJSON().name.formatted + '! It is very nice to meet you](Please choose the product)',
-      list: JSON.stringify(list)
-    }, { chain: false })
-  })
+  bank.use(types.CUSTOMER_WAITING, sendProductList.bind(bank))
   bank.use(types.SIMPLE_MESSAGE, function (req) {
     var msg = req.parsed.data.message
     if (!msg) return
@@ -111,7 +100,128 @@ function simpleBank (opts) {
     }
   })
 
+  bank.receiveMsg = receiveMsg.bind(bank)
   return bank
+}
+
+function receiveMsg (msgBuf, senderInfo) {
+  var bank = this
+  var msg
+  try {
+    var wrapper = JSON.parse(msgBuf)
+    msg = JSON.parse(new Buffer(wrapper.data, 'base64'))
+  } catch (err) {}
+
+  // if it's an identity, store it
+  if (!msg) {
+    return Bank.prototype.receiveMsg.apply(bank, arguments)
+  }
+
+  if (msg[TYPE] !== IDENTITY_PUBLISHING_REQUEST) {
+    return Q.reject(new Error('unsupported message'))
+  }
+
+  if (msg[ROOT_HASH] && senderInfo[ROOT_HASH] && msg[ROOT_HASH] !== senderInfo[ROOT_HASH]) {
+    return Q.reject(new Error('authentication failed'))
+  }
+
+  var req = new RequestState({
+    from: senderInfo,
+    parsed: {
+      data: msg
+    },
+    data: msgBuf
+  })
+
+  try {
+    req.from.identity = Identity.fromJSON(msg.identity)
+  } catch (err) {
+    return Q.reject(new Error('invalid identity'))
+  }
+
+  return publishCustomerIdentity.call(bank, req)
+    .then(function (_req) {
+      req = _req
+      return sendProductList.call(bank, req)
+    })
+    .then(function () {
+      return req.end()
+    })
+}
+
+function sendProductList (req) {
+  var bank = this
+  var formModels = {}
+  var list = PRODUCT_TYPES.map(function (a) {
+    var model = MODELS_BY_ID[a]
+    var forms = getForms(model)
+    forms.forEach(function(f) {
+      if (MODELS_BY_ID[f])
+        formModels[f] = MODELS_BY_ID[f]
+    })
+    return model
+  })
+
+  for (var p in formModels)
+    list.push(formModels[p])
+
+  return bank.send(req, {
+    _t: types.PRODUCT_LIST,
+    welcome: true,
+    // message: '[Hello! It very nice to meet you](Please choose the product)',
+    message: '[Hello ' + req.from.identity.name() + '! It is very nice to meet you](Please choose the product)',
+    list: JSON.stringify(list)
+  }, { chain: false })
+}
+
+function publishCustomerIdentity (req) {
+  // TODO: verify that sig of identityPublishRequest comes from sign/update key
+  // of attached identity. Need to factor this out of @tradle/verifier
+
+  var bank = this
+  var identity = req.parsed.data.identity
+  var tim = bank.tim
+  var rootHash
+  var curHash
+  var wasAlreadyPublished
+  return Builder().data(identity).build()
+    .then(function (buf) {
+      return Q.ninvoke(tutils, 'getStorageKeyFor', buf)
+    })
+    .then(function (_curHash) {
+      curHash = _curHash.toString('hex')
+      rootHash = identity[ROOT_HASH] || curHash
+      return Q.all([
+        Q.ninvoke(tim.messages(), 'byCurHash', curHash).catch(noop),
+        tim.addContactIdentity(identity)
+      ])
+    })
+    .spread(function (obj) {
+      // if obj is queued to be chained
+      // assume it's on its way to be published
+      if (obj && (obj.chain || obj.txId)) {
+        // if (obj.dateChained) // actually chained
+        // may not be published yet, but def queued
+        var resp = utils.buildSimpleMsg('already published', types.IDENTITY)
+        return bank.send(req, resp, { chain: false })
+      } else {
+        bank._debug('publishing customer identity', curHash)
+        return publish()
+      }
+    })
+    .then(function () {
+      return req
+    })
+
+  function publish () {
+    return tim.publishIdentity(identity)
+      .then(function () {
+        var resp = {}
+        resp[TYPE] = 'tradle.IdentityPublished'
+        resp.identity = curHash
+        return bank.send(req, resp, { chain: false })
+      })
+  }
 }
 
 function handleNewApplication (req, res) {
@@ -246,9 +356,33 @@ function sendNextFormOrApprove (req) {
 
 function lookupAndSend (req) {
   var bank = this
+  var tim = bank.tim
   var info = {}
-  info[CUR_HASH] = req.parsed.data.hash
-  return bank.tim.lookupObject(info)
+  var from = req.from[ROOT_HASH]
+  var curHash = req.parsed.data.hash
+
+  return Q.ninvoke(tim.messages(), 'byCurHash', curHash, true /* all from/to */)
+    .then(function (infos) {
+      var match
+      var found = infos.some(function (info) {
+        // check if they're allowed to see this message
+        if ((info.from && info.from[ROOT_HASH] === from) ||
+          (info.to && info.to[ROOT_HASH] === from)) {
+          match = info
+          return true
+        }
+      })
+
+      if (!match) throw new Error('not found')
+
+      return tim.lookupObject(match)
+    })
+    .catch(function (err) {
+      debug('msg not found', err)
+      var httpErr = new Error('not found')
+      httpErr.code = 404
+      throw httpErr
+    })
     .then(function (obj) {
       return bank.send(req, obj.parsed.data, { chain: false })
     })

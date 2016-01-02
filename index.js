@@ -194,21 +194,6 @@ Bank.prototype._debug = function () {
 
 Bank.prototype.receiveMsg = function (msgBuf, senderInfo) {
   var self = this
-  var msg
-  try {
-    var wrapper = JSON.parse(msgBuf)
-    msg = JSON.parse(new Buffer(wrapper.data, 'base64'))
-  } catch (err) {}
-
-  // if it's an identity, store it
-  if (msg) {
-    if (msg[TYPE] === IDENTITY_PUBLISH_REQUEST_TYPE) {
-      return this.publishCustomerIdentity(msg.identity, senderInfo)
-    } else {
-      return Q.reject(new Error('unsupported message'))
-    }
-  }
-
   return this.tim.receiveMsg(msgBuf, senderInfo)
     .then(function (entry) {
       if (entry.get('type') !== EventType.msg.receivedValid) {
@@ -221,64 +206,6 @@ Bank.prototype.receiveMsg = function (msgBuf, senderInfo) {
     .then(function (msg) {
       return self._onMessage(msg)
     })
-}
-
-Bank.prototype.publishCustomerIdentity = function (msg, senderInfo) {
-  var self = this
-  if (msg[ROOT_HASH] && senderInfo[ROOT_HASH] && msg[ROOT_HASH] !== senderInfo[ROOT_HASH]) {
-    return Q.reject(new Error('authentication failed'))
-  }
-
-  // TODO: verify that sig of identityPublishRequest comes from sign/update key
-  // of attached identity. Need to factor this out of @tradle/verifier
-
-  var req = new RequestState({
-    from: senderInfo,
-    msg: msg
-  })
-
-  var tim = this.tim
-  var rootHash
-  var curHash
-  var wasAlreadyPublished
-  return Builder().data(msg).build()
-    .then(function (buf) {
-      return Q.ninvoke(tutils, 'getStorageKeyFor', buf)
-    })
-    .then(function (_curHash) {
-      curHash = _curHash.toString('hex')
-      rootHash = msg[ROOT_HASH] || curHash
-      return Q.all([
-        Q.ninvoke(tim.messages(), 'byCurHash', curHash).catch(noop),
-        tim.addContactIdentity(msg)
-      ])
-    })
-    .spread(function (obj) {
-      // if obj is queued to be chained
-      // assume it's on its way to be published
-      if (obj && (obj.chain || obj.txId)) {
-        // if (obj.dateChained) // actually chained
-        // may not be published yet, but def queued
-        var resp = utils.buildSimpleMsg('already published', types.IDENTITY)
-        return self.send(req, resp, { chain: false })
-      } else {
-        self._debug('publishing customer identity', curHash)
-        return publish()
-      }
-    })
-    .then(function () {
-      return req.end()
-    })
-
-  function publish () {
-    return tim.publishIdentity(msg)
-      .then(function () {
-        var resp = {}
-        resp[TYPE] = 'tradle.IdentityPublished'
-        resp.identity = curHash
-        return self.send(req, resp, { chain: false })
-      })
-  }
 }
 
 // TODO: lock on sender hash to avoid race conditions
@@ -309,10 +236,19 @@ Bank.prototype._onMessage = function (msg) {
       return self._setCustomerState(req)
     })
     .then(function () {
-      self._chainReceivedMsg(msg)
+      if (self.shouldChainReceivedMessage(msg)) {
+        self._debug('chaining received msg', msg[TYPE])
+        self._chainReceivedMsg(msg)
+      }
+
       self._saveParsedMsg(msg)
       return req.end()
     })
+}
+
+Bank.prototype.shouldChainReceivedMessage = function (req) {
+  // override this method
+  return false
 }
 
 Bank.prototype._chainReceivedMsg = function (app) {
