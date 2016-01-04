@@ -152,7 +152,14 @@ function receiveMsg (msgBuf, senderInfo) {
 function sendProductList (req) {
   var bank = this
   var formModels = {}
-  var list = PRODUCT_TYPES.map(function (a) {
+  var productTypes = [
+    'tradle.CurrentAccount',
+    'tradle.BusinessAccount',
+    'tradle.Mortgage',
+    'tradle.JumboMortgage'
+  ]
+
+  var list = productTypes.map(function (a) {
     var model = MODELS_BY_ID[a]
     var forms = getForms(model)
     forms.forEach(function(f) {
@@ -169,7 +176,7 @@ function sendProductList (req) {
     _t: types.PRODUCT_LIST,
     welcome: true,
     // message: '[Hello! It very nice to meet you](Please choose the product)',
-    message: '[Hello ' + req.from.identity.name() + '! It is very nice to meet you](Please choose the product)',
+    message: '[Hello ' + req.from.identity.name() + '!](Click for a list of products)',
     list: JSON.stringify(list)
   }, { chain: false })
 }
