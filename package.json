@@ -22,6 +22,7 @@
     "@tradle/multiplex-utp": "^1.0.1",
     "@tradle/tim-server": "^1.0.0",
     "@tradle/utils": "^1.0.0",
+    "compression": "^1.6.0",
     "concat-stream": "^1.5.1",
     "debug": "^2.2.0",
     "elistener": "^1.0.2",

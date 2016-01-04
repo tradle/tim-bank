@@ -49,6 +49,7 @@ var conf = require(path.resolve(confPath))
 if (!conf) throw new Error('specify conf file path')
 
 var express = require('express')
+var compression = require('compression')
 var server
 var selfDestructing
 var onDestroy = []
@@ -78,6 +79,7 @@ run()
 
 function run () {
   var app = express()
+  app.use(compression({ filter: function () { return true } }))
   var port = Number(conf.port) || DEFAULT_PORT
   var networkName = conf.networkName || DEFAULT_NETWORK
   server = app.listen(port)
