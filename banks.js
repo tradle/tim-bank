@@ -180,7 +180,7 @@ function runBank (opts) {
     watchBalanceAndRecharge({
       wallet: bank.wallet,
       interval: 60000,
-      minBalance: 10000000
+      minBalance: 5000000
     })
   }
 
