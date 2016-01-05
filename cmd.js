@@ -40,7 +40,7 @@ var constants = require('@tradle/constants')
 var Bank = require('./')
 var buildNode = require('./lib/buildNode')
 var Identity = require('tim').Identity
-var createServer = require('tim-server')
+var createServer = require('@tradle/tim-server')
 var Zlorp = require('tim').Zlorp
 Zlorp.ANNOUNCE_INTERVAL = 10000
 Zlorp.LOOKUP_INTERVAL = 10000
@@ -72,6 +72,7 @@ function run () {
     if (err) throw err
 
     var tim = buildNode({
+      dht: false,
       ip: addrs[0],
       port: argv['tim-port'],
       networkName: 'testnet',
@@ -79,10 +80,10 @@ function run () {
       identityKeys: keys,
       syncInterval: 300000,
       afterBlockTimestamp: constants.afterBlockTimestamp,
-      relay: {
-        address: addrs[0],
-        port: 25778
-      }
+      // relay: {
+      //   address: addrs[0],
+      //   port: 25778
+      // }
     })
 
     var bank = new Bank({
