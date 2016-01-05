@@ -1,0 +1,19 @@
+{
+  "port": 44444,
+  "networkName": "testnet",
+  "afterBlockTimestamp": 1420468675,
+  "banks": {
+    "bill": {
+      "run": false,
+      "priv": "conf/bill-priv.json",
+      "pub": "conf/bill-pub.json",
+      "port": 12321
+    },
+    "ted": {
+      "run": true,
+      "priv": "conf/ted-priv.json",
+      "pub": "conf/ted-pub.json",
+      "port": 32123
+    }
+  }
+}
