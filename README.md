@@ -4,20 +4,21 @@
 
 Usage:
 ```bash
-bank -i ./identity.json -k ./keys.json <options>
+# see sample-conf for conf format
+banks sample-conf/conf.json <options>
 ```
 
 Example:
 ```bash
-bank -i ./identity.json -k ./keys.json -p 12345 -t 54321
+# start banks sequentially, don't write to blockchain, run only bank "rich"
+banks sample-conf/conf.json -s -c false -b rich
 ```
 
 Options:
 ```bash
 -h, --help              print usage
--i, --identity [path]   path to identity JSON [REQUIRED]
--k, --keys [path]       path to private keys file (for identity) [REQUIRED]
--p, --port [number]     server port (default: 33333)
--t, --tim-port [number] port tim will run on (default: 44444)
+-s, --seq               start banks sequentially
+-c, --chain             whether to write to blockchain (default: true)
+-b, --banks             banks to run (defaults to banks in conf that don\'t have run: false)
 --public                expose the server to non-local requests
 ```

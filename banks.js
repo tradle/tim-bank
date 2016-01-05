@@ -208,7 +208,9 @@ function runBank (opts) {
   // getIdentityPublishStatus(tim)
 
   return tim.identityPublishStatus()
-    .then(console.log.bind(console, opts.name))
+    .then(function (status) {
+      console.log(opts.name, 'bank rep identity published:', status.current)
+    })
 }
 
 function sendErr (res, err) {
@@ -259,25 +261,9 @@ function printUsage () {
   BANK SIMULATOR, DO NOT USE IN PRODUCTION
 
   Usage:
-      banks path/to/conf.json
+      # see sample-conf for conf format
+      banks sample-conf/conf.json <options>
 
-  Example conf.json:
-      {
-        "port": 44444,
-        "banks": {
-          "Lloyds": {
-            "priv": "/path/to/lloyds-priv.json",
-            "pub": "/path/to/lloyds-pub.json",
-            "port": 12321
-          },
-          "Rabobank": {
-            "run": false,
-            "priv": "/path/to/rabo-priv.json",
-            "pub": "/path/to/rabo-pub.json",
-            "port": 32123
-          }
-        }
-      }
 
   Options:
       -h, --help              print usage
