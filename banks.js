@@ -50,6 +50,8 @@ if (!conf) throw new Error('specify conf file path')
 
 var express = require('express')
 var compression = require('compression')
+var networkName = conf.networkName || DEFAULT_NETWORK
+var afterBlockTimestamp = conf.afterBlockTimestamp ||  constants.afterBlockTimestamp
 var server
 var selfDestructing
 var onDestroy = []
@@ -81,7 +83,6 @@ function run () {
   var app = express()
   app.use(compression({ filter: function () { return true } }))
   var port = Number(conf.port) || DEFAULT_PORT
-  var networkName = conf.networkName || DEFAULT_NETWORK
   server = app.listen(port)
 
   if (argv.seq) {
@@ -93,7 +94,6 @@ function run () {
           return runBank({
             name: name,
             conf: conf.banks[name],
-            networkName: networkName,
             app: app
           })
         })
@@ -125,7 +125,6 @@ function run () {
 function runBank (opts) {
   typeforce({
     name: 'String',
-    networkName: 'String',
     conf: 'Object',
     app: 'EventEmitter'
   }, opts)
@@ -151,12 +150,13 @@ function runBank (opts) {
   })
 
   var tim = buildNode({
+    dht: false,
     port: port,
-    networkName: opts.networkName,
+    networkName: networkName,
     identity: Identity.fromJSON(identity),
     identityKeys: keys,
     syncInterval: 120000,
-    afterBlockTimestamp: constants.afterBlockTimestamp,
+    afterBlockTimestamp: afterBlockTimestamp,
     messenger: httpServer
   })
 
@@ -178,11 +178,11 @@ function runBank (opts) {
     console.log(opts.name, ': Send coins to', bank.wallet.addressString)
   })
 
-  if (opts.networkName === 'testnet') {
+  if (networkName === 'testnet') {
     watchBalanceAndRecharge({
       wallet: bank.wallet,
       interval: 60000,
-      minBalance: 5000000
+      minBalance: 1000000
     })
   }
 
