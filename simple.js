@@ -42,7 +42,7 @@ module.exports = simpleBank
 
 function simpleBank (opts) {
   var bank = new Bank(opts)
-  bank.shouldChainReceivedMessage = function (msg) {
+  bank._shouldChainReceivedMessage = function (msg) {
     return DOC_TYPES.indexOf(msg[TYPE]) !== -1
   }
 

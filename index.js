@@ -251,20 +251,24 @@ Bank.prototype._onMessage = function (msg) {
 
 Bank.prototype.shouldChainReceivedMessage = function (req) {
   // override this method
+  if (!Bank.ALLOW_CHAINING) return false
+
+  if (req.chain || req.tx || req.dateUnchained || req[TYPE] === types.VERIFICATION) {
+    return false
+  }
+
+  return this._shouldChainReceivedMessage(req)
+}
+
+Bank.prototype._shouldChainReceivedMessage = function (req) {
   return false
 }
 
-Bank.prototype._chainReceivedMsg = function (app) {
-  if (!Bank.ALLOW_CHAINING) return Q()
-
-  if (app.chain || app.tx || app.dateUnchained || app[TYPE] === types.VERIFICATION) {
-    return Q()
-  }
-
+Bank.prototype._chainReceivedMsg = function (req) {
   // chain message on behalf of customer
   return this.tim.chain({
-    msg: app.data,
-    to: [getSender(app)]
+    msg: req.data,
+    to: [getSender(req)]
   })
 }
 
