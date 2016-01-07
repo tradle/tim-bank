@@ -22,7 +22,6 @@
     "@tradle/identity": "^1.2.1",
     "@tradle/models": "^1.2.0",
     "@tradle/multiplex-utp": "^1.0.1",
-    "@tradle/test-helpers": "^1.0.1",
     "@tradle/tim-server": "^1.0.0",
     "@tradle/utils": "^1.0.0",
     "compression": "^1.6.0",
