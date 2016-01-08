@@ -68,15 +68,22 @@ function simpleBank (opts) {
         return handleNewApplication.call(bank, req)
       }
     }
-    // else {
-    //   return bank.send(req, {
-    //     _t: 'tradle.RequestForRepresentative',
-    //     message: 'Would you like to speak to a representative?',
-    //   }, { chain: false })
-    // }
+    else {
+      return bank.send(req, {
+        _t: types.REQUEST_FOR_REPRESENTATIVE,
+        welcome: true,
+        message: 'Switching to representative mode is not yet implemented'
+      }, { chain: false })
+    }
   })
   bank.use(types.REQUEST_FOR_REPRESENTATIVE, function (req) {
     // Find represntative
+    return bank.send(req, {
+      _t: types.SIMPLE_MESSAGE,
+      welcome: true,
+      // message: '[Hello! It very nice to meet you](Please choose the product)',
+      message: 'The feature of switching to representative is coming soon!',
+    }, { chain: false })
   })
 
   bank.receiveMsg = receiveMsg.bind(bank)
@@ -334,6 +341,14 @@ function sendNextFormOrApprove (req) {
     resp = {}
     resp[TYPE] = productType + 'Confirmation'
     resp.message = 'Congratulations! You were approved for: ' + MODELS_BY_ID[productType].title
+    resp.forms = []
+    reqdForms.forEach(function(f) {
+      var formId = state.forms[f].verifications[0].body.document.id
+      var parts = formId.split('_')
+      formId = parts.length === 2 ? formId : parts.splice(0, 2).join('_')
+      resp.forms.push(formId)
+    })
+
     var idx = pendingApps.indexOf(productType)
     pendingApps.splice(idx, 1)
   }
