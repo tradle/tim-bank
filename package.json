@@ -36,6 +36,7 @@
     "q": "^1.4.1",
     "request": "^2.67.0",
     "rimraf": "^2.4.3",
+    "simple-get": "^1.4.3",
     "stream-collector": "^1.0.1",
     "tim": "^3.3.3",
     "typeforce": "^1.4.0",
