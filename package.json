@@ -43,7 +43,7 @@
     "xtend": "^4.0.0"
   },
   "devDependencies": {
-    "@tradle/simple-wallet": "0.0.1",
+    "@tradle/simple-wallet": "^1.0.0",
     "@tradle/test-helpers": "^1.0.0",
     "array-find": "^1.0.0",
     "cli-table": "^0.3.1",
