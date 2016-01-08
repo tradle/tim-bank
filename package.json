@@ -4,7 +4,9 @@
   "description": "",
   "private": true,
   "main": "./index.js",
-  "bin": "./cmd.js",
+  "bin": {
+    "banks": "./banks.js"
+  },
   "scripts": {
     "test": "node test",
     "style": "standard"
@@ -13,7 +15,7 @@
   "license": "GPLv3",
   "dependencies": {
     "@tradle/bittorrent-dht": "^3.2.1",
-    "@tradle/cb-blockr": "^3.1.1",
+    "@tradle/cb-blockr": "^3.1.2",
     "@tradle/chained-obj": "^2.0.3",
     "@tradle/constants": "^1.1.6",
     "@tradle/http-keeper": "^3.0.3",
@@ -31,16 +33,17 @@
     "levelup": "^1.2.1",
     "map-stream": "0.0.6",
     "minimist": "^1.2.0",
+    "mkdirp": "^0.5.1",
     "q": "^1.4.1",
     "request": "^2.67.0",
     "rimraf": "^2.4.3",
     "stream-collector": "^1.0.1",
-    "tim": "^3.2.0",
+    "tim": "^3.3.3",
     "typeforce": "^1.4.0",
     "xtend": "^4.0.0"
   },
   "devDependencies": {
-    "@tradle/simple-wallet": "0.0.1",
+    "@tradle/simple-wallet": "^1.0.0",
     "@tradle/test-helpers": "^1.0.0",
     "array-find": "^1.0.0",
     "cli-table": "^0.3.1",

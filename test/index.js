@@ -283,6 +283,7 @@ function runTests (setup, idx) {
       signNSend(msg)
       return Q.all([
           awaitForm('tradle.YourMoney'),
+          awaitTypeUnchained('tradle.AboutYou'),
           awaitVerification()
         ])
         .then(function () {
@@ -302,6 +303,7 @@ function runTests (setup, idx) {
       signNSend(msg)
       return Q.all([
           awaitForm('tradle.LicenseVerification'),
+          awaitTypeUnchained('tradle.YourMoney'),
           awaitVerification()
         ])
         .then(function () {
@@ -320,6 +322,7 @@ function runTests (setup, idx) {
 
       signNSend(msg)
       return Q.all([
+        awaitTypeUnchained('tradle.LicenseVerification'),
         awaitVerification(),
         awaitConfirmation()
       ])
@@ -418,7 +421,7 @@ function runTests (setup, idx) {
       APPLICANT.on('unchained', unchainedHandler)
       return defer.promise
         .then(function () {
-          APPLICANT.removeListener('message', unchainedHandler)
+          APPLICANT.removeListener('unchained', unchainedHandler)
         })
 
       function unchainedHandler (info) {

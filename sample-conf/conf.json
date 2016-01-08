@@ -1,0 +1,23 @@
+{
+  "port": 44444,
+  "networkName": "testnet",
+  "afterBlockTimestamp": 1420468675,
+  "banks": {
+    "poor": {
+      "priv": "conf/bill-priv.json",
+      "pub": "conf/bill-pub.json",
+      "port": 12321
+    },
+    "rich": {
+      "priv": "conf/ted-priv.json",
+      "pub": "conf/ted-pub.json",
+      "port": 32123
+    },
+    "future": {
+      "run": false,
+      "priv": "conf/rufus-priv.json",
+      "pub": "conf/rufus-pub.json",
+      "port": 32124
+    }
+  }
+}

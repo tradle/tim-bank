@@ -1,15 +1,18 @@
 #!/usr/bin/env node
 
+var path = require('path')
 var argv = require('minimist')(process.argv.slice(2), {
   alias: {
     p: 'public',
     h: 'help',
     s: 'seq',
     c: 'chain',
-    b: 'banks'
+    b: 'banks',
+    p: 'path'
   },
   default: {
-    chain: true
+    chain: true,
+    path: path.resolve('storage')
   },
   boolean: ['chain', 'seq']
 })
@@ -19,8 +22,8 @@ if (argv.help) {
   process.exit(0)
 }
 
-var path = require('path')
 var fs = require('fs')
+var mkdirp = require('mkdirp')
 var typeforce = require('typeforce')
 var Q = require('q')
 var debug = require('debug')('bankd')
@@ -50,6 +53,8 @@ if (!conf) throw new Error('specify conf file path')
 
 var express = require('express')
 var compression = require('compression')
+var networkName = conf.networkName || DEFAULT_NETWORK
+var afterBlockTimestamp = conf.afterBlockTimestamp ||  constants.afterBlockTimestamp
 var server
 var selfDestructing
 var onDestroy = []
@@ -75,13 +80,14 @@ process.on('uncaughtException', function (err) {
   console.log(err.stack)
 })
 
+var storagePath = path.resolve(argv.path)
+mkdirp.sync(storagePath)
 run()
 
 function run () {
   var app = express()
   app.use(compression({ filter: function () { return true } }))
   var port = Number(conf.port) || DEFAULT_PORT
-  var networkName = conf.networkName || DEFAULT_NETWORK
   server = app.listen(port)
 
   if (argv.seq) {
@@ -93,7 +99,6 @@ function run () {
           return runBank({
             name: name,
             conf: conf.banks[name],
-            networkName: networkName,
             app: app
           })
         })
@@ -125,7 +130,6 @@ function run () {
 function runBank (opts) {
   typeforce({
     name: 'String',
-    networkName: 'String',
     conf: 'Object',
     app: 'EventEmitter'
   }, opts)
@@ -151,18 +155,20 @@ function runBank (opts) {
   })
 
   var tim = buildNode({
+    dht: false,
     port: port,
-    networkName: opts.networkName,
+    pathPrefix: path.join(storagePath, name),
+    networkName: networkName,
     identity: Identity.fromJSON(identity),
     identityKeys: keys,
     syncInterval: 120000,
-    afterBlockTimestamp: constants.afterBlockTimestamp,
+    afterBlockTimestamp: afterBlockTimestamp,
     messenger: httpServer
   })
 
   var bank = newSimpleBank({
     tim: tim,
-    path: conf.storage || (name + '-storage'),
+    path: path.join(storagePath, name + '-customer-data.db'),
     leveldown: leveldown,
     manual: true // receive msgs manually
   })
@@ -178,11 +184,11 @@ function runBank (opts) {
     console.log(opts.name, ': Send coins to', bank.wallet.addressString)
   })
 
-  if (opts.networkName === 'testnet') {
+  if (networkName === 'testnet') {
     watchBalanceAndRecharge({
       wallet: bank.wallet,
       interval: 60000,
-      minBalance: 5000000
+      minBalance: 1000000
     })
   }
 
@@ -208,7 +214,9 @@ function runBank (opts) {
   // getIdentityPublishStatus(tim)
 
   return tim.identityPublishStatus()
-    .then(console.log.bind(console, opts.name))
+    .then(function (status) {
+      console.log(opts.name, 'bank rep identity published:', status.current)
+    })
 }
 
 function sendErr (res, err) {
@@ -259,31 +267,16 @@ function printUsage () {
   BANK SIMULATOR, DO NOT USE IN PRODUCTION
 
   Usage:
-      banks path/to/conf.json
+      # see sample-conf for conf format
+      banks sample-conf/conf.json <options>
 
-  Example conf.json:
-      {
-        "port": 44444,
-        "banks": {
-          "Lloyds": {
-            "priv": "/path/to/lloyds-priv.json",
-            "pub": "/path/to/lloyds-pub.json",
-            "port": 12321
-          },
-          "Rabobank": {
-            "run": false,
-            "priv": "/path/to/rabo-priv.json",
-            "pub": "/path/to/rabo-pub.json",
-            "port": 32123
-          }
-        }
-      }
 
   Options:
       -h, --help              print usage
       -s, --seq               start banks sequentially
       -c, --chain             whether to write to blockchain (default: true)
       -b, --banks             banks to run (defaults to banks in conf that don't have run: false)
+      -p, --path              directory to store data in
       --public                expose the server to non-local requests
 
   Please report bugs!  https://github.com/tradle/tim-bank/issues

@@ -178,10 +178,10 @@ Bank.prototype.forgetCustomer = function (req) {
   }
 }
 
-Bank.prototype._saveParsedMsg = function (msg) {
-  this._setResource(msg.parsed.data[TYPE], msg[ROOT_HASH], {
-    txId: msg.txId,
-    body: msg.parsed
+Bank.prototype._saveParsedMsg = function (req) {
+  this._setResource(req.parsed.data[TYPE], req[ROOT_HASH], {
+    txId: req.txId,
+    body: req.parsed
   })
 }
 
@@ -239,33 +239,37 @@ Bank.prototype._onMessage = function (msg) {
       return self._setCustomerState(req)
     })
     .then(function () {
-      if (self.shouldChainReceivedMessage(msg)) {
-        self._debug('chaining received msg', msg[TYPE])
-        self._chainReceivedMsg(msg)
+      if (self.shouldChainReceivedMessage(req)) {
+        self._debug('chaining received msg', req[TYPE])
+        self._chainReceivedMsg(req)
+          .catch(function (err) {
+            debug('failed to chain received msg', err)
+          })
       }
 
-      self._saveParsedMsg(msg)
+      self._saveParsedMsg(req)
       return req.end()
     })
 }
 
 Bank.prototype.shouldChainReceivedMessage = function (req) {
   // override this method
+  if (!Bank.ALLOW_CHAINING) return false
+
+  if (req.chain || req.tx || req.dateUnchained || req[TYPE] === types.VERIFICATION) {
+    return false
+  }
+
+  return this._shouldChainReceivedMessage(req)
+}
+
+Bank.prototype._shouldChainReceivedMessage = function (req) {
   return false
 }
 
-Bank.prototype._chainReceivedMsg = function (app) {
-  if (!Bank.ALLOW_CHAINING) return Q()
-
-  if (app.chain || app.tx || app.dateUnchained || app[TYPE] === types.VERIFICATION) {
-    return Q()
-  }
-
+Bank.prototype._chainReceivedMsg = function (req) {
   // chain message on behalf of customer
-  return this.tim.chain({
-    msg: app.data,
-    to: [getSender(app)]
-  })
+  return this.tim.chainExisting(req)
 }
 
 Bank.prototype._setResource = function (type, rootHash, val) {
