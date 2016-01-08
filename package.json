@@ -1,7 +1,7 @@
 {
   "name": "@tradle/tim-bank",
   "version": "1.0.1",
-  "description": "",
+  "description": "tradle bank server",
   "main": "./index.js",
   "bin": {
     "banks": "./banks.js"

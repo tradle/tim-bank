@@ -1,7 +1,5 @@
 # tim-bank
 
-*BANK SIMULATOR, DO NOT USE IN PRODUCTION*
-
 Usage:
 ```bash
 # see sample-conf for conf format
