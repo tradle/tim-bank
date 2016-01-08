@@ -21,8 +21,10 @@
     "@tradle/identity": "^1.2.1",
     "@tradle/models": "^1.2.0",
     "@tradle/multiplex-utp": "^1.0.1",
+    "@tradle/simple-wallet": "^1.0.0",
     "@tradle/tim-server": "^1.0.0",
     "@tradle/utils": "^1.0.0",
+    "array-find": "^1.0.0",
     "compression": "^1.6.0",
     "concat-stream": "^1.5.1",
     "debug": "^2.2.0",
@@ -43,12 +45,9 @@
     "xtend": "^4.0.0"
   },
   "devDependencies": {
-    "@tradle/simple-wallet": "^1.0.0",
     "@tradle/test-helpers": "^1.0.0",
-    "array-find": "^1.0.0",
     "cli-table": "^0.3.1",
     "memdown": "^1.1.0",
-    "simple-get": "^1.4.3",
     "tape": "^4.2.2",
     "time-method": "^2.0.0"
   }
