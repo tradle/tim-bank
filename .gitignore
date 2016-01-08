@@ -30,3 +30,5 @@ node_modules
 *-storage
 *-keeper
 conf/
+*.zip
+conf*/
