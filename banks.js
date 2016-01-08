@@ -1,15 +1,18 @@
 #!/usr/bin/env node
 
+var path = require('path')
 var argv = require('minimist')(process.argv.slice(2), {
   alias: {
     p: 'public',
     h: 'help',
     s: 'seq',
     c: 'chain',
-    b: 'banks'
+    b: 'banks',
+    p: 'path'
   },
   default: {
-    chain: true
+    chain: true,
+    path: path.resolve('storage')
   },
   boolean: ['chain', 'seq']
 })
@@ -19,8 +22,8 @@ if (argv.help) {
   process.exit(0)
 }
 
-var path = require('path')
 var fs = require('fs')
+var mkdirp = require('mkdirp')
 var typeforce = require('typeforce')
 var Q = require('q')
 var debug = require('debug')('bankd')
@@ -77,6 +80,8 @@ process.on('uncaughtException', function (err) {
   console.log(err.stack)
 })
 
+var storagePath = path.resolve(argv.path)
+mkdirp.sync(storagePath)
 run()
 
 function run () {
@@ -152,6 +157,7 @@ function runBank (opts) {
   var tim = buildNode({
     dht: false,
     port: port,
+    pathPrefix: path.join(storagePath, name),
     networkName: networkName,
     identity: Identity.fromJSON(identity),
     identityKeys: keys,
@@ -162,7 +168,7 @@ function runBank (opts) {
 
   var bank = newSimpleBank({
     tim: tim,
-    path: conf.storage || (name + '-storage'),
+    path: path.join(storagePath, name + '-customer-data.db'),
     leveldown: leveldown,
     manual: true // receive msgs manually
   })
@@ -270,6 +276,7 @@ function printUsage () {
       -s, --seq               start banks sequentially
       -c, --chain             whether to write to blockchain (default: true)
       -b, --banks             banks to run (defaults to banks in conf that don't have run: false)
+      -p, --path              directory to store data in
       --public                expose the server to non-local requests
 
   Please report bugs!  https://github.com/tradle/tim-bank/issues
