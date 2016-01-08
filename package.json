@@ -1,8 +1,7 @@
 {
-  "name": "tim-bank",
+  "name": "@tradle/tim-bank",
   "version": "1.0.1",
   "description": "",
-  "private": true,
   "main": "./index.js",
   "bin": {
     "banks": "./banks.js"
