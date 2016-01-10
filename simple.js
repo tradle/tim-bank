@@ -70,21 +70,27 @@ function simpleBank (opts) {
     }
     else {
       return bank.send(req, {
-        _t: types.REQUEST_FOR_REPRESENTATIVE,
+        _t: types.SIMPLE_MESSAGE,
         welcome: true,
-        message: 'Switching to representative mode is not yet implemented'
+        // message: '[Hello! It very nice to meet you](Please choose the product)',
+        message: 'Switching to representative mode is not yet implemented.',
       }, { chain: false })
+      // return bank.send(req, {
+      //   _t: types.REQUEST_FOR_REPRESENTATIVE,
+      //   welcome: true,
+      //   message: 'Switching to representative mode is not yet implemented'
+      // }, { chain: false })
     }
   })
-  bank.use(types.REQUEST_FOR_REPRESENTATIVE, function (req) {
-    // Find represntative
-    return bank.send(req, {
-      _t: types.SIMPLE_MESSAGE,
-      welcome: true,
-      // message: '[Hello! It very nice to meet you](Please choose the product)',
-      message: 'The feature of switching to representative is coming soon!',
-    }, { chain: false })
-  })
+  // bank.use(types.REQUEST_FOR_REPRESENTATIVE, function (req) {
+  //   // Find represntative
+  //   return bank.send(req, {
+  //     _t: types.SIMPLE_MESSAGE,
+  //     welcome: true,
+  //     // message: '[Hello! It very nice to meet you](Please choose the product)',
+  //     message: 'The feature of switching to representative is coming soon!',
+  //   }, { chain: false })
+  // })
 
   bank.receiveMsg = receiveMsg.bind(bank)
   return bank
