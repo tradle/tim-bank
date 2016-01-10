@@ -22,7 +22,6 @@
     "@tradle/models": "^1.2.0",
     "@tradle/multiplex-utp": "^1.0.1",
     "@tradle/simple-wallet": "^1.0.0",
-    "@tradle/test-helpers": "^1.1.0",
     "@tradle/tim-server": "^1.0.0",
     "@tradle/utils": "^1.0.0",
     "array-find": "^1.0.0",
