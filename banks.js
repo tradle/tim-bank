@@ -250,6 +250,11 @@ function cleanup () {
     server.close()
   } catch (err) {}
 
+  // timeout peaceful termination and murder it
+  setTimeout(function () {
+    process.exit(1)
+  }, 5000).unref()
+
   Q.all(onDestroy)
     .done(function () {
       debug('shutting down')
