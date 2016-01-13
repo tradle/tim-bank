@@ -323,6 +323,25 @@ function sendNextFormOrApprove (req) {
     return utils.rejectWithHttpError(400, 'no such product model: ' + productType)
   }
 
+  // backwards compatible check
+  if (!state.products) {
+    state.products = {}
+  }
+
+  var thisProduct = state.products[productType]
+  if (thisProduct) {
+    if (thisProduct.length) {
+      var resp = utils.buildSimpleMsg(
+        'You already have a ' + productModel.title + ' with us!'
+      )
+
+      return bank.send(req, resp, opts)
+    }
+  }
+  else {
+    thisProduct = state.products[productType] = []
+  }
+
   var reqdForms = getForms(productModel)
   var skip = false
   var missing
@@ -344,6 +363,7 @@ function sendNextFormOrApprove (req) {
 
   if (skip) return Q()
 
+  var acquiredProduct
   var opts = {}
   var resp
   if (missing) {
@@ -358,7 +378,7 @@ function sendNextFormOrApprove (req) {
     debug('approving for product', productType)
     resp = {}
     resp[TYPE] = productType + 'Confirmation'
-    resp.message = 'Congratulations! You were approved for: ' + MODELS_BY_ID[productType].title
+    resp.message = 'Congratulations! You were approved for: ' + productModel.title
     resp.forms = reqdForms.map(function(f) {
       var formId = state.forms[f].verifications[0].body.document.id
       var parts = formId.split('_')
@@ -366,11 +386,22 @@ function sendNextFormOrApprove (req) {
       return formId
     })
 
+    acquiredProduct = {}
+    acquiredProduct[TYPE] = productType
+    thisProduct.push(acquiredProduct)
     var idx = pendingApps.indexOf(productType)
     pendingApps.splice(idx, 1)
   }
 
   return bank.send(req, resp, opts)
+    .then(function (entries) {
+      if (acquiredProduct) {
+        var entry = entries[0]
+        acquiredProduct[ROOT_HASH] = entry.get(ROOT_HASH)
+      }
+
+      return entries
+    })
 }
 
 function lookupAndSend (req) {

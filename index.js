@@ -385,6 +385,7 @@ function dumpDBs (tim) {
 function newCustomerState (customerRootHash) {
   var state = {
     pendingApplications: [],
+    products: {},
     forms: {}
   }
 
