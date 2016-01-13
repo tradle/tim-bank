@@ -149,7 +149,6 @@ function runTests (setup, idx) {
       .then(sendIdentityAgain)
       .then(runBank1Scenario)
       .then(function () {
-        // cleanCache()
         bank = BANKS[1]
         bankCoords = getCoords(bank.tim)
         return runBank2Scenario()
@@ -209,7 +208,9 @@ function runTests (setup, idx) {
           verificationsDefer.resolve()
         })
         .catch(function (err) {
-          console.error(err)
+          if (err.name !== 'FileNotFoundError') throw err
+
+          console.error('forgotten', info[TYPE], 'not found')
         })
         .done()
     }
@@ -353,6 +354,7 @@ function runTests (setup, idx) {
 
     function bank2sendAboutYouVer () {
       shareVerification(ABOUT_YOU)
+      shareForm(ABOUT_YOU)
       return Q.all([
         awaitForm(YOUR_MONEY),
         awaitTypeUnchained(VERIFICATION)
@@ -361,6 +363,7 @@ function runTests (setup, idx) {
 
     function bank2sendYourMoneyVer () {
       shareVerification(YOUR_MONEY)
+      shareForm(YOUR_MONEY)
       // return awaitForm(LICENSE)
       return Q.all([
         awaitForm(LICENSE),
@@ -370,6 +373,7 @@ function runTests (setup, idx) {
 
     function bank2sendLicenseVer () {
       shareVerification(LICENSE)
+      shareForm(LICENSE)
       return Q.all([
         awaitConfirmation(),
         awaitTypeUnchained(VERIFICATION)
@@ -396,19 +400,22 @@ function runTests (setup, idx) {
             deliver: true
           }, opts || {}))
         })
-        .done()
+        .done(function (entries) {
+          var info = entries[0]
+          forms[info.get(TYPE)] = info.get(ROOT_HASH)
+        })
     }
 
-    // function shareForm (type) {
-    //   var opts = {
-    //     chain: false,
-    //     deliver: true,
-    //     to: bankCoords
-    //   }
+    function shareForm (type) {
+      var opts = {
+        chain: false,
+        deliver: true,
+        to: bankCoords
+      }
 
-    //   opts[CUR_HASH] = verifications[type]
-    //   APPLICANT.share(opts)
-    // }
+      opts[CUR_HASH] = forms[type]
+      APPLICANT.share(opts)
+    }
 
     function shareVerification (type) {
       var opts = {

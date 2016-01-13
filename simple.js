@@ -1,6 +1,7 @@
 
 var typeforce = require('typeforce')
 var Q = require('q')
+var find = require('array-find')
 var debug = require('debug')('bank:simple')
 var constants = require('@tradle/constants')
 var MODELS = require('@tradle/models')
@@ -323,23 +324,33 @@ function sendNextFormOrApprove (req) {
   }
 
   var reqdForms = getForms(productModel)
-  var missing = reqdForms.filter(function (fType) {
+  var skip = false
+  var missing
+  reqdForms.some(function (fType) {
     var existing = state.forms[fType]
-    if (existing) {
-      return !existing.verifications.length
+    if (!existing) {
+      return missing = fType
     }
 
-    return true
+    // missing form
+    skip = !existing.form && existing.verifications.length
+    if (skip) return true
+
+    // missing both form and verification
+    if (!(existing.form || !existing.verifications.length)) {
+      return missing = fType
+    }
   })
 
+  if (skip) return Q()
+
   var opts = {}
-  var next = missing[0]
   var resp
-  if (next) {
-    debug('requesting form', next)
+  if (missing) {
+    debug('requesting form', missing)
     resp = utils.buildSimpleMsg(
       'Please fill out this form and attach a snapshot of the original document',
-      next
+      missing
     )
 
     opts.chain = false
@@ -348,12 +359,11 @@ function sendNextFormOrApprove (req) {
     resp = {}
     resp[TYPE] = productType + 'Confirmation'
     resp.message = 'Congratulations! You were approved for: ' + MODELS_BY_ID[productType].title
-    resp.forms = []
-    reqdForms.forEach(function(f) {
+    resp.forms = reqdForms.map(function(f) {
       var formId = state.forms[f].verifications[0].body.document.id
       var parts = formId.split('_')
       formId = parts.length === 2 ? formId : parts.splice(0, 2).join('_')
-      resp.forms.push(formId)
+      return formId
     })
 
     var idx = pendingApps.indexOf(productType)
