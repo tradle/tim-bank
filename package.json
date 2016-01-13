@@ -17,7 +17,7 @@
     "@tradle/cb-blockr": "^3.1.2",
     "@tradle/chained-obj": "^2.0.3",
     "@tradle/constants": "^1.1.6",
-    "@tradle/http-keeper": "^3.0.3",
+    "@tradle/http-keeper": "^3.1.0",
     "@tradle/identity": "^1.2.1",
     "@tradle/models": "^1.2.3",
     "@tradle/multiplex-utp": "^1.0.1",
@@ -40,12 +40,12 @@
     "rimraf": "^2.4.3",
     "simple-get": "^1.4.3",
     "stream-collector": "^1.0.1",
-    "tim": "^3.5.2",
+    "tim": "^3.5.3",
     "typeforce": "^1.4.0",
     "xtend": "^4.0.0"
   },
   "devDependencies": {
-    "@tradle/test-helpers": "^1.1.0",
+    "@tradle/test-helpers": "^1.1.1",
     "cli-table": "^0.3.1",
     "memdown": "^1.1.0",
     "tape": "^4.2.2",
