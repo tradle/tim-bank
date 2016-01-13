@@ -241,7 +241,7 @@ Bank.prototype._onMessage = function (msg) {
     .then(function () {
       if (self.shouldChainReceivedMessage(req)) {
         self._debug('chaining received msg', req[TYPE])
-        self._chainReceivedMsg(req)
+        self._chainReceivedMessage(req)
           .catch(function (err) {
             debug('failed to chain received msg', err)
           })
@@ -256,7 +256,7 @@ Bank.prototype.shouldChainReceivedMessage = function (req) {
   // override this method
   if (!Bank.ALLOW_CHAINING) return false
 
-  if (req.chain || req.tx || req.dateUnchained || req[TYPE] === types.VERIFICATION) {
+  if (req.chain || req.tx || req.dateUnchained) {
     return false
   }
 
@@ -267,7 +267,7 @@ Bank.prototype._shouldChainReceivedMessage = function (req) {
   return false
 }
 
-Bank.prototype._chainReceivedMsg = function (req) {
+Bank.prototype._chainReceivedMessage = function (req) {
   // chain message on behalf of customer
   return this.tim.chainExisting(req)
 }

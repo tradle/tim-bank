@@ -16,10 +16,16 @@ MODELS.forEach(function (m) {
 
 var CurrentAccount = MODELS_BY_ID['tradle.CurrentAccount']
 var currentAccountForms = CurrentAccount.forms
+var IDENTITY_PUBLISHING_REQUEST = 'tradle.IdentityPublishRequest'
+var LICENSE = 'tradle.LicenseVerification'
+var ABOUT_YOU = 'tradle.AboutYou'
+var YOUR_MONEY = 'tradle.YourMoney'
+var VERIFICATION = constants.TYPES.VERIFICATION
+
 CurrentAccount.forms = [
-  'tradle.AboutYou',
-  'tradle.YourMoney',
-  'tradle.LicenseVerification'
+  ABOUT_YOU,
+  YOUR_MONEY,
+  LICENSE
 ]
 
 var test = require('tape')
@@ -67,6 +73,7 @@ var nonce = 0
 
 var COMMON_OPTS = {
   leveldown: memdown,
+  // TODO: test without shared keeper
   keeper: FakeKeeper.empty(),
   // keeper: new Keeper({
   //   storage: 'keeperStorage'
@@ -118,13 +125,14 @@ function runTests (setup, idx) {
   test('current account', function (t) {
     var bank = BANKS[0]
     var bankCoords = getCoords(bank.tim)
+    var forms
     var verifications
     var verificationsTogo
     var verificationsDefer
 
     // logging
     // getTims().forEach(function (tim) {
-    //   var who = tim === APPLICANT ? 'applicant' : tim === BANKS[0].tim ? 'bank1' : 'bank2'
+    //   var who = tim === APPLICANT ? 'applicant' : tim === BANKS[0].tim ? 'bank2' : 'bank2'
     //   tim.on('message', function (info) {
     //     tim.lookupObject(info)
     //       .then(function (obj) {
@@ -139,28 +147,29 @@ function runTests (setup, idx) {
     sendIdentity()
       // bank shouldn't publish you twice
       .then(sendIdentityAgain)
-      .then(runBank0Scenario)
+      .then(runBank1Scenario)
       .then(function () {
+        // cleanCache()
         bank = BANKS[1]
         bankCoords = getCoords(bank.tim)
-        return runBank1Scenario()
+        return runBank2Scenario()
       })
       .then(function () {
         bank = BANKS[0]
+        console.log('exercising right to be forgotten')
         return forget()
       })
       .then(function () {
         cleanCache()
-        console.log('exercising right to be forgotten')
+        return runBank1Scenario()
       })
-      .then(runBank0Scenario)
       // .then(dumpDBs.bind(null, BANKS[0]))
       .done(function () {
         APPLICANT.removeListener('unchained', onUnchained)
         t.end()
       })
 
-    function runBank0Scenario () {
+    function runBank1Scenario () {
       return startApplication()
         .then(sendAboutYou)
         .then(sendYourMoney)
@@ -170,7 +179,7 @@ function runTests (setup, idx) {
         })
     }
 
-    function runBank1Scenario () {
+    function runBank2Scenario () {
       return bank2startApplication()
         .then(bank2sendAboutYouVer)
         .then(bank2sendYourMoneyVer)
@@ -178,13 +187,14 @@ function runTests (setup, idx) {
     }
 
     function cleanCache () {
+      forms = {}
       verifications = {}
       verificationsTogo = 3
       verificationsDefer = Q.defer()
     }
 
     function onUnchained (info) {
-      if (info[TYPE] !== 'tradle.Verification') return
+      if (info[TYPE] !== VERIFICATION) return
 
       APPLICANT.lookupObject(info)
         .then(function (obj) {
@@ -198,13 +208,16 @@ function runTests (setup, idx) {
 
           verificationsDefer.resolve()
         })
+        .catch(function (err) {
+          console.error(err)
+        })
         .done()
     }
 
     function dumpDBs (bank) {
       var lists = CurrentAccount.forms.concat([
         'tradle.CurrentAccountConfirmation',
-        'tradle.Verification'
+        VERIFICATION
       ])
 
       return Q.all(lists.map(function (name) {
@@ -230,7 +243,7 @@ function runTests (setup, idx) {
       }
 
       identityPubReq[NONCE] = '' + nonce++
-      identityPubReq[TYPE] = 'tradle.IdentityPublishRequest'
+      identityPubReq[TYPE] = constants.TYPES.IDENTITY_PUBLISHING_REQUEST
       signNSend(identityPubReq, { public: true })
       return Q.all([
           awaitTypeUnchained('tradle.Identity'),
@@ -249,7 +262,7 @@ function runTests (setup, idx) {
       }
 
       identityPubReq[NONCE] = '' + nonce++
-      identityPubReq[TYPE] = 'tradle.IdentityPublishRequest'
+      identityPubReq[TYPE] = constants.TYPES.IDENTITY_PUBLISHING_REQUEST
       signNSend(identityPubReq, { public: true })
       return awaitForm('tradle.Identity')
         .then(function () {
@@ -264,7 +277,7 @@ function runTests (setup, idx) {
       )
 
       signNSend(msg)
-      return awaitForm('tradle.AboutYou')
+      return awaitForm(ABOUT_YOU)
         .then(function () {
           t.pass('got next form')
         })
@@ -278,12 +291,12 @@ function runTests (setup, idx) {
       }
 
       msg[NONCE] = '' + (nonce++)
-      msg[TYPE] = 'tradle.AboutYou'
+      msg[TYPE] = ABOUT_YOU
 
       signNSend(msg)
       return Q.all([
-          awaitForm('tradle.YourMoney'),
-          awaitTypeUnchained('tradle.AboutYou'),
+          awaitForm(YOUR_MONEY),
+          awaitTypeUnchained(ABOUT_YOU),
           awaitVerification()
         ])
         .then(function () {
@@ -298,12 +311,12 @@ function runTests (setup, idx) {
       }
 
       msg[NONCE] = '' + (nonce++)
-      msg[TYPE] = 'tradle.YourMoney'
+      msg[TYPE] = YOUR_MONEY
 
       signNSend(msg)
       return Q.all([
-          awaitForm('tradle.LicenseVerification'),
-          awaitTypeUnchained('tradle.YourMoney'),
+          awaitForm(LICENSE),
+          awaitTypeUnchained(YOUR_MONEY),
           awaitVerification()
         ])
         .then(function () {
@@ -318,11 +331,11 @@ function runTests (setup, idx) {
       }
 
       msg[NONCE] = '' + (nonce++)
-      msg[TYPE] = 'tradle.LicenseVerification'
+      msg[TYPE] = LICENSE
 
       signNSend(msg)
       return Q.all([
-        awaitTypeUnchained('tradle.LicenseVerification'),
+        awaitTypeUnchained(LICENSE),
         awaitVerification(),
         awaitConfirmation()
       ])
@@ -335,22 +348,32 @@ function runTests (setup, idx) {
       )
 
       signNSend(msg)
-      return awaitForm('tradle.AboutYou')
+      return awaitForm(ABOUT_YOU)
     }
 
     function bank2sendAboutYouVer () {
-      shareVerification('tradle.AboutYou')
-      return awaitForm('tradle.YourMoney')
+      shareVerification(ABOUT_YOU)
+      return Q.all([
+        awaitForm(YOUR_MONEY),
+        awaitTypeUnchained(VERIFICATION)
+      ])
     }
 
     function bank2sendYourMoneyVer () {
-      shareVerification('tradle.YourMoney')
-      return awaitForm('tradle.LicenseVerification')
+      shareVerification(YOUR_MONEY)
+      // return awaitForm(LICENSE)
+      return Q.all([
+        awaitForm(LICENSE),
+        awaitTypeUnchained(VERIFICATION)
+      ])
     }
 
     function bank2sendLicenseVer () {
-      shareVerification('tradle.LicenseVerification')
-      return awaitConfirmation()
+      shareVerification(LICENSE)
+      return Q.all([
+        awaitConfirmation(),
+        awaitTypeUnchained(VERIFICATION)
+      ])
     }
 
     function forget () {
@@ -376,9 +399,20 @@ function runTests (setup, idx) {
         .done()
     }
 
+    // function shareForm (type) {
+    //   var opts = {
+    //     chain: false,
+    //     deliver: true,
+    //     to: bankCoords
+    //   }
+
+    //   opts[CUR_HASH] = verifications[type]
+    //   APPLICANT.share(opts)
+    // }
+
     function shareVerification (type) {
       var opts = {
-        chain: true,
+        chain: false,
         deliver: true,
         to: bankCoords
       }
@@ -388,7 +422,7 @@ function runTests (setup, idx) {
     }
 
     function awaitVerification () {
-      return awaitType('tradle.Verification')
+      return awaitType(VERIFICATION)
         .then(function () {
           t.pass('verified')
         })
@@ -426,6 +460,7 @@ function runTests (setup, idx) {
 
       function unchainedHandler (info) {
         if (info[TYPE] === type) {
+          t.pass('unchained ' + type)
           defer.resolve()
         }
       }
@@ -447,7 +482,7 @@ function runTests (setup, idx) {
         APPLICANT.lookupObject(info)
           .done(function (obj) {
             var text = obj.parsed.data.message
-            t.equal(utils.parseSimpleMsg(text).type, nextFormType)
+            t.equal(utils.parseSimpleMsg(text).type, nextFormType, 'got ' + nextFormType)
             defer.resolve()
           })
       }
