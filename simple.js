@@ -216,6 +216,11 @@ function publishCustomerIdentity (req) {
     })
 
   function publish () {
+    if (!Bank.ALLOW_CHAINING) {
+      bank._debug('not chaining identity. To enable chaining, set Bank.ALLOW_CHAINING=true', curHash)
+      return
+    }
+
     return tim.publishIdentity(identity)
       .then(function () {
         var resp = {}
