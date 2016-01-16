@@ -350,22 +350,22 @@ function sendNextFormOrApprove (req) {
   var reqdForms = getForms(productModel)
   var skip = false
   var missing
-  reqdForms.some(function (fType) {
+  reqdForms.forEach(function (fType) {
     var existing = state.forms[fType]
     if (!existing) {
-      return missing = fType
+      return missing = missing || fType
     }
 
-    // missing form
+    // have verification, missing form
     skip = !existing.form && existing.verifications.length
-    if (skip) return true
 
     // missing both form and verification
     if (!(existing.form || !existing.verifications.length)) {
-      return missing = fType
+      return missing = missing || fType
     }
   })
 
+  // wait to get the form
   if (skip) return Q()
 
   var acquiredProduct

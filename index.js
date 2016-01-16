@@ -220,6 +220,8 @@ Bank.prototype._onMessage = function (msg) {
 
   // TODO: move most of this out to implementation (e.g. simple.js)
 
+  this._debug('received', msg[TYPE])
+
   var req = new RequestState(msg)
   var res = {}
   var from = req.from[ROOT_HASH]
