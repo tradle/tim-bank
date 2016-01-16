@@ -15,6 +15,7 @@ var constants = require('@tradle/constants')
 var elistener = require('elistener')
 var Tim = require('tim')
 var RequestState = require('./lib/requestState')
+var BANK_VERSION = require('./package.json').version
 var EventType = Tim.EventType
 var CUR_HASH = constants.CUR_HASH
 var ROOT_HASH = constants.ROOT_HASH
@@ -388,7 +389,8 @@ function newCustomerState (customerRootHash) {
   var state = {
     pendingApplications: [],
     products: {},
-    forms: {}
+    forms: {},
+    bankVersion: BANK_VERSION
   }
 
   state[ROOT_HASH] = customerRootHash

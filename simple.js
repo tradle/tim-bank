@@ -2,7 +2,7 @@
 var typeforce = require('typeforce')
 var Q = require('q')
 var find = require('array-find')
-var debug = require('debug')('bank:simple')
+var debug = require('debug')('bank')
 var constants = require('@tradle/constants')
 var MODELS = require('@tradle/models')
 var Builder = require('@tradle/chained-obj').Builder
@@ -18,6 +18,7 @@ var types = constants.TYPES
 var FORGET_ME = 'tradle.ForgetMe'
 var FORGOT_YOU = 'tradle.ForgotYou'
 var MODELS_BY_ID = {}
+
 MODELS.forEach(function (m) {
   MODELS_BY_ID[m.id] = m
 })
@@ -34,7 +35,11 @@ PRODUCT_TYPES.forEach(function (productType) {
   var model = MODELS_BY_ID[productType]
   var docTypes = getForms(model)
   PRODUCT_TO_DOCS[productType] = docTypes
-  DOC_TYPES.push.apply(DOC_TYPES, docTypes)
+  docTypes.forEach(function (t) {
+    if (DOC_TYPES.indexOf(t) === -1) {
+      DOC_TYPES.push(t)
+    }
+  })
 })
 
 var noop = function () {}
@@ -347,26 +352,29 @@ function sendNextFormOrApprove (req) {
     thisProduct = state.products[productType] = []
   }
 
+  var isFormOrVerification = req[TYPE] === types.VERIFICATION || DOC_TYPES.indexOf(req[TYPE]) !== -1
   var reqdForms = getForms(productModel)
-  var skip = false
+  var skip
   var missing
+  var verOnly = expectsVerificationOnly(req)
   reqdForms.forEach(function (fType) {
     var existing = state.forms[fType]
-    if (!existing) {
-      return missing = missing || fType
-    }
+    if (existing) {
+      // have verification, missing form
+      skip = existing.verifications.length && !existing.form
 
-    // have verification, missing form
-    skip = !existing.form && existing.verifications.length
-
-    // missing both form and verification
-    if (!(existing.form || !existing.verifications.length)) {
-      return missing = missing || fType
+      // missing both form and verification
+      if (!existing.form && !existing.verifications.length) {
+        missing = missing || fType
+      }
+    } else {
+      missing = missing || fType
     }
   })
 
   // wait to get the form
-  if (skip) return Q()
+  // starting with 1.0.7, the bank wants both the form and the verification
+  if (isFormOrVerification && skip) return Q()
 
   var acquiredProduct
   var opts = {}
@@ -512,4 +520,8 @@ function getType (obj) {
   if (obj[TYPE]) return obj[TYPE]
   if (!obj.id) return
   return obj.id.split('_')[0]
+}
+
+function expectsVerificationOnly (req) {
+  return !utils.versionGT(req.state.bankVersion || '1.0.0', '1.0.6')
 }

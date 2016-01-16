@@ -354,7 +354,10 @@ function runTests (setup, idx) {
 
     function bank2sendAboutYouVer () {
       shareVerification(ABOUT_YOU)
-      shareForm(ABOUT_YOU)
+        .then(function () {
+          shareForm(ABOUT_YOU)
+        })
+
       return Q.all([
         awaitForm(YOUR_MONEY),
         awaitTypeUnchained(VERIFICATION)
@@ -363,8 +366,10 @@ function runTests (setup, idx) {
 
     function bank2sendYourMoneyVer () {
       shareVerification(YOUR_MONEY)
-      shareForm(YOUR_MONEY)
-      // return awaitForm(LICENSE)
+        .then(function () {
+          shareForm(YOUR_MONEY)
+        })
+
       return Q.all([
         awaitForm(LICENSE),
         awaitTypeUnchained(VERIFICATION)
@@ -373,7 +378,10 @@ function runTests (setup, idx) {
 
     function bank2sendLicenseVer () {
       shareVerification(LICENSE)
-      shareForm(LICENSE)
+        .then(function () {
+          shareForm(LICENSE)
+        })
+
       return Q.all([
         awaitConfirmation(),
         awaitTypeUnchained(VERIFICATION)
@@ -414,7 +422,7 @@ function runTests (setup, idx) {
       }
 
       opts[CUR_HASH] = forms[type]
-      APPLICANT.share(opts)
+      return APPLICANT.share(opts)
     }
 
     function shareVerification (type) {
@@ -425,7 +433,7 @@ function runTests (setup, idx) {
       }
 
       opts[CUR_HASH] = verifications[type]
-      APPLICANT.share(opts)
+      return APPLICANT.share(opts)
     }
 
     function awaitVerification () {
