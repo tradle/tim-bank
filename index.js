@@ -165,7 +165,10 @@ Bank.prototype._setCustomerState = function (req) {
  */
 Bank.prototype.forgetCustomer = function (req) {
   var self = this
-  delete req.state // will get deleted on end of message processing
+  var v = req.state.bankVersion
+  // clear customer slate
+  req.state = newCustomerState()
+  req.state.bankVersion = v // preserve version
   this.tim.forget(req.from[ROOT_HASH])
   this.tim.on('forgot', onForgot)
   var defer = Q.defer()

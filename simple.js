@@ -356,11 +356,12 @@ function sendNextFormOrApprove (req) {
   var reqdForms = getForms(productModel)
   var skip
   var missing
-  var verOnly = expectsVerificationOnly(req)
   reqdForms.forEach(function (fType) {
     var existing = state.forms[fType]
     if (existing) {
       // have verification, missing form
+      // skip, wait to get the form
+      // starting with v1.0.7, the bank wants both the form and the verification
       skip = existing.verifications.length && !existing.form
 
       // missing both form and verification
@@ -372,8 +373,6 @@ function sendNextFormOrApprove (req) {
     }
   })
 
-  // wait to get the form
-  // starting with 1.0.7, the bank wants both the form and the verification
   if (isFormOrVerification && skip) return Q()
 
   var acquiredProduct
@@ -520,8 +519,4 @@ function getType (obj) {
   if (obj[TYPE]) return obj[TYPE]
   if (!obj.id) return
   return obj.id.split('_')[0]
-}
-
-function expectsVerificationOnly (req) {
-  return !utils.versionGT(req.state.bankVersion || '1.0.0', '1.0.6')
 }
