@@ -15,6 +15,7 @@
   "dependencies": {
     "@tradle/bittorrent-dht": "^3.2.1",
     "@tradle/cb-blockr": "^3.1.2",
+    "@tradle/cb-proxy": "^1.0.0",
     "@tradle/chained-obj": "^2.0.3",
     "@tradle/constants": "^1.1.6",
     "@tradle/http-keeper": "^3.1.1",
@@ -26,6 +27,7 @@
     "@tradle/tim-server": "^1.0.0",
     "@tradle/utils": "^1.0.0",
     "array-find": "^1.0.0",
+    "cb-proxy": "mvayngrib/cb-proxy",
     "compression": "^1.6.0",
     "concat-stream": "^1.5.1",
     "debug": "^2.2.0",
@@ -41,7 +43,7 @@
     "rimraf": "^2.4.3",
     "simple-get": "^1.4.3",
     "stream-collector": "^1.0.1",
-    "tim": "^3.7.0",
+    "tim": "^3.8.0",
     "typeforce": "^1.4.0",
     "xtend": "^4.0.0"
   },

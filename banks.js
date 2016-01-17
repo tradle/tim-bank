@@ -39,6 +39,8 @@ Tim.enableOptimizations()
 var HttpServer = Tim.Messengers.HttpServer
 var Identity = Tim.Identity
 var installServer = require('@tradle/tim-server')
+var BlockchainProxy = require('@tradle/cb-proxy')
+var Blockchain = require('@tradle/cb-blockr')
 var Zlorp = Tim.Zlorp;
 Zlorp.ANNOUNCE_INTERVAL = 10000
 Zlorp.LOOKUP_INTERVAL = 10000
@@ -82,14 +84,26 @@ process.on('uncaughtException', function (err) {
 
 var storagePath = path.resolve(argv.path)
 mkdirp.sync(storagePath)
+
+var app = express()
+app.use(compression({ filter: function () { return true } }))
+var port = Number(conf.port) || DEFAULT_PORT
+server = app.listen(port)
+
+var bRouter = new express.Router()
+app.use('/blockchain', bRouter)
+var blockchainProxy = new BlockchainProxy({
+  path: path.join(storagePath, 'blockchainCache.json'),
+  router: bRouter
+})
+
+onDestroy.push(function () {
+  return Q.ninvoke(blockchainProxy, 'destroy')
+})
+
 run()
 
 function run () {
-  var app = express()
-  app.use(compression({ filter: function () { return true } }))
-  var port = Number(conf.port) || DEFAULT_PORT
-  server = app.listen(port)
-
   if (argv.seq) {
     // start one at a time to avoid
     // straining blockchain APIs
@@ -145,7 +159,7 @@ function runBank (opts) {
   console.log('running bank:', name)
 
   var conf = opts.conf
-  var port = conf.port || (DEFAULT_TIM_PORT++)
+  var bankPort = conf.port || (DEFAULT_TIM_PORT++)
   var identity = loadJSON(conf.pub)
   var keys = loadJSON(conf.priv)
 
@@ -156,13 +170,14 @@ function runBank (opts) {
 
   var tim = buildNode({
     dht: false,
-    port: port,
+    port: bankPort,
     pathPrefix: path.join(storagePath, name),
     networkName: networkName,
     identity: Identity.fromJSON(identity),
     identityKeys: keys,
-    syncInterval: 120000,
+    syncInterval: 60000,
     afterBlockTimestamp: afterBlockTimestamp,
+    blockchain: new Blockchain(networkName, 'http://127.0.0.1:' + port + '/blockchain?url='),
     messenger: httpServer
   })
 
