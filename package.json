@@ -20,7 +20,7 @@
     "@tradle/constants": "^1.1.6",
     "@tradle/http-keeper": "^3.1.1",
     "@tradle/identity": "^1.2.2",
-    "@tradle/kiki": "^1.1.12",
+    "@tradle/kiki": "^1.1.13",
     "@tradle/models": "^1.2.3",
     "@tradle/multiplex-utp": "^1.0.1",
     "@tradle/simple-wallet": "^1.0.0",
@@ -51,6 +51,7 @@
     "@tradle/test-helpers": "^1.2.0",
     "cli-table": "^0.3.1",
     "memdown": "^1.1.0",
+    "socket.io": "^1.4.4",
     "tape": "^4.2.2",
     "time-method": "^2.0.0"
   }
