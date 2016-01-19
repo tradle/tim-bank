@@ -87,6 +87,10 @@ mkdirp.sync(storagePath)
 
 var app = express()
 app.use(compression({ filter: function () { return true } }))
+app.get('/ping', function (req, res) {
+  res.status(200).end()
+})
+
 var port = Number(conf.port) || DEFAULT_PORT
 server = app.listen(port)
 
