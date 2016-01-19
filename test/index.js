@@ -2,6 +2,7 @@
 // require('q-to-bluebird')
 require('@tradle/multiplex-utp')
 
+var crypto = require('crypto')
 var constants = require('@tradle/constants')
 // for now
 constants.TYPES.GET_MESSAGE = 'tradle.getMessage'
@@ -35,14 +36,18 @@ var extend = require('xtend')
 var find = require('array-find')
 var memdown = require('memdown')
 var DHT = require('@tradle/bittorrent-dht')
+var DSA = require('@tradle/otr').DSA
 var Tim = require('tim')
 Tim.CATCH_UP_INTERVAL = 2000
 // Tim.Zlorp.ANNOUNCE_INTERVAL = Tim.Zlorp.LOOKUP_INTERVAL = 5000
 Tim.CHAIN_WRITE_THROTTLE = 0
 Tim.CHAIN_READ_THROTTLE = 0
 Tim.SEND_THROTTLE = 0
-var HttpClient = Tim.Messengers.HttpClient
-var HttpServer = Tim.Messengers.HttpServer
+var Messengers = require('@tradle/transport')
+var HttpClient = Messengers.HttpClient
+var HttpServer = Messengers.HttpServer
+var WebSocketClient = Messengers.WebSocketClient
+var WebSocketRelay = Messengers.WebSocketRelay
 var get = require('simple-get')
 var Identity = require('@tradle/identity').Identity
 var TYPE = constants.TYPE
@@ -85,6 +90,7 @@ var COMMON_OPTS = {
 
 var APPLICANT
 var BANK_SERVER
+var WEBSOCKET_RELAY
 var BANK_REPS = [{
   pub: tedPub,
   priv: tedPriv
@@ -96,6 +102,10 @@ var BANK_REPS = [{
 var BANKS
 
 ;[
+  {
+    name: 'websockets',
+    init: initWebsockets
+  },
   {
     name: 'client/server',
     init: init
@@ -291,7 +301,7 @@ function runTests (setup, idx) {
         maritalStatus: 'Single'
       }
 
-      msg[NONCE] = '' + (nonce++)
+      msg[NONCE] = crypto.randomBytes(32).toString('base64')// '' + (nonce++)
       msg[TYPE] = ABOUT_YOU
 
       signNSend(msg)
@@ -402,6 +412,7 @@ function runTests (setup, idx) {
     function signNSend (msg, opts) {
       APPLICANT.sign(msg)
         .then(function (signed) {
+          // console.log(JSON.stringify(JSON.parse(signed), null, 2))
           return APPLICANT.send(extend({
             msg: signed,
             to: bankCoords,
@@ -576,6 +587,7 @@ function buildNode (opts) {
 }
 
 function teardown () {
+  if (WEBSOCKET_RELAY) WEBSOCKET_RELAY.destroy()
   if (BANK_SERVER) BANK_SERVER.close()
   return Q.all(BANKS.concat(APPLICANT).map(function (entity) {
       return entity.destroy()
@@ -718,6 +730,91 @@ function init () {
   }))
 }
 
+function initWebsockets () {
+  var aPort = BASE_PORT++
+  var applicantKeys = billPriv
+  var applicantWallet = walletFor(applicantKeys, null, 'messaging')
+  WEBSOCKET_RELAY = new WebSocketRelay({
+    port: aPort
+  })
+
+  var relayURL = 'http://127.0.0.1:' + aPort
+  var applicantClient = new WebSocketClient({
+    url: relayURL,
+    otrKey: getDSAKey(applicantKeys),
+    // byRootHash: function (rootHash) {
+    //   var coords = {}
+    //   coords[ROOT_HASH] = rootHash
+    //   return APPLICANT.lookupIdentity(coords)
+    // }
+  })
+
+  APPLICANT = buildNode({
+    dht: false,
+    wallet: applicantWallet,
+    blockchain: applicantWallet.blockchain,
+    messenger: applicantClient,
+    identity: Identity.fromJSON(billPub),
+    identityKeys: applicantKeys,
+    port: aPort
+  })
+
+  APPLICANT.once('ready', function () {
+    APPLICANT.messenger.setRootHash(APPLICANT.myRootHash())
+  })
+
+  BANKS = BANK_REPS.map(function (rep, i) {
+    var port = BASE_PORT++
+    // var dht = new DHT(dhtConf)
+    // dht.listen(port)
+
+    var router = express.Router()
+    var httpServer = new HttpServer({
+      router: router
+    })
+
+    var client = new WebSocketClient({
+      url: relayURL,
+      otrKey: getDSAKey(rep.priv),
+      // byRootHash: function (rootHash) {
+      //   var coords = {}
+      //   coords[ROOT_HASH] = rootHash
+      //   return tim.lookupIdentity(coords)
+      // }
+    })
+
+    var tim = buildNode({
+      dht: false,
+      blockchain: applicantWallet.blockchain,
+      identity: Identity.fromJSON(rep.pub),
+      identityKeys: rep.priv,
+      port: port,
+      messenger: client
+    })
+
+    tim.once('ready', function () {
+      tim.messenger.setRootHash(tim.myRootHash())
+    })
+
+    var bank = new Bank({
+      tim: tim,
+      manual: true,
+      path: getNextBankPath(),
+      leveldown: memdown
+    })
+
+    client.on('message', function (buf, senderInfo) {
+      bank.receiveMsg(buf, senderInfo)
+    })
+
+    return bank
+  })
+
+  return Q.all(getTims().map(function (t) {
+    return t.ready()
+  }))
+}
+
 function publishIdentities (/* drivers */) {
   var defer = Q.defer()
   var drivers = Array.isArray(arguments[0])
@@ -779,4 +876,12 @@ function getCoords (tim) {
   return [{
     fingerprint: tim.identityJSON.pubkeys[0].fingerprint
   }]
+}
+
+function getDSAKey (keys) {
+  var key = keys.filter(function (k) {
+    return k.type === 'dsa'
+  })[0]
+
+  return DSA.parsePrivate(key.priv)
 }
