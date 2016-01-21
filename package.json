@@ -15,7 +15,7 @@
   "dependencies": {
     "@tradle/bittorrent-dht": "^3.2.1",
     "@tradle/cb-blockr": "^3.1.2",
-    "@tradle/cb-proxy": "^1.1.0",
+    "@tradle/cb-proxy": "^1.1.1",
     "@tradle/chained-obj": "^2.0.3",
     "@tradle/constants": "^1.1.6",
     "@tradle/http-keeper": "^3.1.1",
