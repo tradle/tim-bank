@@ -40,7 +40,6 @@
     "mkdirp": "^0.5.1",
     "q": "^1.4.1",
     "request": "^2.67.0",
-    "rimraf": "^2.4.3",
     "simple-get": "^1.4.3",
     "stream-collector": "^1.0.1",
     "tim": "^3.8.0",
@@ -49,7 +48,6 @@
   },
   "devDependencies": {
     "@tradle/test-helpers": "^1.2.0",
-    "@tradle/transport-http": "^1.0.0",
     "@tradle/transport-ws": "^1.0.0",
     "cli-table": "^0.3.1",
     "memdown": "^1.1.0",
