@@ -9,7 +9,7 @@ var conf = require(path.resolve(confPath))
 if (!conf) throw new Error('specify conf file path')
 
 var table = new Table({
-  head: ['Bank', 'Address', 'Balance']
+  head: ['Bank', 'Address', 'Confirmed Balance', 'Unconfirmed Balance']
 })
 
 var togo = 0
@@ -24,15 +24,39 @@ Object.keys(conf.banks).forEach(function (name) {
   messagingKey.blockchain = new Blockchain('testnet')
   var wallet = new Wallet(messagingKey)
   var addr = wallet.addressString
-  wallet.balance(function (err, balance) {
+  wallet.unspents(function (err, utxos) {
     if (err) {
       table.push([name, addr, 'FAILED: ' + err.message])
     } else {
-      table.push([name, addr, balance])
+      var uUnspents = 0
+      var cUnspents = 0
+      var ubalance = 0
+      var cbalance = 0
+      utxos.forEach(function (u) {
+        if (u.confirmations) {
+          cbalance += u.value
+          cUnspents++
+        } else {
+          ubalance += u.value
+          uUnspents++
+        }
+      })
+
+      table.push([name, addr, cbalance + '(' + cUnspents + ')', ubalance + '(' + uUnspents + ')'])
     }
 
     finish()
   })
+
+  // wallet.balance(function (err, balance) {
+  //   if (err) {
+  //     table.push([name, addr, 'FAILED: ' + err.message])
+  //   } else {
+  //     table.push([name, addr, balance])
+  //   }
+
+  //   finish()
+  // })
 })
 
 function finish () {
