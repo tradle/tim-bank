@@ -36,7 +36,7 @@ var buildNode = require('./lib/buildNode')
 var watchBalanceAndRecharge = require('./lib/rechargePeriodically')
 var Tim = require('tim')
 Tim.enableOptimizations()
-var HttpServer = Tim.Messengers.HttpServer
+var HttpServer = require('@tradle/transport-http').HttpServer
 var Identity = Tim.Identity
 var installServer = require('@tradle/tim-server')
 var BlockchainProxy = require('@tradle/cb-proxy')
