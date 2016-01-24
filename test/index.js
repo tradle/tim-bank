@@ -30,6 +30,7 @@ CurrentAccount.forms = [
 ]
 
 var test = require('tape')
+var typeforce = require('typeforce')
 var express = require('express')
 var Q = require('q')
 var extend = require('xtend')
@@ -37,13 +38,16 @@ var find = require('array-find')
 var memdown = require('memdown')
 var DHT = require('@tradle/bittorrent-dht')
 var DSA = require('@tradle/otr').DSA
+var kiki = require('@tradle/kiki')
 var Tim = require('tim')
+var Zlorp = require('zlorp')
 Tim.CATCH_UP_INTERVAL = 2000
 // Tim.Zlorp.ANNOUNCE_INTERVAL = Tim.Zlorp.LOOKUP_INTERVAL = 5000
 Tim.CHAIN_WRITE_THROTTLE = 0
 Tim.CHAIN_READ_THROTTLE = 0
 Tim.SEND_THROTTLE = 0
 var Transport = extend(require('@tradle/transport-http'), {
+  P2P: require('@tradle/transport-p2p'),
   WebSocketClient: require('@tradle/ws-client'),
   WebSocketRelay: require('@tradle/ws-relay')
 })
@@ -80,10 +84,11 @@ var pathCounter = 0
 var initCount = 0
 var nonce = 0
 
+var sharedKeeper = FakeKeeper.empty()
 var COMMON_OPTS = {
   leveldown: memdown,
   // TODO: test without shared keeper
-  keeper: FakeKeeper.empty(),
+  keeper: newKeeper(),
   // keeper: new Keeper({
   //   storage: 'keeperStorage'
   // }),
@@ -597,6 +602,11 @@ function teardown () {
       return entity.destroy()
     }))
     .then(function () {
+      return Q.all(getTims().map(function (t) {
+        return t.messenger && t.messenger.destroy()
+      }))
+    })
+    .then(function () {
       getTims().forEach(function (t) {
         if (t.dht) t.dht.destroy()
       })
@@ -623,8 +633,14 @@ function initP2P () {
     wallet: applicantWallet,
     blockchain: applicantWallet.blockchain,
     identity: Identity.fromJSON(billPub),
-    identityKeys: billPriv,
-    port: aPort
+    keys: billPriv,
+    port: aPort,
+    messenger: newMessenger({
+      keys: billPriv,
+      identityJSON: billPub,
+      port: aPort,
+      dht: aDHT
+    })
   })
 
   BANKS = BANK_REPS.map(function (rep, i) {
@@ -636,8 +652,14 @@ function initP2P () {
       dht: dht,
       blockchain: applicantWallet.blockchain,
       identity: Identity.fromJSON(rep.pub),
-      identityKeys: rep.priv,
-      port: port
+      keys: rep.priv,
+      port: port,
+      messenger: newMessenger({
+        keys: rep.priv,
+        identityJSON: rep.pub,
+        port: port,
+        dht: dht
+      })
     })
 
     var bank = new Bank({
@@ -678,7 +700,7 @@ function init () {
     blockchain: applicantWallet.blockchain,
     messenger: new HttpClient(),
     identity: Identity.fromJSON(billPub),
-    identityKeys: billPriv,
+    keys: billPriv,
     port: aPort
   })
 
@@ -704,7 +726,7 @@ function init () {
       dht: false,
       blockchain: applicantWallet.blockchain,
       identity: Identity.fromJSON(rep.pub),
-      identityKeys: rep.priv,
+      keys: rep.priv,
       port: port,
       messenger: httpServer
     })
@@ -759,7 +781,7 @@ function initWebsockets () {
     blockchain: applicantWallet.blockchain,
     messenger: applicantClient,
     identity: Identity.fromJSON(billPub),
-    identityKeys: applicantKeys,
+    keys: applicantKeys,
     port: aPort
   })
 
@@ -791,7 +813,7 @@ function initWebsockets () {
       dht: false,
       blockchain: applicantWallet.blockchain,
       identity: Identity.fromJSON(rep.pub),
-      identityKeys: rep.priv,
+      keys: rep.priv,
       port: port,
       messenger: client
     })
@@ -888,4 +910,48 @@ function getDSAKey (keys) {
   })[0]
 
   return DSA.parsePrivate(key.priv)
+}
+
+/**
+ * returns mock keeper with fallback to sharedKeeper (which hosts identities)
+ */
+function newKeeper () {
+  var k = FakeKeeper.empty()
+  var getOne = k.getOne
+  k.getOne = function (key) {
+    return getOne.apply(this, arguments)
+      .catch(function (err) {
+        return sharedKeeper.getOne(key)
+      })
+  }
+
+  k.push = function (opts) {
+    typeforce({
+      key: 'String',
+      value: 'Buffer'
+    }, opts)
+
+    return sharedKeeper.put(opts.key, opts.value)
+  }
+
+  return k
+}
+
+function newMessenger (opts) {
+  typeforce({
+    identityJSON: 'Object',
+    keys: 'Array',
+    port: 'Number',
+    dht: 'Object'
+  }, opts)
+
+  return new Transport.P2P({
+    zlorp: new Zlorp({
+      available: true,
+      leveldown: memdown,
+      port: opts.port,
+      dht: opts.dht,
+      key: getDSAKey(opts.keys)
+    })
+  })
 }

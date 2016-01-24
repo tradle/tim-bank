@@ -29,6 +29,7 @@ var Q = require('q')
 var debug = require('debug')('bankd')
 var leveldown = require('leveldown')
 var constants = require('@tradle/constants')
+var Builder = require('@tradle/chained-obj').Builder
 var Bank = require('./')
 Bank.ALLOW_CHAINING = argv.chain
 var newSimpleBank = require('./simple')
@@ -37,13 +38,17 @@ var watchBalanceAndRecharge = require('./lib/rechargePeriodically')
 var Tim = require('tim')
 Tim.enableOptimizations()
 var HttpServer = require('@tradle/transport-http').HttpServer
+var WebSocketClient = require('@tradle/ws-client')
+var WebSocketRelay = require('@tradle/ws-relay')
+var DSA = require('@tradle/otr').DSA
 var Identity = Tim.Identity
 var installServer = require('@tradle/tim-server')
+var localOnly = installServer.middleware.localOnly
 var BlockchainProxy = require('@tradle/cb-proxy')
 var Blockchain = require('@tradle/cb-blockr')
-var Zlorp = Tim.Zlorp;
-Zlorp.ANNOUNCE_INTERVAL = 10000
-Zlorp.LOOKUP_INTERVAL = 10000
+// var Zlorp = Tim.Zlorp
+// Zlorp.ANNOUNCE_INTERVAL = 10000
+// Zlorp.LOOKUP_INTERVAL = 10000
 var DEV = process.env.NODE_ENV === 'development'
 var DEFAULT_PORT = 44444
 var DEFAULT_TIM_PORT = 34343
@@ -91,10 +96,15 @@ app.get('/ping', function (req, res) {
   res.status(200).end()
 })
 
+// app.get('/info', function (req, res) {
+//   res.status(200).json(ENDPOINT_INFO)
+// })
+
 var port = Number(conf.port) || DEFAULT_PORT
 server = app.listen(port)
 
 var bRouter = new express.Router()
+app.use('/blockchain', localOnly)
 app.use('/blockchain', bRouter)
 var blockchainProxy = new BlockchainProxy({
   path: path.join(storagePath, 'blockchainCache.json'),
@@ -160,6 +170,8 @@ function runBank (opts) {
 
   var app = opts.app
   var name = opts.name.toLowerCase()
+  // ENDPOINT_INFO.providers.push(name)
+
   console.log('running bank:', name)
 
   var conf = opts.conf
@@ -167,22 +179,16 @@ function runBank (opts) {
   var identity = loadJSON(conf.pub)
   var keys = loadJSON(conf.priv)
 
-  var router = express.Router()
-  var httpServer = new HttpServer({
-    router: router
-  })
-
   var tim = buildNode({
     dht: false,
     port: bankPort,
     pathPrefix: path.join(storagePath, name),
     networkName: networkName,
     identity: Identity.fromJSON(identity),
-    identityKeys: keys,
+    keys: keys,
     syncInterval: 60000,
     afterBlockTimestamp: afterBlockTimestamp,
     blockchain: new Blockchain(networkName, 'http://127.0.0.1:' + port + '/blockchain?url='),
-    messenger: httpServer
   })
 
   var bank = newSimpleBank({
@@ -192,10 +198,48 @@ function runBank (opts) {
     manual: true // receive msgs manually
   })
 
-  httpServer.receive = bank.receiveMsg.bind(bank)
-  tim.once('ready', function () {
-    app.use('/' + name + '/send', router)
-  })
+  var otrKey = keys.filter(function (k) {
+    return k.type === 'dsa'
+  })[0].priv
+
+  // TODO: allow both http and websockets endpoints
+  if (otrKey) {
+    var wsPort = conf.wsPort
+    debug('choosing websockets, port', wsPort)
+    var websocketRelay = new WebSocketRelay({
+      port: wsPort
+    })
+
+    // bank bot websocket client
+    var websocketClient = new WebSocketClient({
+      url: 'http://127.0.0.1:' + wsPort,
+      otrKey: DSA.parsePrivate(otrKey)
+    })
+
+    app.get('/' + name + '/info', function (req, res) {
+      res.status(200).json({
+        ws: wsPort
+      })
+    })
+
+    websocketClient.on('message', bank.receiveMsg)
+    tim._send = websocketClient.send.bind(websocketClient)
+    tim.ready().then(function () {
+      websocketClient.setRootHash(tim.myRootHash())
+    })
+  } else {
+    var router = express.Router()
+    var httpServer = new HttpServer({
+      router: router
+    })
+
+    httpServer.receive = bank.receiveMsg.bind(bank)
+    tim.once('ready', function () {
+      app.use('/' + name + '/send', router)
+    })
+
+    tim._send = httpServer.send.bind(httpServer)
+  }
 
   bank.wallet.balance(function (err, balance) {
     if (err) return
@@ -212,7 +256,7 @@ function runBank (opts) {
   }
 
   var byType = '/' + name + '/list/:type'
-  app.get(byType, installServer.middleware.localOnly)
+  app.get(byType, localOnly)
   app.get(byType, function (req, res, next) {
     bank.list(req.params.type)
       .then(res.json.bind(res))
