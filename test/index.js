@@ -43,7 +43,11 @@ Tim.CATCH_UP_INTERVAL = 2000
 Tim.CHAIN_WRITE_THROTTLE = 0
 Tim.CHAIN_READ_THROTTLE = 0
 Tim.SEND_THROTTLE = 0
-var Transport = extend(require('@tradle/transport-http'), require('@tradle/transport-ws'))
+var Transport = extend(require('@tradle/transport-http'), {
+  WebSocketClient: require('@tradle/ws-client'),
+  WebSocketRelay: require('@tradle/ws-relay')
+})
+
 var HttpClient = Transport.HttpClient
 var HttpServer = Transport.HttpServer
 var WebSocketClient = Transport.WebSocketClient

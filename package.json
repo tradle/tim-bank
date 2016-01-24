@@ -42,14 +42,15 @@
     "request": "^2.67.0",
     "simple-get": "^1.4.3",
     "stream-collector": "^1.0.1",
-    "tim": "^3.8.0",
+    "tim": "^3.12.2",
     "typeforce": "^1.4.0",
     "xtend": "^4.0.0"
   },
   "devDependencies": {
     "@tradle/otr": "^0.2.15",
     "@tradle/test-helpers": "^1.2.0",
-    "@tradle/transport-ws": "^1.0.0",
+    "@tradle/ws-client": "^1.0.0",
+    "@tradle/ws-relay": "^1.0.0",
     "cli-table": "^0.3.1",
     "memdown": "^1.1.0",
     "socket.io": "^1.4.4",
