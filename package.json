@@ -3,9 +3,6 @@
   "version": "1.4.1",
   "description": "tradle bank server",
   "main": "./index.js",
-  "bin": {
-    "banks": "./banks.js"
-  },
   "scripts": {
     "test": "node test",
     "style": "standard"
