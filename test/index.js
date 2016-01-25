@@ -88,13 +88,13 @@ var sharedKeeper = FakeKeeper.empty()
 var COMMON_OPTS = {
   leveldown: memdown,
   // TODO: test without shared keeper
-  keeper: newKeeper(),
+  // keeper: sharedKeeper,
   // keeper: new Keeper({
   //   storage: 'keeperStorage'
   // }),
   networkName: NETWORK_NAME,
   ip: '127.0.0.1',
-  syncInterval: 3000
+  // syncInterval: 3000
 }
 
 var APPLICANT
@@ -590,8 +590,10 @@ function buildNode (opts) {
   return origBuildNode(extend(COMMON_OPTS, {
     pathPrefix: opts.identity.name() + initCount,
     syncInterval: 0,
+    unchainThrottle: 0,
     chainThrottle: 0,
-    sendThrottle: 0
+    sendThrottle: 0,
+    keeper: newKeeper()
   }, opts))
 }
 
