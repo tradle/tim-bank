@@ -65,6 +65,20 @@ var afterBlockTimestamp = conf.afterBlockTimestamp ||  constants.afterBlockTimes
 var server
 var selfDestructing
 var onDestroy = []
+
+// TODO: remove this when we stop using blockr
+// or when blockr removes its 200txs/address limit
+var manualTxs = [
+  // safe
+  'a605b1b60a8616a7e145834e1831d498689eb5fc212d1e8c11c45a27ea59b5f8',
+  // easy
+  '0080491d1b9d870c6dcc8a60f87fa0ba1fcc617f76e8f414ecb1dd86188367a9',
+  // europi
+  '90c357e9f37a95d849677f6048838bc70a6694829c30988add3fe16af38955ac',
+  // friendly
+  '235f8ffd7a3f5ecd5de3408cfaad0d01a36a96195ff491850257bc5c3098b28b'
+]
+
 var bankNames = argv.banks
   ? argv.banks.split(',').map(function (b) {
     return b.trim()
@@ -190,6 +204,8 @@ function runBank (opts) {
     afterBlockTimestamp: afterBlockTimestamp,
     blockchain: new Blockchain(networkName, 'http://127.0.0.1:' + port + '/blockchain?url='),
   })
+
+  tim.watchTxs(manualTxs)
 
   var bank = newSimpleBank({
     tim: tim,
