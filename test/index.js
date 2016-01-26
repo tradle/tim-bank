@@ -794,22 +794,9 @@ function initWebsockets () {
 
   BANKS = BANK_REPS.map(function (rep, i) {
     var port = BASE_PORT++
-    // var dht = new DHT(dhtConf)
-    // dht.listen(port)
-
-    var router = express.Router()
-    var httpServer = new HttpServer({
-      router: router
-    })
-
     var client = new WebSocketClient({
       url: relayURL,
       otrKey: getDSAKey(rep.priv),
-      // byRootHash: function (rootHash) {
-      //   var coords = {}
-      //   coords[ROOT_HASH] = rootHash
-      //   return tim.lookupIdentity(coords)
-      // }
     })
 
     var tim = buildNode({
