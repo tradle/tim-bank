@@ -214,36 +214,36 @@ function runBank (opts) {
     manual: true // receive msgs manually
   })
 
-  var otrKey = keys.filter(function (k) {
-    return k.type === 'dsa'
-  })[0].priv
+  // var otrKey = keys.filter(function (k) {
+  //   return k.type === 'dsa'
+  // })[0].priv
 
-  // TODO: allow both http and websockets endpoints
-  if (otrKey) {
-    var wsPort = conf.wsPort
-    debug('choosing websockets, port', wsPort)
-    var websocketRelay = new WebSocketRelay({
-      port: wsPort
-    })
+  // // TODO: allow both http and websockets endpoints
+  // if (otrKey) {
+  //   var wsPort = conf.wsPort
+  //   debug('choosing websockets, port', wsPort)
+  //   var websocketRelay = new WebSocketRelay({
+  //     port: wsPort
+  //   })
 
-    // bank bot websocket client
-    var websocketClient = new WebSocketClient({
-      url: 'http://127.0.0.1:' + wsPort,
-      otrKey: DSA.parsePrivate(otrKey)
-    })
+  //   // bank bot websocket client
+  //   var websocketClient = new WebSocketClient({
+  //     url: 'http://127.0.0.1:' + wsPort,
+  //     otrKey: DSA.parsePrivate(otrKey)
+  //   })
 
-    app.get('/' + name + '/info', function (req, res) {
-      res.status(200).json({
-        ws: wsPort
-      })
-    })
+  //   app.get('/' + name + '/info', function (req, res) {
+  //     res.status(200).json({
+  //       ws: wsPort
+  //     })
+  //   })
 
-    websocketClient.on('message', bank.receiveMsg)
-    tim._send = websocketClient.send.bind(websocketClient)
-    tim.ready().then(function () {
-      websocketClient.setRootHash(tim.myRootHash())
-    })
-  } else {
+  //   websocketClient.on('message', bank.receiveMsg)
+  //   tim._send = websocketClient.send.bind(websocketClient)
+  //   tim.ready().then(function () {
+  //     websocketClient.setRootHash(tim.myRootHash())
+  //   })
+  // } else {
     var router = express.Router()
     var httpServer = new HttpServer({
       router: router
@@ -255,7 +255,7 @@ function runBank (opts) {
     })
 
     tim._send = httpServer.send.bind(httpServer)
-  }
+  // }
 
   bank.wallet.balance(function (err, balance) {
     if (err) return

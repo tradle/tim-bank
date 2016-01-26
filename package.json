@@ -4,8 +4,7 @@
   "description": "tradle bank server",
   "main": "./index.js",
   "scripts": {
-    "test": "node test",
-    "style": "standard"
+    "test": "node test"
   },
   "author": "Mark Vayngrib <mark.vayngrib@lablz.com> (http://github.com/mvayngrib)",
   "license": "GPLv3",
@@ -50,6 +49,7 @@
     "@tradle/test-helpers": "^1.2.0",
     "@tradle/transport-p2p": "^1.0.0",
     "cli-table": "^0.3.1",
+    "clone": "^1.0.2",
     "memdown": "^1.1.0",
     "random-name": "^0.1.1",
     "socket.io": "^1.4.4",

@@ -34,6 +34,7 @@ var typeforce = require('typeforce')
 var express = require('express')
 var Q = require('q')
 var extend = require('xtend')
+var clone = require('clone')
 var find = require('array-find')
 var memdown = require('memdown')
 var DHT = require('@tradle/bittorrent-dht')
@@ -633,7 +634,7 @@ function initP2P () {
   APPLICANT = buildNode({
     dht: aDHT,
     wallet: applicantWallet,
-    blockchain: applicantWallet.blockchain,
+    blockchain: clone(applicantWallet.blockchain),
     identity: Identity.fromJSON(billPub),
     keys: billPriv,
     port: aPort,
@@ -652,7 +653,7 @@ function initP2P () {
 
     var tim = buildNode({
       dht: dht,
-      blockchain: applicantWallet.blockchain,
+      blockchain: clone(applicantWallet.blockchain),
       identity: Identity.fromJSON(rep.pub),
       keys: rep.priv,
       port: port,
