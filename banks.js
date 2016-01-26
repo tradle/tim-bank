@@ -334,7 +334,9 @@ function cleanup () {
     process.exit(1)
   }, 5000).unref()
 
-  Q.all(onDestroy)
+  Q.all(onDestroy.map(function (fn) {
+      return fn()
+    }))
     .done(function () {
       debug('shutting down')
       process.exit()
