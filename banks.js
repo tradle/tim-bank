@@ -80,14 +80,25 @@ bankNames.forEach(function (bankName) {
   }
 })
 
-var ENDPOINT_INFO = {
-  providers: bankNames.map(function (name) {
-    var bConf = conf.banks[name]
-    // TODO: remove `txId` when we stop using blockr
-    // or when blockr removes its 200txs/address limit
-    return pick(bConf, 'name', 'txId', 'wsPort', 'org')
-  })
-}
+var manualTxs = [
+  // safe
+  'a605b1b60a8616a7e145834e1831d498689eb5fc212d1e8c11c45a27ea59b5f8',
+  // easy
+  '0080491d1b9d870c6dcc8a60f87fa0ba1fcc617f76e8f414ecb1dd86188367a9',
+  // europi
+  '90c357e9f37a95d849677f6048838bc70a6694829c30988add3fe16af38955ac',
+  // friendly
+  '235f8ffd7a3f5ecd5de3408cfaad0d01a36a96195ff491850257bc5c3098b28b'
+]
+
+// var ENDPOINT_INFO = {
+//   providers: bankNames.map(function (name) {
+//     var bConf = conf.banks[name]
+//     // TODO: remove `txId` when we stop using blockr
+//     // or when blockr removes its 200txs/address limit
+//     return pick(bConf, 'txId', 'wsPort', 'org')
+//   })
+// }
 
 process.on('exit', cleanup)
 process.on('SIGINT', cleanup)
@@ -106,9 +117,9 @@ app.get('/ping', function (req, res) {
   res.status(200).end()
 })
 
-app.get('/info', function (req, res) {
-  res.status(200).json(ENDPOINT_INFO)
-})
+// app.get('/info', function (req, res) {
+//   res.status(200).json(ENDPOINT_INFO)
+// })
 
 var port = Number(conf.port) || DEFAULT_PORT
 server = app.listen(port)
@@ -199,10 +210,12 @@ function runBank (opts) {
     blockchain: new Blockchain(networkName, 'http://127.0.0.1:' + port + '/blockchain?url='),
   })
 
-  tim.watchTxs(ENDPOINT_INFO.providers.map(function (info) {
-    return info.txId
-  }))
+  // tim.watchTxs(ENDPOINT_INFO.providers.map(function (info) {
+  //   return info.txId
+  // }))
 
+  // TODO: remove soon
+  tim.watchTxs(manualTxs)
   var bank = newSimpleBank({
     tim: tim,
     path: path.join(storagePath, name + '-customer-data.db'),
@@ -372,7 +385,7 @@ function pick (obj) {
   var picked = {}
   for (var i = 1; i < arguments.length; i++) {
     var p = arguments[i]
-    picked[i] = obj[p]
+    picked[p] = obj[p]
   }
 
   return picked

@@ -194,7 +194,7 @@ Bank.prototype._saveParsedMsg = function (req) {
 
 Bank.prototype._debugf = function () {
   var str = utils.format.apply(utils, arguments)
-  return debug(this.tim.name() + ' ' + str)
+  return debug(this._name + ' ' + str)
 }
 
 Bank.prototype._debug = function () {
@@ -320,7 +320,7 @@ Bank.prototype.send = function (req, resp, opts) {
   }
 
   var recipient = getSender(req.msg)
-  this._debug('sending {0} to {1}', resp[TYPE], recipient[ROOT_HASH])
+  this._debugf('sending {0} to {1}', resp[TYPE], recipient[ROOT_HASH])
 
   var maybeSign
   if (!(constants.SIG in resp)) {
