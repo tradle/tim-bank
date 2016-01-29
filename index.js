@@ -1,7 +1,6 @@
 require('@tradle/multiplex-utp')
 
 var assert = require('assert')
-var debug = require('debug')('bank')
 var extend = require('xtend')
 var levelup = require('levelup')
 var map = require('map-stream')
@@ -16,6 +15,7 @@ var elistener = require('elistener')
 var Tim = require('tim')
 var RequestState = require('./lib/requestState')
 var BANK_VERSION = require('./package.json').version
+var debug = require('./debug')
 var EventType = Tim.EventType
 var CUR_HASH = constants.CUR_HASH
 var ROOT_HASH = constants.ROOT_HASH
@@ -38,17 +38,20 @@ function Bank (options) {
     tim: 'Object',
     path: 'String',
     leveldown: 'Function',
+    name: '?String',
     manual: '?Boolean'
   }, options)
 
   tutils.bindPrototypeFunctions(this)
 
   var tim = options.tim
+
   Object.defineProperty(this, 'tim', {
     value: tim,
     writable: false
   })
 
+  this._name = options.name || tim.name()
   this.wallet = tim.wallet
 
   this.listenTo(tim, 'error', function (err) {
@@ -189,9 +192,14 @@ Bank.prototype._saveParsedMsg = function (req) {
   })
 }
 
+Bank.prototype._debugf = function () {
+  var str = utils.format.apply(utils, arguments)
+  return debug(this.tim.name() + ' ' + str)
+}
+
 Bank.prototype._debug = function () {
   var args = [].slice.call(arguments)
-  args.unshift(this.tim.name())
+  args.unshift(this._name)
   return debug.apply(null, args)
 }
 
@@ -224,11 +232,11 @@ Bank.prototype._onMessage = function (msg) {
 
   // TODO: move most of this out to implementation (e.g. simple.js)
 
-  this._debug('received', msg[TYPE])
-
   var req = new RequestState(msg)
   var res = {}
   var from = req.from[ROOT_HASH]
+  this._debugf('received {0} from {1}', req[TYPE], from)
+
   return this._getCustomerState(from)
     .catch(function (err) {
       if (!err.notFound) throw err
@@ -246,7 +254,7 @@ Bank.prototype._onMessage = function (msg) {
     })
     .then(function () {
       if (self.shouldChainReceivedMessage(req)) {
-        self._debug('chaining received msg', req[TYPE])
+        self._debug('queuing chain-seal for received msg', req[TYPE])
         self._chainReceivedMessage(req)
           .catch(function (err) {
             debug('failed to chain received msg', err)
@@ -311,6 +319,9 @@ Bank.prototype.send = function (req, resp, opts) {
     resp.time = Date.now()
   }
 
+  var recipient = getSender(req.msg)
+  this._debug('sending {0} to {1}', resp[TYPE], recipient[ROOT_HASH])
+
   var maybeSign
   if (!(constants.SIG in resp)) {
     maybeSign = this.tim.sign(resp)
@@ -321,7 +332,7 @@ Bank.prototype.send = function (req, resp, opts) {
   return maybeSign
     .then(function (signed) {
       return self.tim.send(extend({
-        to: [getSender(req.msg)],
+        to: [recipient],
         msg: signed,
         chain: Bank.ALLOW_CHAINING,
         deliver: true

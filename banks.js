@@ -206,6 +206,7 @@ function runBank (opts) {
   var bank = newSimpleBank({
     tim: tim,
     path: path.join(storagePath, name + '-customer-data.db'),
+    name: opts.name,
     leveldown: leveldown,
     manual: true // receive msgs manually
   })

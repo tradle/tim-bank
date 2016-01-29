@@ -460,7 +460,7 @@ function runTests (setup, idx) {
     function awaitVerification () {
       return awaitType(VERIFICATION)
         .then(function () {
-          t.pass('verified')
+          t.pass('received tradle.Verification')
         })
     }
 
@@ -667,6 +667,7 @@ function initP2P () {
 
     var bank = new Bank({
       tim: tim,
+      name: 'Bank ' + i,
       path: getNextBankPath(),
       leveldown: memdown
     })
@@ -737,6 +738,7 @@ function init () {
     var bank = new Bank({
       tim: tim,
       manual: true,
+      name: 'Bank ' + i,
       path: getNextBankPath(),
       leveldown: memdown
     })
@@ -815,6 +817,7 @@ function initWebsockets () {
     var bank = new Bank({
       tim: tim,
       manual: true,
+      name: 'Bank ' + i,
       path: getNextBankPath(),
       leveldown: memdown
     })

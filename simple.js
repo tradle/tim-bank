@@ -2,7 +2,6 @@
 var typeforce = require('typeforce')
 var Q = require('q')
 var find = require('array-find')
-var debug = require('debug')('bank')
 var constants = require('@tradle/constants')
 var MODELS = require('@tradle/models')
 var Builder = require('@tradle/chained-obj').Builder
@@ -11,6 +10,7 @@ var Identity = require('@tradle/identity').Identity
 var Bank = require('./')
 var utils = require('./lib/utils')
 var RequestState = require('./lib/requestState')
+var debug = require('./debug')
 var ROOT_HASH = constants.ROOT_HASH
 var CUR_HASH = constants.CUR_HASH
 var TYPE = constants.TYPE
@@ -117,7 +117,12 @@ function receiveMsg (msgBuf, senderInfo) {
   }
 
   if (msg[TYPE] !== types.IDENTITY_PUBLISHING_REQUEST) {
-    return utils.rejectWithHttpError(400, 'only ' + types.IDENTITY_PUBLISHING_REQUEST + ' plaintext messages accepted')
+    var errMsg = utils.format('rejecting cleartext {0}, only {1} are accepted in cleartext',
+        msg[TYPE],
+        types.IDENTITY_PUBLISHING_REQUEST)
+
+    bank._debug(errMsg)
+    return utils.rejectWithHttpError(400, errMsg)
   }
 
   if (msg[ROOT_HASH] && senderInfo[ROOT_HASH] && msg[ROOT_HASH] !== senderInfo[ROOT_HASH]) {
@@ -212,7 +217,6 @@ function publishCustomerIdentity (req) {
         var resp = utils.buildSimpleMsg('already published', types.IDENTITY)
         return bank.send(req, resp, { chain: false })
       } else {
-        bank._debug('publishing customer identity', curHash)
         return publish()
       }
     })
@@ -226,6 +230,7 @@ function publishCustomerIdentity (req) {
       return
     }
 
+    bank._debug('sealing customer identity with rootHash: ' + curHash)
     return tim.publishIdentity(identity)
       .then(function () {
         var resp = {}
