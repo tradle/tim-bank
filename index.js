@@ -45,6 +45,9 @@ function Bank (options) {
   tutils.bindPrototypeFunctions(this)
 
   var tim = options.tim
+  tim.on('chained', function (info) {
+    self._debugf('wrote chain-seal for {0} in tx with id {1}', info[TYPE], info.txId)
+  })
 
   Object.defineProperty(this, 'tim', {
     value: tim,
