@@ -3,12 +3,12 @@
 var path = require('path')
 var argv = require('minimist')(process.argv.slice(2), {
   alias: {
-    p: 'public',
     h: 'help',
     s: 'seq',
     c: 'chain',
     b: 'banks',
-    p: 'path'
+    d: 'path', // dir
+    p: 'port'
   },
   default: {
     chain: true,
@@ -25,7 +25,7 @@ if (argv.help) {
 var fs = require('fs')
 var mkdirp = require('mkdirp')
 var typeforce = require('typeforce')
-var Q = require('q')
+var Q = require('./q-to-bluebird')
 var debug = require('debug')('bankd')
 var leveldown = require('leveldown')
 var constants = require('@tradle/constants')
@@ -80,25 +80,31 @@ bankNames.forEach(function (bankName) {
   }
 })
 
-var manualTxs = [
-  // safe
-  'a605b1b60a8616a7e145834e1831d498689eb5fc212d1e8c11c45a27ea59b5f8',
-  // easy
-  '0080491d1b9d870c6dcc8a60f87fa0ba1fcc617f76e8f414ecb1dd86188367a9',
-  // europi
-  '90c357e9f37a95d849677f6048838bc70a6694829c30988add3fe16af38955ac',
-  // friendly
-  '235f8ffd7a3f5ecd5de3408cfaad0d01a36a96195ff491850257bc5c3098b28b'
-]
+var ENDPOINT_INFO = {
+  providers: bankNames.map(function (name) {
+    var bConf = conf.banks[name]
+    // TODO: remove `txId` when we stop using blockr
+    // or when blockr removes its 200txs/address limit
+    var info = pick(bConf, 'wsPort', 'org')
+    info.bot = {
+      identity: require(path.resolve(bConf.pub)),
+      txId: bConf.txId
+    }
 
-// var ENDPOINT_INFO = {
-//   providers: bankNames.map(function (name) {
-//     var bConf = conf.banks[name]
-//     // TODO: remove `txId` when we stop using blockr
-//     // or when blockr removes its 200txs/address limit
-//     return pick(bConf, 'txId', 'wsPort', 'org')
-//   })
-// }
+    return info
+  })
+}
+
+// var manualTxs = [
+//   // safe
+//   'a605b1b60a8616a7e145834e1831d498689eb5fc212d1e8c11c45a27ea59b5f8',
+//   // easy
+//   '0080491d1b9d870c6dcc8a60f87fa0ba1fcc617f76e8f414ecb1dd86188367a9',
+//   // europi
+//   '90c357e9f37a95d849677f6048838bc70a6694829c30988add3fe16af38955ac',
+//   // friendly
+//   '235f8ffd7a3f5ecd5de3408cfaad0d01a36a96195ff491850257bc5c3098b28b'
+// ]
 
 process.on('exit', cleanup)
 process.on('SIGINT', cleanup)
@@ -117,11 +123,11 @@ app.get('/ping', function (req, res) {
   res.status(200).end()
 })
 
-// app.get('/info', function (req, res) {
-//   res.status(200).json(ENDPOINT_INFO)
-// })
+app.get('/info', function (req, res) {
+  res.status(200).json(ENDPOINT_INFO)
+})
 
-var port = Number(conf.port) || DEFAULT_PORT
+var port = Number(argv.port) || Number(conf.port) || DEFAULT_PORT
 server = app.listen(port)
 
 var bRouter = new express.Router()
@@ -210,12 +216,7 @@ function runBank (opts) {
     blockchain: new Blockchain(networkName, 'http://127.0.0.1:' + port + '/blockchain?url='),
   })
 
-  // tim.watchTxs(ENDPOINT_INFO.providers.map(function (info) {
-  //   return info.txId
-  // }))
-
-  // TODO: remove soon
-  tim.watchTxs(manualTxs)
+  tim.watchTxs(ENDPOINT_INFO.providers.filter(getTxId).map(getTxId))
   var bank = newSimpleBank({
     tim: tim,
     path: path.join(storagePath, name + '-customer-data.db'),
@@ -389,4 +390,8 @@ function pick (obj) {
   }
 
   return picked
+}
+
+function getTxId (info) {
+  return info.bot && info.bot.txId
 }

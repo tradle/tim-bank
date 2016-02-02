@@ -73,18 +73,19 @@ function Bank (options) {
     })
   }
 
-  ;['chained', 'unchained'].forEach(function (e) {
-    self.listenTo(tim, e, function (info) {
-      if (info[TYPE] === types.IDENTITY) return
+  // ;['chained', 'unchained'].forEach(function (e) {
+  //   self.listenTo(tim, e, function (info) {
+  //     if (info[TYPE] === types.IDENTITY) return
 
-      // ignore forgotten customers
-      return tim.lookupObject(info)
-        .catch(function (err) {
-          self._debug('unable to retrieve object', err)
-        })
-        .then(self._updateChained)
-    })
-  })
+  //     // ignore forgotten customers
+  //     return tim.lookupObject(info)
+  //       .catch(function (err) {
+  //         self._debug('unable to retrieve object', err)
+  //         throw err
+  //       })
+  //       .then(self._updateChained)
+  //   })
+  // })
 
   var readyDefer = Q.defer()
   this._readyPromise = readyDefer.promise
