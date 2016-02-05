@@ -226,18 +226,22 @@ function publishCustomerIdentity (req) {
 
   function publish () {
     if (!Bank.ALLOW_CHAINING) {
+      if (process.env.NODE_ENV === 'test') return notifyPublished()
+
       bank._debug('not chaining identity. To enable chaining, set Bank.ALLOW_CHAINING=true', curHash)
       return
     }
 
     bank._debug('sealing customer identity with rootHash: ' + curHash)
     return tim.publishIdentity(identity)
-      .then(function () {
-        var resp = {}
-        resp[TYPE] = 'tradle.IdentityPublished'
-        resp.identity = curHash
-        return bank.send(req, resp, { chain: false })
-      })
+      .then(notifyPublished)
+  }
+
+  function notifyPublished () {
+    var resp = {}
+    resp[TYPE] = 'tradle.IdentityPublished'
+    resp.identity = curHash
+    return bank.send(req, resp, { chain: false })
   }
 }
 

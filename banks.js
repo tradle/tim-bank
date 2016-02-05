@@ -29,6 +29,7 @@ var Q = require('./q-to-bluebird')
 var debug = require('debug')('bankd')
 var leveldown = require('leveldown')
 var constants = require('@tradle/constants')
+var ROOT_HASH = constants.ROOT_HASH
 var Builder = require('@tradle/chained-obj').Builder
 var Bank = require('./')
 Bank.ALLOW_CHAINING = argv.chain
@@ -225,48 +226,59 @@ function runBank (opts) {
     manual: true // receive msgs manually
   })
 
-  // var otrKey = keys.filter(function (k) {
-  //   return k.type === 'dsa'
-  // })[0].priv
+  var otrKey = keys.filter(function (k) {
+    return k.type === 'dsa'
+  })[0].priv
 
-  // // TODO: allow both http and websockets endpoints
-  // if (otrKey) {
-  //   var wsPort = conf.wsPort
-  //   debug('choosing websockets, port', wsPort)
-  //   var websocketRelay = new WebSocketRelay({
-  //     port: wsPort
-  //   })
-
-  //   // bank bot websocket client
-  //   var websocketClient = new WebSocketClient({
-  //     url: 'http://127.0.0.1:' + wsPort,
-  //     otrKey: DSA.parsePrivate(otrKey)
-  //   })
-
-  //   app.get('/' + name + '/info', function (req, res) {
-  //     res.status(200).json({
-  //       ws: wsPort
-  //     })
-  //   })
-
-  //   websocketClient.on('message', bank.receiveMsg)
-  //   tim._send = websocketClient.send.bind(websocketClient)
-  //   tim.ready().then(function () {
-  //     websocketClient.setRootHash(tim.myRootHash())
-  //   })
-  // } else {
-    var router = express.Router()
-    var httpServer = new HttpServer({
-      router: router
+  var websocketRelay
+  var websocketClient
+  if (otrKey) {
+    // websockets
+    var wsPort = conf.wsPort
+    debug('websockets enabled, port', wsPort)
+    websocketRelay = new WebSocketRelay({
+      port: wsPort
     })
 
-    httpServer.receive = bank.receiveMsg.bind(bank)
-    tim.once('ready', function () {
-      app.use('/' + name + '/send', router)
+    // bank bot websocket client
+    websocketClient = new WebSocketClient({
+      url: 'http://127.0.0.1:' + wsPort,
+      otrKey: DSA.parsePrivate(otrKey)
     })
 
-    tim._send = httpServer.send.bind(httpServer)
-  // }
+    app.get('/' + name + '/info', function (req, res) {
+      res.status(200).json({
+        ws: wsPort
+      })
+    })
+
+    websocketClient.on('message', bank.receiveMsg)
+    tim._send = websocketClient.send.bind(websocketClient)
+    tim.ready().then(function () {
+      websocketClient.setRootHash(tim.myRootHash())
+    })
+  }
+
+  debug('http enabled, port', port)
+  var router = express.Router()
+  var httpServer = new HttpServer({
+    router: router
+  })
+
+  httpServer.receive = bank.receiveMsg.bind(bank)
+  tim.once('ready', function () {
+    app.use('/' + name + '/send', router)
+  })
+
+  tim._send = function (toRootHash, msg, recipientInfo) {
+    // TODO: figure out a better way to determine which transport
+    // to send reply with
+    var transport = websocketRelay && websocketRelay.hasClient(toRootHash)
+      ? websocketClient
+      : httpServer
+
+    return transport.send.apply(transport, arguments)
+  }
 
   bank.wallet.balance(function (err, balance) {
     if (err) return
