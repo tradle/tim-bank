@@ -1,0 +1,88 @@
+{
+  "profile": {
+    "firstName": "Cassaundra",
+    "lastName": "Lian"
+  },
+  "pub": {
+    "_z": "4M9Y08jMfL3pIXszNAnSFK0Fx5i1dtjeUefLaz+lHTs=",
+    "pubkeys": [
+      {
+        "type": "bitcoin",
+        "networkName": "testnet",
+        "purpose": "payment",
+        "value": "03b14b43e03472fdb6c29f216f40fe46302d0d475469b0000be79481b648e42508",
+        "fingerprint": "n4qArZhVBvEZAkjggEcoZJLiVAEoY7tGz8"
+      },
+      {
+        "type": "bitcoin",
+        "networkName": "testnet",
+        "purpose": "messaging",
+        "value": "03a606bd81d97501e88759b6ec88ba69fcfcce498ef7f0832d1b3d366334fd72df",
+        "fingerprint": "mqmxUnKQztA7ecfviYHkgSeukPenh9Er2E"
+      },
+      {
+        "type": "ec",
+        "curve": "ed25519",
+        "purpose": "sign",
+        "value": "025fc8f77066f51311f70a7a4fbe11bc829502b29a640c47037f1449e414d6e3e7",
+        "fingerprint": "c490f139c802e0dc3d4913e22b0bac8820bf458ec27523d4e28858fd1ccd8e67"
+      },
+      {
+        "type": "ec",
+        "curve": "ed25519",
+        "purpose": "update",
+        "value": "0359545ca800bd015e90f452c58f80cbc005ed64471048013cf9f678ef921cfe22",
+        "fingerprint": "9277bd6faf79f87999e1b5456d76b63f73076c3230b12b0671320876da3f338f"
+      },
+      {
+        "type": "dsa",
+        "purpose": "sign",
+        "value": "AAAAAACAom+ywq27OYR9kUX0xqp5FyIqwC++3Iyk9pOPaS8VH3TLd/X9jh46Id8pysNPSZaXImtM4AnaH8vyTvDFJk+fPdgIp7Xem6SOuD2HVcdvczr3iEpxkRzSHkzBQWl2WyMWdd4C1CYMrrKoDVxkA4b2JVcgMUfjt3PUBjlFVfgsLG0AAAAUj+SK/k4pXcoV3euNySkWC1Wphp8AAACAe9OGvinUOoVdFj9vmY5lJVuRSj/nJ10bcBVUEW/AcPf72XRVuaas8tYUTbkq3p4GnnP7HgdBWks3CzV3yEO/yMkLeFZA/fVl7K+a/Kq4FFj18zNM3FDAYJy1rKqvlAHmlTfhM1kliDafTMxJ67ajjpxxGVn+uGNsvnzu8ZvGVM8AAACAeQLMYOUfUzL5+w/APDMcS9+T404PN77QQijeq/Wyt246QW8fhRpQHKRZ6fIKLBBcdYSGjH20rxyYeyrDnoICdZfalJzQZEj2m+qjxWkAW3nW0H21EaJrtwJkbpdLRlcEAHWCWTgrB82VLW2dF7rxi2xliBQ2XBGhQ7He1ek3QPk=",
+        "fingerprint": "f9d03cfa0bd16fa53b7bdb3de9140e1e6c9d236e"
+      }
+    ],
+    "v": "0.3",
+    "_t": "tradle.Identity"
+  },
+  "priv": [
+    {
+      "type": "bitcoin",
+      "networkName": "testnet",
+      "purpose": "payment",
+      "value": "03b14b43e03472fdb6c29f216f40fe46302d0d475469b0000be79481b648e42508",
+      "fingerprint": "n4qArZhVBvEZAkjggEcoZJLiVAEoY7tGz8",
+      "priv": "cMsekpMxFGKjG3g6VABAHnJJRgkb2B3LBM5H51bgAMwjCCtJz97C"
+    },
+    {
+      "type": "bitcoin",
+      "networkName": "testnet",
+      "purpose": "messaging",
+      "value": "03a606bd81d97501e88759b6ec88ba69fcfcce498ef7f0832d1b3d366334fd72df",
+      "fingerprint": "mqmxUnKQztA7ecfviYHkgSeukPenh9Er2E",
+      "priv": "cVrwTLmNC3jNAKB5UPyHpabqXfKLF3veJp2qU4cz9JmKNJWyZ4pg"
+    },
+    {
+      "type": "ec",
+      "curve": "ed25519",
+      "purpose": "sign",
+      "value": "025fc8f77066f51311f70a7a4fbe11bc829502b29a640c47037f1449e414d6e3e7",
+      "fingerprint": "c490f139c802e0dc3d4913e22b0bac8820bf458ec27523d4e28858fd1ccd8e67",
+      "priv": "030319f5c828b5a91ff56098970bf7eaa7dd0ab306f283e133c4eed710fa9c39"
+    },
+    {
+      "type": "ec",
+      "curve": "ed25519",
+      "purpose": "update",
+      "value": "0359545ca800bd015e90f452c58f80cbc005ed64471048013cf9f678ef921cfe22",
+      "fingerprint": "9277bd6faf79f87999e1b5456d76b63f73076c3230b12b0671320876da3f338f",
+      "priv": "91f9c36cc7104c12f53f1e874627c474cbb9edd0f4f7353eb1a4364412951d"
+    },
+    {
+      "type": "dsa",
+      "purpose": "sign",
+      "value": "AAAAAACAom+ywq27OYR9kUX0xqp5FyIqwC++3Iyk9pOPaS8VH3TLd/X9jh46Id8pysNPSZaXImtM4AnaH8vyTvDFJk+fPdgIp7Xem6SOuD2HVcdvczr3iEpxkRzSHkzBQWl2WyMWdd4C1CYMrrKoDVxkA4b2JVcgMUfjt3PUBjlFVfgsLG0AAAAUj+SK/k4pXcoV3euNySkWC1Wphp8AAACAe9OGvinUOoVdFj9vmY5lJVuRSj/nJ10bcBVUEW/AcPf72XRVuaas8tYUTbkq3p4GnnP7HgdBWks3CzV3yEO/yMkLeFZA/fVl7K+a/Kq4FFj18zNM3FDAYJy1rKqvlAHmlTfhM1kliDafTMxJ67ajjpxxGVn+uGNsvnzu8ZvGVM8AAACAeQLMYOUfUzL5+w/APDMcS9+T404PN77QQijeq/Wyt246QW8fhRpQHKRZ6fIKLBBcdYSGjH20rxyYeyrDnoICdZfalJzQZEj2m+qjxWkAW3nW0H21EaJrtwJkbpdLRlcEAHWCWTgrB82VLW2dF7rxi2xliBQ2XBGhQ7He1ek3QPk=",
+      "fingerprint": "f9d03cfa0bd16fa53b7bdb3de9140e1e6c9d236e",
+      "priv": "AAAAAACAom+ywq27OYR9kUX0xqp5FyIqwC++3Iyk9pOPaS8VH3TLd/X9jh46Id8pysNPSZaXImtM4AnaH8vyTvDFJk+fPdgIp7Xem6SOuD2HVcdvczr3iEpxkRzSHkzBQWl2WyMWdd4C1CYMrrKoDVxkA4b2JVcgMUfjt3PUBjlFVfgsLG0AAAAUj+SK/k4pXcoV3euNySkWC1Wphp8AAACAe9OGvinUOoVdFj9vmY5lJVuRSj/nJ10bcBVUEW/AcPf72XRVuaas8tYUTbkq3p4GnnP7HgdBWks3CzV3yEO/yMkLeFZA/fVl7K+a/Kq4FFj18zNM3FDAYJy1rKqvlAHmlTfhM1kliDafTMxJ67ajjpxxGVn+uGNsvnzu8ZvGVM8AAACAeQLMYOUfUzL5+w/APDMcS9+T404PN77QQijeq/Wyt246QW8fhRpQHKRZ6fIKLBBcdYSGjH20rxyYeyrDnoICdZfalJzQZEj2m+qjxWkAW3nW0H21EaJrtwJkbpdLRlcEAHWCWTgrB82VLW2dF7rxi2xliBQ2XBGhQ7He1ek3QPkAAAAUEqkMhFjqMnwFQqRMOrtP00q8Txo="
+    }
+  ]
+}

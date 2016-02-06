@@ -1,0 +1,88 @@
+{
+  "profile": {
+    "firstName": "Angy",
+    "lastName": "Catha"
+  },
+  "pub": {
+    "_z": "egWZDrSrzy2c9cTfHMnxbJmnp2CqqCqArRdpsDLsdqQ=",
+    "pubkeys": [
+      {
+        "type": "bitcoin",
+        "networkName": "testnet",
+        "purpose": "payment",
+        "value": "03f59d19fcb22fe7c086006c03719bc151ff3cb0a5913b78effa3b1e6467416154",
+        "fingerprint": "mrX7Y9n8amM6EXPQpcsnZKX4fquzmKVm7n"
+      },
+      {
+        "type": "bitcoin",
+        "networkName": "testnet",
+        "purpose": "messaging",
+        "value": "022577f063da1bc2345b00d8f7a6d893798dcdf2fb4c2870fb1433f90179f73045",
+        "fingerprint": "mhAaJsJiK9UZ71Ba3x25mrWigPm2UQamaC"
+      },
+      {
+        "type": "ec",
+        "curve": "ed25519",
+        "purpose": "sign",
+        "value": "025cc05f8be05b7c5d2ce83e3376b4d981b670db2c6fc0494190155674f07eaef4",
+        "fingerprint": "8218a0b7eddd117a687ad484a3a2a7b96899f238e596d066c3af3678c6fd8d41"
+      },
+      {
+        "type": "ec",
+        "curve": "ed25519",
+        "purpose": "update",
+        "value": "025145d80ab4c18db5fcc42af0ea127123cefdc5666fcfa8e30500986609afdd9e",
+        "fingerprint": "b9fe1ac61f388309aa0b13b3e57248fb92822457bd5bd88449be95fe93d71763"
+      },
+      {
+        "type": "dsa",
+        "purpose": "sign",
+        "value": "AAAAAACAom+ywq27OYR9kUX0xqp5FyIqwC++3Iyk9pOPaS8VH3TLd/X9jh46Id8pysNPSZaXImtM4AnaH8vyTvDFJk+fPdgIp7Xem6SOuD2HVcdvczr3iEpxkRzSHkzBQWl2WyMWdd4C1CYMrrKoDVxkA4b2JVcgMUfjt3PUBjlFVfgsLG0AAAAUj+SK/k4pXcoV3euNySkWC1Wphp8AAACAe9OGvinUOoVdFj9vmY5lJVuRSj/nJ10bcBVUEW/AcPf72XRVuaas8tYUTbkq3p4GnnP7HgdBWks3CzV3yEO/yMkLeFZA/fVl7K+a/Kq4FFj18zNM3FDAYJy1rKqvlAHmlTfhM1kliDafTMxJ67ajjpxxGVn+uGNsvnzu8ZvGVM8AAACABKMUDBO9YlhbM1w5HSgfwJYvC8LqacanQpWB1b5JIayeatGK4jAGA2um5KwT7ubraHV3zcFxB9M42G/7b9Q7SNR6VPB0jRBrNvbnnfEKJkmxRO4VhfjwSJizJbb2jK7LMmzsLllFRbjjZvG9IkOBbZH7IS3FdzjEAWoLvIt9i/Y=",
+        "fingerprint": "9a8dd4706ec05f0305322a70d505835fc61387e1"
+      }
+    ],
+    "v": "0.3",
+    "_t": "tradle.Identity"
+  },
+  "priv": [
+    {
+      "type": "bitcoin",
+      "networkName": "testnet",
+      "purpose": "payment",
+      "value": "03f59d19fcb22fe7c086006c03719bc151ff3cb0a5913b78effa3b1e6467416154",
+      "fingerprint": "mrX7Y9n8amM6EXPQpcsnZKX4fquzmKVm7n",
+      "priv": "cT95MKehoWuv4ywxUfSVrVY4UfXapB2gcZGmG7vLy6icS8hmsJKi"
+    },
+    {
+      "type": "bitcoin",
+      "networkName": "testnet",
+      "purpose": "messaging",
+      "value": "022577f063da1bc2345b00d8f7a6d893798dcdf2fb4c2870fb1433f90179f73045",
+      "fingerprint": "mhAaJsJiK9UZ71Ba3x25mrWigPm2UQamaC",
+      "priv": "cQZhCsne4xmP8NfHzutRSp8jKfGsLEsSwdATPdaYDd7xFofAcDbB"
+    },
+    {
+      "type": "ec",
+      "curve": "ed25519",
+      "purpose": "sign",
+      "value": "025cc05f8be05b7c5d2ce83e3376b4d981b670db2c6fc0494190155674f07eaef4",
+      "fingerprint": "8218a0b7eddd117a687ad484a3a2a7b96899f238e596d066c3af3678c6fd8d41",
+      "priv": "070405f9ac002529de1349693f22493650c3ff02c7cff1c47091a403b2960810"
+    },
+    {
+      "type": "ec",
+      "curve": "ed25519",
+      "purpose": "update",
+      "value": "025145d80ab4c18db5fcc42af0ea127123cefdc5666fcfa8e30500986609afdd9e",
+      "fingerprint": "b9fe1ac61f388309aa0b13b3e57248fb92822457bd5bd88449be95fe93d71763",
+      "priv": "043fa32ea8f0ff672aa68f476a8565ff8a6b08cca030bea093ded1d3abe6b3e7"
+    },
+    {
+      "type": "dsa",
+      "purpose": "sign",
+      "value": "AAAAAACAom+ywq27OYR9kUX0xqp5FyIqwC++3Iyk9pOPaS8VH3TLd/X9jh46Id8pysNPSZaXImtM4AnaH8vyTvDFJk+fPdgIp7Xem6SOuD2HVcdvczr3iEpxkRzSHkzBQWl2WyMWdd4C1CYMrrKoDVxkA4b2JVcgMUfjt3PUBjlFVfgsLG0AAAAUj+SK/k4pXcoV3euNySkWC1Wphp8AAACAe9OGvinUOoVdFj9vmY5lJVuRSj/nJ10bcBVUEW/AcPf72XRVuaas8tYUTbkq3p4GnnP7HgdBWks3CzV3yEO/yMkLeFZA/fVl7K+a/Kq4FFj18zNM3FDAYJy1rKqvlAHmlTfhM1kliDafTMxJ67ajjpxxGVn+uGNsvnzu8ZvGVM8AAACABKMUDBO9YlhbM1w5HSgfwJYvC8LqacanQpWB1b5JIayeatGK4jAGA2um5KwT7ubraHV3zcFxB9M42G/7b9Q7SNR6VPB0jRBrNvbnnfEKJkmxRO4VhfjwSJizJbb2jK7LMmzsLllFRbjjZvG9IkOBbZH7IS3FdzjEAWoLvIt9i/Y=",
+      "fingerprint": "9a8dd4706ec05f0305322a70d505835fc61387e1",
+      "priv": "AAAAAACAom+ywq27OYR9kUX0xqp5FyIqwC++3Iyk9pOPaS8VH3TLd/X9jh46Id8pysNPSZaXImtM4AnaH8vyTvDFJk+fPdgIp7Xem6SOuD2HVcdvczr3iEpxkRzSHkzBQWl2WyMWdd4C1CYMrrKoDVxkA4b2JVcgMUfjt3PUBjlFVfgsLG0AAAAUj+SK/k4pXcoV3euNySkWC1Wphp8AAACAe9OGvinUOoVdFj9vmY5lJVuRSj/nJ10bcBVUEW/AcPf72XRVuaas8tYUTbkq3p4GnnP7HgdBWks3CzV3yEO/yMkLeFZA/fVl7K+a/Kq4FFj18zNM3FDAYJy1rKqvlAHmlTfhM1kliDafTMxJ67ajjpxxGVn+uGNsvnzu8ZvGVM8AAACABKMUDBO9YlhbM1w5HSgfwJYvC8LqacanQpWB1b5JIayeatGK4jAGA2um5KwT7ubraHV3zcFxB9M42G/7b9Q7SNR6VPB0jRBrNvbnnfEKJkmxRO4VhfjwSJizJbb2jK7LMmzsLllFRbjjZvG9IkOBbZH7IS3FdzjEAWoLvIt9i/YAAAAUJJKGrjGu4IsqfMeE7FS7bj20dGo="
+    }
+  ]
+}

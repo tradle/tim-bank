@@ -6,7 +6,7 @@ var argv = require('minimist')(process.argv.slice(2), {
     h: 'help',
     s: 'seq',
     c: 'chain',
-    b: 'banks',
+    b: 'providers',
     d: 'path', // dir
     p: 'port'
   },
@@ -67,31 +67,31 @@ var server
 var selfDestructing
 var onDestroy = []
 
-var bankNames = argv.banks
-  ? argv.banks.split(',').map(function (b) {
+var providerNames = argv.providers
+  ? argv.providers.split(',').map(function (b) {
     return b.trim()
   })
-  : Object.keys(conf.banks).filter(function (name) {
-    return conf.banks[name].run !== false
+  : Object.keys(conf.providers).filter(function (name) {
+    return conf.providers[name].run !== false
   })
 
-bankNames.forEach(function (bankName) {
-  if (!(bankName in conf.banks)) {
-    throw new Error('no bank with name: ' + bankName)
+providerNames.forEach(function (name) {
+  if (!(name in conf.providers)) {
+    throw new Error('no bank with name: ' + name)
   }
+
+  var bConf = conf.providers[name]
+  console.log(name, bConf.bot)
+  bConf.bot = require(path.resolve(path.dirname(confPath), bConf.bot))
 })
 
 var ENDPOINT_INFO = {
-  providers: bankNames.map(function (name) {
-    var bConf = conf.banks[name]
+  providers: providerNames.map(function (name) {
+    var bConf = conf.providers[name]
     // TODO: remove `txId` when we stop using blockr
     // or when blockr removes its 200txs/address limit
     var info = pick(bConf, 'wsPort', 'org')
-    info.bot = {
-      identity: require(path.resolve(bConf.pub)),
-      txId: bConf.txId
-    }
-
+    info.bot = pick(bConf.bot, 'pub', 'profile', 'txId')
     return info
   })
 }
@@ -149,12 +149,12 @@ function run () {
   if (argv.seq) {
     // start one at a time to avoid
     // straining blockchain APIs
-    bankNames.reduce(function (prev, name) {
+    providerNames.reduce(function (prev, name) {
       return prev
         .finally(function () {
           return runBank({
             name: name,
-            conf: conf.banks[name],
+            conf: conf.providers[name],
             app: app
           })
         })
@@ -168,10 +168,10 @@ function run () {
         })
     }, Q())
   } else {
-    bankNames.forEach(function (name) {
+    providerNames.forEach(function (name) {
       return runBank({
         name: name,
-        conf: conf.banks[name],
+        conf: conf.providers[name],
         app: app
       })
       .then(function () {
@@ -191,8 +191,7 @@ function runBank (opts) {
   }, opts)
 
   typeforce({
-    pub: 'String',
-    priv: 'String',
+    bot: 'Object',
     port: '?Number'
   }, opts.conf)
 
@@ -201,9 +200,10 @@ function runBank (opts) {
   console.log('running bank:', name)
 
   var conf = opts.conf
+  var bot = conf.bot
   var bankPort = conf.port || (DEFAULT_TIM_PORT++)
-  var identity = loadJSON(conf.pub)
-  var keys = loadJSON(conf.priv)
+  var identity = bot.pub
+  var keys = bot.priv
 
   var tim = buildNode({
     dht: false,
@@ -317,7 +317,15 @@ function runBank (opts) {
 
   return tim.identityPublishStatus()
     .then(function (status) {
-      console.log(opts.name, 'bank rep identity published:', status.current)
+      if (status.current) {
+        console.log(opts.name, 'bank bot identity published')
+      } else if (status.queued) {
+        console.log(opts.name, 'bank bot identity queued for publish')
+      } else {
+        console.log(opts.name, 'queueing bank bot identity publish now...')
+        // don't wait for this to finish
+        tim.publishMyIdentity()
+      }
     })
 }
 

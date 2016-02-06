@@ -2,21 +2,18 @@
   "port": 44444,
   "networkName": "testnet",
   "afterBlockTimestamp": 1420468675,
-  "banks": {
+  "providers": {
     "poor": {
-      "priv": "sample-conf/bill-priv.json",
-      "pub": "sample-conf/bill-pub.json",
+      "bot": "poorbot.json",
       "port": 12321
     },
     "rich": {
-      "priv": "sample-conf/ted-priv.json",
-      "pub": "sample-conf/ted-pub.json",
+      "bot": "richbot.json",
       "port": 32123
     },
     "future": {
       "run": false,
-      "priv": "sample-conf/rufus-priv.json",
-      "pub": "sample-conf/rufus-pub.json",
+      "bot": "futurebot.json",
       "port": 32124
     }
   }
