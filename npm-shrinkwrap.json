@@ -1266,6 +1266,7 @@
     "@tradle/ws-client": {
       "version": "1.2.0",
       "from": "@tradle/ws-client@latest",
+      "resolved": "file:../tradle-ws-client",
       "dependencies": {
         "backoff": {
           "version": "2.4.1",
@@ -1468,7 +1469,7 @@
       }
     },
     "@tradle/ws-relay": {
-      "version": "1.1.0",
+      "version": "1.2.0",
       "from": "@tradle/ws-relay@latest"
     },
     "after": {
@@ -3244,8 +3245,9 @@
       "resolved": "https://registry.npmjs.org/throttleme/-/throttleme-1.0.3.tgz"
     },
     "tim": {
-      "version": "5.2.2",
-      "from": "tim@latest",
+      "version": "5.2.3",
+      "from": "tim@5.2.3",
+      "resolved": "https://registry.npmjs.org/tim/-/tim-5.2.3.tgz",
       "dependencies": {
         "@tradle/bitjoe-js": {
           "version": "1.0.3",
