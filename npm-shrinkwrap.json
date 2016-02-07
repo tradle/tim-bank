@@ -1266,7 +1266,7 @@
     "@tradle/ws-client": {
       "version": "1.2.0",
       "from": "@tradle/ws-client@latest",
-      "resolved": "file:../tradle-ws-client",
+      "resolved": "https://registry.npmjs.org/@tradle/ws-client/-/ws-client-1.2.0.tgz",
       "dependencies": {
         "backoff": {
           "version": "2.4.1",
