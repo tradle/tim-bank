@@ -90,8 +90,9 @@ var ENDPOINT_INFO = {
     var bConf = conf.providers[name]
     // TODO: remove `txId` when we stop using blockr
     // or when blockr removes its 200txs/address limit
-    var info = pick(bConf, 'wsPort', 'org')
+    var info = pick(bConf, 'wsPort', 'org', 'style')
     info.bot = pick(bConf.bot, 'pub', 'profile', 'txId')
+    info.id = name
     return info
   })
 }
