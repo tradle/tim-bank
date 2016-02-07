@@ -131,6 +131,7 @@ app.get('/info', function (req, res) {
 
 var port = Number(argv.port) || Number(conf.port) || DEFAULT_PORT
 server = app.listen(port)
+var serverLocalUrl = 'http://127.0.0.1:' + port
 
 var bRouter = new express.Router()
 app.use('/blockchain', localOnly)
@@ -159,9 +160,6 @@ function run () {
             app: app
           })
         })
-        .then(function () {
-          console.log(name, 'is live at http://127.0.0.1:' + port + '/' + name.toLowerCase())
-        })
         .catch(function (err) {
           console.error(err)
           console.log(err.stack)
@@ -174,9 +172,6 @@ function run () {
         name: name,
         conf: conf.providers[name],
         app: app
-      })
-      .then(function () {
-        console.log(name, 'is live at http://127.0.0.1:' + port + '/' + name.toLowerCase())
       })
     })
   }
@@ -235,22 +230,17 @@ function runBank (opts) {
   var websocketClient
   if (otrKey) {
     // websockets
-    var wsPort = conf.wsPort
-    debug('websockets enabled, port', wsPort)
+    debug('websockets enabled')
+    var wsPath = '/ws/' + name
     websocketRelay = new WebSocketRelay({
-      port: wsPort
+      server: server,
+      path: wsPath
     })
 
     // bank bot websocket client
     websocketClient = new WebSocketClient({
-      url: 'http://127.0.0.1:' + wsPort,
+      url: serverLocalUrl + wsPath,
       otrKey: DSA.parsePrivate(otrKey)
-    })
-
-    app.get('/' + name + '/info', function (req, res) {
-      res.status(200).json({
-        ws: wsPort
-      })
     })
 
     websocketClient.on('message', bank.receiveMsg)
@@ -318,12 +308,14 @@ function runBank (opts) {
 
   return tim.identityPublishStatus()
     .then(function (status) {
+      console.log(`${opts.name} is live at /${name}`)
+
       if (status.current) {
-        console.log(opts.name, 'bank bot identity published')
+        console.log(`${opts.name} bank bot identity published`)
       } else if (status.queued) {
-        console.log(opts.name, 'bank bot identity queued for publish')
+        console.log(`${opts.name} bank bot identity queued for publish`)
       } else {
-        console.log(opts.name, 'queueing bank bot identity publish now...')
+        console.log(`${opts.name} queueing bank bot identity publish now...`)
         // don't wait for this to finish
         tim.publishMyIdentity()
       }
