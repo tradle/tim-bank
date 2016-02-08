@@ -3245,9 +3245,8 @@
       "resolved": "https://registry.npmjs.org/throttleme/-/throttleme-1.0.3.tgz"
     },
     "tim": {
-      "version": "5.2.3",
-      "from": "tim@5.2.3",
-      "resolved": "https://registry.npmjs.org/tim/-/tim-5.2.3.tgz",
+      "version": "5.2.4",
+      "from": "tim@latest",
       "dependencies": {
         "@tradle/bitjoe-js": {
           "version": "1.0.3",
@@ -3583,6 +3582,7 @@
         "logbase": {
           "version": "3.4.2",
           "from": "logbase@>=3.4.2 <4.0.0",
+          "resolved": "https://registry.npmjs.org/logbase/-/logbase-3.4.2.tgz",
           "dependencies": {
             "add-stream": {
               "version": "1.0.0",
