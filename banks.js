@@ -67,7 +67,7 @@ var server
 var selfDestructing
 var onDestroy = []
 
-var providerNames = argv.providers
+var providerIds = argv.providers
   ? argv.providers.split(',').map(function (b) {
     return b.trim()
   })
@@ -75,24 +75,30 @@ var providerNames = argv.providers
     return conf.providers[name].run !== false
   })
 
-providerNames.forEach(function (name) {
-  if (!(name in conf.providers)) {
-    throw new Error('no bank with name: ' + name)
+providerIds.forEach(function (id) {
+  if (!(id in conf.providers)) {
+    throw new Error('no bank with id: ' + id)
   }
 
-  var bConf = conf.providers[name]
-  console.log(name, bConf.bot)
-  bConf.bot = require(path.resolve(path.dirname(confPath), bConf.bot))
+  var bConf = conf.providers[id]
+  console.log(id, bConf.bot)
+  var bDir = path.resolve(path.dirname(confPath), id)
+  bConf.bot = require(path.resolve(bDir, 'bot-pub.json'))
+  bConf.botPriv = require(path.resolve(bDir, 'bot-priv.json'))
+  try {
+    bConf.employees = require(path.resolve(bDir, 'employees.json'))
+  } catch (err) {
+    // no employees, that's ok
+  }
 })
 
 var ENDPOINT_INFO = {
-  providers: providerNames.map(function (name) {
-    var bConf = conf.providers[name]
+  providers: providerIds.map(function (id) {
+    var bConf = conf.providers[id]
     // TODO: remove `txId` when we stop using blockr
     // or when blockr removes its 200txs/address limit
-    var info = pick(bConf, 'wsPort', 'org', 'style')
-    info.bot = pick(bConf.bot, 'pub', 'profile', 'txId')
-    info.id = name
+    var info = pick(bConf, 'org', 'style', 'bot')
+    info.id = id
     return info
   })
 }
@@ -151,7 +157,7 @@ function run () {
   if (argv.seq) {
     // start one at a time to avoid
     // straining blockchain APIs
-    providerNames.reduce(function (prev, name) {
+    providerIds.reduce(function (prev, name) {
       return prev
         .finally(function () {
           return runBank({
@@ -167,7 +173,7 @@ function run () {
         })
     }, Q())
   } else {
-    providerNames.forEach(function (name) {
+    providerIds.forEach(function (name) {
       return runBank({
         name: name,
         conf: conf.providers[name],
@@ -196,17 +202,16 @@ function runBank (opts) {
   console.log('running bank:', name)
 
   var conf = opts.conf
-  var bot = conf.bot
+  var bot = conf.bot.pub
   var bankPort = conf.port || (DEFAULT_TIM_PORT++)
-  var identity = bot.pub
-  var keys = bot.priv
+  var keys = conf.botPriv
 
   var tim = buildNode({
     dht: false,
     port: bankPort,
     pathPrefix: path.join(storagePath, name),
     networkName: networkName,
-    identity: Identity.fromJSON(identity),
+    identity: Identity.fromJSON(bot),
     keys: keys,
     syncInterval: 60000,
     afterBlockTimestamp: afterBlockTimestamp,
