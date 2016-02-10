@@ -1,36 +1,37 @@
+'use strict'
 
-var typeforce = require('typeforce')
-var Q = require('q')
-var find = require('array-find')
-var constants = require('@tradle/constants')
-var MODELS = require('@tradle/models')
-var Builder = require('@tradle/chained-obj').Builder
-var tutils = require('@tradle/utils')
-var Identity = require('@tradle/identity').Identity
-var Bank = require('./')
-var utils = require('./lib/utils')
-var RequestState = require('./lib/requestState')
-var debug = require('./debug')
-var ROOT_HASH = constants.ROOT_HASH
-var CUR_HASH = constants.CUR_HASH
-var TYPE = constants.TYPE
-var types = constants.TYPES
-var FORGET_ME = 'tradle.ForgetMe'
-var FORGOT_YOU = 'tradle.ForgotYou'
-var MODELS_BY_ID = {}
+const typeforce = require('typeforce')
+const Q = require('q')
+const find = require('array-find')
+const constants = require('@tradle/constants')
+const MODELS = require('@tradle/models')
+const Builder = require('@tradle/chained-obj').Builder
+const tradleUtils = require('@tradle/utils')
+const Identity = require('@tradle/identity').Identity
+const Bank = require('./')
+const utils = require('./lib/utils')
+const RequestState = require('./lib/requestState')
+const debug = require('./debug')
+const ROOT_HASH = constants.ROOT_HASH
+const CUR_HASH = constants.CUR_HASH
+const TYPE = constants.TYPE
+const types = constants.TYPES
+const FORGET_ME = 'tradle.ForgetMe'
+const FORGOT_YOU = 'tradle.ForgotYou'
+const MODELS_BY_ID = {}
 
 MODELS.forEach(function (m) {
   MODELS_BY_ID[m.id] = m
 })
 
-var PRODUCT_TYPES = MODELS.filter(function (m) {
+const PRODUCT_TYPES = MODELS.filter(function (m) {
   return m.subClassOf === 'tradle.FinancialProduct'
 }).map(function (m) {
   return m.id
 })
 
-var PRODUCT_TO_DOCS = {}
-var DOC_TYPES = []
+const PRODUCT_TO_DOCS = {}
+const DOC_TYPES = []
 PRODUCT_TYPES.forEach(function (productType) {
   var model = MODELS_BY_ID[productType]
   var docTypes = getForms(model)
@@ -42,29 +43,39 @@ PRODUCT_TYPES.forEach(function (productType) {
   })
 })
 
-var noop = function () {}
+const noop = function () {}
 
-module.exports = simpleBank
+module.exports = SimpleBank
 
-function simpleBank (opts) {
-  var bank = new Bank(opts)
+function SimpleBank (opts) {
+  if (!(this instanceof SimpleBank)) {
+    return new SimpleBank(opts)
+  }
+
+  tradleUtils.bindPrototypeFunctions(this)
+
+  this._employees = opts.employees
+  this.tim = opts.tim
+
+  var bank = this.bank = new Bank(opts)
   bank._shouldChainReceivedMessage = function (msg) {
     return msg[TYPE] === types.VERIFICATION ||
       DOC_TYPES.indexOf(msg[TYPE]) !== -1
   }
 
-  bank.use(function (req, res) {
+  bank.use((req, res) => {
     if (DOC_TYPES.indexOf(req.type) !== -1) {
-      return handleDocument.call(bank, req)
+      return this.handleDocument(req)
     }
   })
 
-  bank.use('tradle.GetMessage', lookupAndSend.bind(bank))
-  bank.use('tradle.GetHistory', sendHistory.bind(bank))
-  bank.use(FORGET_ME, forgetMe.bind(bank))
-  bank.use(types.VERIFICATION, handleVerification.bind(bank))
-  bank.use(types.CUSTOMER_WAITING, sendProductList.bind(bank))
-  bank.use(types.SIMPLE_MESSAGE, function (req) {
+  bank.use('tradle.GetMessage', this.lookupAndSend)
+  bank.use('tradle.GetHistory', this.sendHistory)
+  bank.use('tradle.GetEmployee', this.getEmployee)
+  bank.use(FORGET_ME, this.forgetMe)
+  bank.use(types.VERIFICATION, this.handleVerification)
+  bank.use(types.CUSTOMER_WAITING, this.sendProductList)
+  bank.use(types.SIMPLE_MESSAGE, (req) => {
     var msg = req.parsed.data.message
     if (!msg) return
 
@@ -72,7 +83,7 @@ function simpleBank (opts) {
     if (parsed.type) {
       if (PRODUCT_TYPES.indexOf(parsed.type) !== -1) {
         req.productType = parsed.type
-        return handleNewApplication.call(bank, req)
+        return this.handleNewApplication(req)
       }
     }
     else {
@@ -98,13 +109,10 @@ function simpleBank (opts) {
   //     message: 'The feature of switching to representative is coming soon!',
   //   }, { chain: false })
   // })
-
-  bank.receiveMsg = receiveMsg.bind(bank)
-  return bank
 }
 
-function receiveMsg (msgBuf, senderInfo) {
-  var bank = this
+SimpleBank.prototype.receiveMsg = function (msgBuf, senderInfo) {
+  var bank = this.bank
   var msg
   try {
     var wrapper = JSON.parse(msgBuf)
@@ -113,7 +121,7 @@ function receiveMsg (msgBuf, senderInfo) {
 
   // if it's an identity, store it
   if (!msg) {
-    return Bank.prototype.receiveMsg.apply(bank, arguments)
+    return bank.receiveMsg.apply(bank, arguments)
   }
 
   if (msg[TYPE] !== types.IDENTITY_PUBLISHING_REQUEST) {
@@ -121,7 +129,7 @@ function receiveMsg (msgBuf, senderInfo) {
         msg[TYPE],
         types.IDENTITY_PUBLISHING_REQUEST)
 
-    bank._debug(errMsg)
+    this._debug(errMsg)
     return utils.rejectWithHttpError(400, errMsg)
   }
 
@@ -144,18 +152,16 @@ function receiveMsg (msgBuf, senderInfo) {
     return utils.rejectWithHttpError(400, 'invalid identity')
   }
 
-  return publishCustomerIdentity.call(bank, req)
-    .then(function (_req) {
+  return this.publishCustomerIdentity(req)
+    .then((_req) => {
       req = _req
-      return sendProductList.call(bank, req)
+      return this.sendProductList(req)
     })
-    .then(function () {
-      return req.end()
-    })
+    .then(() => req.end())
 }
 
-function sendProductList (req) {
-  var bank = this
+SimpleBank.prototype.sendProductList = function (req) {
+  var bank = this.bank
   var formModels = {}
   var productTypes = [
     'tradle.CurrentAccount',
@@ -186,19 +192,19 @@ function sendProductList (req) {
   }, { chain: false })
 }
 
-function publishCustomerIdentity (req) {
+SimpleBank.prototype.publishCustomerIdentity = function (req) {
   // TODO: verify that sig of identityPublishRequest comes from sign/update key
   // of attached identity. Need to factor this out of @tradle/verifier
-
-  var bank = this
+  var self = this
+  var bank = this.bank
   var identity = req.parsed.data.identity
-  var tim = bank.tim
+  var tim = this.tim
   var rootHash
   var curHash
   var wasAlreadyPublished
   return Builder().data(identity).build()
     .then(function (buf) {
-      return Q.ninvoke(tutils, 'getStorageKeyFor', buf)
+      return Q.ninvoke(tradleUtils, 'getStorageKeyFor', buf)
     })
     .then(function (_curHash) {
       curHash = _curHash.toString('hex')
@@ -228,11 +234,11 @@ function publishCustomerIdentity (req) {
     if (!Bank.ALLOW_CHAINING) {
       if (process.env.NODE_ENV === 'test') return notifyPublished()
 
-      bank._debug('not chaining identity. To enable chaining, set Bank.ALLOW_CHAINING=true', curHash)
+      self._debug('not chaining identity. To enable chaining, set Bank.ALLOW_CHAINING=true', curHash)
       return
     }
 
-    bank._debug('sealing customer identity with rootHash: ' + curHash)
+    self._debug('sealing customer identity with rootHash: ' + curHash)
     return tim.publishIdentity(identity)
       .then(notifyPublished)
   }
@@ -245,8 +251,8 @@ function publishCustomerIdentity (req) {
   }
 }
 
-function handleNewApplication (req, res) {
-  var bank = this
+SimpleBank.prototype.handleNewApplication = function (req, res) {
+  var bank = this.bank
 
   typeforce({
     productType: 'String'
@@ -257,11 +263,11 @@ function handleNewApplication (req, res) {
   if (idx !== -1) pending.splice(idx, 1)
 
   pending.unshift(req.productType)
-  return sendNextFormOrApprove.call(bank, req)
+  return this.sendNextFormOrApprove(req)
 }
 
-function handleDocument (req, res) {
-  var bank = this
+SimpleBank.prototype.handleDocument = function (req, res) {
+  var bank = this.bank
   var type = req.type
   var state = req.state
   var msg = req.msg
@@ -280,7 +286,7 @@ function handleDocument (req, res) {
   // }
 
   // pretend we verified it
-  var verification = newVerificationFor.call(bank, msg)
+  var verification = this.newVerificationFor(msg)
   var stored = {
     txId: null,
     body: verification
@@ -288,16 +294,16 @@ function handleDocument (req, res) {
 
   docState.verifications.push(stored)
   return bank.send(req, verification)
-    .then(function (entries) {
+    .then((entries) => {
       var rootHash = entries[0].toJSON()[ROOT_HASH]
       // stored[ROOT_HASH] = req[ROOT_HASH]
       stored[ROOT_HASH] = rootHash
-      return sendNextFormOrApprove.call(bank, req)
+      return this.sendNextFormOrApprove(req)
     })
 }
 
-function newVerificationFor (msg) {
-  var bank = this
+SimpleBank.prototype.newVerificationFor = function (msg) {
+  var bank = this.bank
   var doc = msg.parsed.data
   var verification = {
     document: {
@@ -313,7 +319,7 @@ function newVerificationFor (msg) {
   // verification.document[TYPE] = doc[TYPE]
   // verification.documentOwner[TYPE] = types.IDENTITY
 
-  var org = bank.tim.identityJSON.organization
+  var org = this.tim.identityJSON.organization
   if (org) {
     verification.organization = org
   }
@@ -322,8 +328,8 @@ function newVerificationFor (msg) {
   return verification
 }
 
-function sendNextFormOrApprove (req) {
-  var bank = this
+SimpleBank.prototype.sendNextFormOrApprove = function (req) {
+  var bank = this.bank
   var state = req.state
   var pendingApps = state.pendingApplications
   if (!pendingApps.length) {
@@ -425,9 +431,9 @@ function sendNextFormOrApprove (req) {
     })
 }
 
-function lookupAndSend (req) {
-  var bank = this
-  var tim = bank.tim
+SimpleBank.prototype.lookupAndSend = function (req) {
+  var bank = this.bank
+  var tim = this.tim
   var info = {}
   var from = req.from[ROOT_HASH]
   var curHash = req.parsed.data.hash
@@ -459,12 +465,12 @@ function lookupAndSend (req) {
     })
 }
 
-function sendHistory (req) {
-  var bank = this
+SimpleBank.prototype.sendHistory = function (req) {
+  var bank = this.bank
   var senderRootHash = req.from[ROOT_HASH]
   var from = {}
   from[ROOT_HASH] = senderRootHash
-  return bank.tim.history(from)
+  return this.tim.history(from)
     .then(function (objs) {
       return Q.all(objs.map(function (obj) {
         return bank.send(req, obj.parsed.data, { chain: false })
@@ -472,8 +478,17 @@ function sendHistory (req) {
     })
 }
 
-function handleVerification (req) {
-  var bank = this
+SimpleBank.prototype.getEmployee = function (req) {
+  var bank = this.bank
+  var employeeIdentifier = req.parsed.data.employee
+  return this.tim.lookupIdentity(employeeIdentifier)
+    .then(employee => {
+
+    })
+}
+
+SimpleBank.prototype.handleVerification = function (req) {
+  var bank = this.bank
   var msg = req.msg
   var state = req.state
   var verification = msg.parsed.data
@@ -487,17 +502,27 @@ function handleVerification (req) {
     body: verification
   })
 
-  return sendNextFormOrApprove.call(bank, req)
+  return this.sendNextFormOrApprove(req)
 }
 
-function forgetMe (req) {
-  var bank = this
+SimpleBank.prototype.forgetMe = function (req) {
+  var bank = this.bank
   return bank.forgetCustomer(req)
     .then(function () {
       var forgotYou = {}
       forgotYou[TYPE] = FORGOT_YOU
       return bank.send(req, forgotYou)
     })
+}
+
+SimpleBank.prototype.destroy = function () {
+  return this.bank.destroy()
+}
+
+SimpleBank.prototype._debug = function () {
+  var args = [].slice.call(arguments)
+  args.unshift(this.tim.name())
+  return debug.apply(null, args)
 }
 
 function getForms (model) {

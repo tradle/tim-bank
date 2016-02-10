@@ -33,7 +33,7 @@ var ROOT_HASH = constants.ROOT_HASH
 var Builder = require('@tradle/chained-obj').Builder
 var Bank = require('./')
 Bank.ALLOW_CHAINING = argv.chain
-var newSimpleBank = require('./simple')
+var SimpleBank = require('./simple')
 var buildNode = require('./lib/buildNode')
 var watchBalanceAndRecharge = require('./lib/rechargePeriodically')
 var Tim = require('tim')
@@ -219,7 +219,7 @@ function runBank (opts) {
   })
 
   tim.watchTxs(ENDPOINT_INFO.providers.filter(getTxId).map(getTxId))
-  var bank = newSimpleBank({
+  var bank = new SimpleBank({
     tim: tim,
     path: path.join(storagePath, name + '-customer-data.db'),
     name: opts.name,
@@ -276,15 +276,15 @@ function runBank (opts) {
     return transport.send.apply(transport, arguments)
   }
 
-  bank.wallet.balance(function (err, balance) {
+  tim.wallet.balance(function (err, balance) {
     if (err) return
     console.log(opts.name, ' Balance: ', balance)
-    console.log(opts.name, ': Send coins to', bank.wallet.addressString)
+    console.log(opts.name, ': Send coins to', tim.wallet.addressString)
   })
 
   if (networkName === 'testnet') {
     watchBalanceAndRecharge({
-      wallet: bank.wallet,
+      wallet: tim.wallet,
       interval: 60000,
       minBalance: 1000000
     })
