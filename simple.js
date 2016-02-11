@@ -92,12 +92,12 @@ function SimpleBank (opts) {
         welcome: true,
         // message: '[Hello! It very nice to meet you](Please choose the product)',
         message: 'Switching to representative mode is not yet implemented.',
-      }, { chain: false })
+      })
       // return bank.send(req, {
       //   _t: types.REQUEST_FOR_REPRESENTATIVE,
       //   welcome: true,
       //   message: 'Switching to representative mode is not yet implemented'
-      // }, { chain: false })
+      // })
     }
   })
   // bank.use(types.REQUEST_FOR_REPRESENTATIVE, function (req) {
@@ -107,7 +107,7 @@ function SimpleBank (opts) {
   //     welcome: true,
   //     // message: '[Hello! It very nice to meet you](Please choose the product)',
   //     message: 'The feature of switching to representative is coming soon!',
-  //   }, { chain: false })
+  //   })
   // })
 }
 
@@ -119,11 +119,11 @@ SimpleBank.prototype.receiveMsg = function (msgBuf, senderInfo) {
     msg = JSON.parse(new Buffer(wrapper.data, 'base64'))
   } catch (err) {}
 
-  // if it's an identity, store it
   if (!msg) {
-    return bank.receiveMsg.apply(bank, arguments)
+    return this.receivePrivateMsg(msgBuf, senderInfo)
   }
 
+  // if it's an identity, store it
   if (msg[TYPE] !== types.IDENTITY_PUBLISHING_REQUEST) {
     var errMsg = utils.format('rejecting cleartext {0}, only {1} are accepted in cleartext',
         msg[TYPE],
@@ -160,6 +160,28 @@ SimpleBank.prototype.receiveMsg = function (msgBuf, senderInfo) {
     .then(() => req.end())
 }
 
+SimpleBank.prototype.receivePrivateMsg = function (msgBuf, senderInfo) {
+  var req = new RequestState({ from: senderInfo })
+  return this.tim.lookupIdentity(senderInfo)
+    .then(
+      (them) => this.bank.receiveMsg(msgBuf, them),
+      (err) => this.replyNotFound(req)
+    )
+}
+
+SimpleBank.prototype.replyNotFound = function (req) {
+  return this.bank.send(req, {
+      [TYPE]: 'tradle.NotFound',
+      resource: req.from
+    }, { public: true })
+    .then(() => {
+      return req.end()
+    })
+
+  // public=true because not knowing their identity,
+  // we don't know how to encrypt messages for them
+}
+
 SimpleBank.prototype.sendProductList = function (req) {
   var bank = this.bank
   var formModels = {}
@@ -189,7 +211,7 @@ SimpleBank.prototype.sendProductList = function (req) {
     // message: '[Hello! It very nice to meet you](Please choose the product)',
     message: '[Hello ' + req.from.identity.name() + '!](Click for a list of products)',
     list: JSON.stringify(list)
-  }, { chain: false })
+  })
 }
 
 SimpleBank.prototype.publishCustomerIdentity = function (req) {
@@ -221,7 +243,7 @@ SimpleBank.prototype.publishCustomerIdentity = function (req) {
         // if (obj.dateChained) // actually chained
         // may not be published yet, but def queued
         var resp = utils.buildSimpleMsg('already published', types.IDENTITY)
-        return bank.send(req, resp, { chain: false })
+        return bank.send(req, resp)
       } else {
         return publish()
       }
@@ -247,7 +269,7 @@ SimpleBank.prototype.publishCustomerIdentity = function (req) {
     var resp = {}
     resp[TYPE] = 'tradle.IdentityPublished'
     resp.identity = curHash
-    return bank.send(req, resp, { chain: false })
+    return bank.send(req, resp)
   }
 }
 
@@ -293,7 +315,7 @@ SimpleBank.prototype.handleDocument = function (req, res) {
   }
 
   docState.verifications.push(stored)
-  return bank.send(req, verification)
+  return bank.send(req, verification, { chain: true })
     .then((entries) => {
       var rootHash = entries[0].toJSON()[ROOT_HASH]
       // stored[ROOT_HASH] = req[ROOT_HASH]
@@ -360,7 +382,7 @@ SimpleBank.prototype.sendNextFormOrApprove = function (req) {
         'You already have a ' + productModel.title + ' with us!'
       )
 
-      return bank.send(req, resp, opts)
+      return bank.send(req, resp)
     }
   }
   else {
@@ -418,6 +440,7 @@ SimpleBank.prototype.sendNextFormOrApprove = function (req) {
     thisProduct.push(acquiredProduct)
     var idx = pendingApps.indexOf(productType)
     pendingApps.splice(idx, 1)
+    opts.chain = true
   }
 
   return bank.send(req, resp, opts)
@@ -461,7 +484,7 @@ SimpleBank.prototype.lookupAndSend = function (req) {
       throw httpErr
     })
     .then(function (obj) {
-      return bank.send(req, obj.parsed.data, { chain: false })
+      return bank.send(req, obj.parsed.data)
     })
 }
 
@@ -473,7 +496,7 @@ SimpleBank.prototype.sendHistory = function (req) {
   return this.tim.history(from)
     .then(function (objs) {
       return Q.all(objs.map(function (obj) {
-        return bank.send(req, obj.parsed.data, { chain: false })
+        return bank.send(req, obj.parsed.data)
       }))
     })
 }
@@ -481,10 +504,25 @@ SimpleBank.prototype.sendHistory = function (req) {
 SimpleBank.prototype.getEmployee = function (req) {
   var bank = this.bank
   var employeeIdentifier = req.parsed.data.employee
-  return this.tim.lookupIdentity(employeeIdentifier)
-    .then(employee => {
+  var employeeInfo = find(this._employees, (info) => {
+    return info[CUR_HASH] === employeeIdentifier[CUR_HASH]
+  })
 
-    })
+  if (!employeeInfo) {
+    var employeeNotFound = {
+      [TYPE]: 'tradle.NotFound',
+      identifier: employeeIdentifier
+    }
+
+    return this.bank.send(req, employeeNotFound)
+  }
+
+  var resp = {
+    [TYPE]: 'tradle.EmployeeInfo',
+    employee: utils.pick(employeeInfo, 'pub', 'profile')
+  }
+
+  return this.bank.send(req, resp)
 }
 
 SimpleBank.prototype.handleVerification = function (req) {
@@ -511,7 +549,7 @@ SimpleBank.prototype.forgetMe = function (req) {
     .then(function () {
       var forgotYou = {}
       forgotYou[TYPE] = FORGOT_YOU
-      return bank.send(req, forgotYou)
+      return bank.send(req, forgotYou, { chain: true })
     })
 }
 

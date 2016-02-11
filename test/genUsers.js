@@ -2,61 +2,30 @@
 
 var fs = require('fs')
 var path = require('path')
-var typeforce = require('typeforce')
-var randomName = require('random-name')
-var kiki = require('@tradle/kiki')
-var identityLib = require('@tradle/identity')
-var Identity = identityLib.Identity
-var constants = require('@tradle/constants')
-var NONCE = constants.NONCE
+var Q = require('q')
+var utils = require('./utils')
 var argv = require('minimist')(process.argv.slice(2), {
   alias: {
     f: 'file',
-    n: 'number'
+    c: 'count',
+    n: 'networkName'
+  },
+  default: {
+    c: 100,
+    n: 'testnet'
   }
 })
 
-genUsers(argv)
-
-function genUsers (opts) {
-  typeforce({
-    file: 'String',
-    number: 'Number'
-  }, opts)
-
-  var file = path.resolve(opts.file)
-  var number = opts.number
-  var users = []
-  for (var i = 0; i < number; i++) {
-    var first = randomName.first()
-    var last = randomName.last()
-    var identity = new Identity()
-      .name({
-        firstName: first,
-        lastName: last,
-        formatted: first + ' ' + last
-      })
-      .set(NONCE, '' + i)
-
-    var keys = identityLib.defaultKeySet({
-      networkName: 'testnet'
-    })
-
-    if (keys.every(function (k) {
-      return k.type() !== 'dsa'
-    })) {
-      keys.push(kiki.Keys.DSA.gen({ purpose: 'sign' }))
-    }
-
-    keys.forEach(identity.addKey, identity)
-
-    users.push({
-      pub: identity.toJSON(),
-      priv: keys.map(function (k) {
-        return k.exportPrivate()
-      })
-    })
-  }
-
-  fs.writeFile(file, JSON.stringify(users, null, 2))
+var users = []
+var count = Number(argv.count)
+var filePath = path.resolve(argv.file)
+var opts = { networkName: argv.networkName }
+var promises = []
+for (var i = 0; i < count; i++) {
+  promises.push(Q.ninvoke(utils, 'genUser', opts))
 }
+
+Q.all(promises)
+  .then((users) => {
+    fs.writeFile(filePath, JSON.stringify(users, null, 2))
+  })

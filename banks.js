@@ -47,6 +47,7 @@ var installServer = require('@tradle/tim-server')
 var localOnly = installServer.middleware.localOnly
 var BlockchainProxy = require('@tradle/cb-proxy')
 var Blockchain = require('@tradle/cb-blockr')
+var pick = require('./lib/utils').pick
 // var Zlorp = Tim.Zlorp
 // Zlorp.ANNOUNCE_INTERVAL = 10000
 // Zlorp.LOOKUP_INTERVAL = 10000
@@ -250,9 +251,6 @@ function runBank (opts) {
 
     websocketClient.on('message', bank.receiveMsg)
     tim._send = websocketClient.send.bind(websocketClient)
-    tim.ready().then(function () {
-      websocketClient.setRootHash(tim.myRootHash())
-    })
   }
 
   debug('http enabled, port', port)
@@ -261,7 +259,7 @@ function runBank (opts) {
     router: router
   })
 
-  httpServer.receive = bank.receiveMsg.bind(bank)
+  httpServer.receive = bank.receiveMsg
   tim.once('ready', function () {
     app.use('/' + name + '/send', router)
   })
@@ -269,7 +267,9 @@ function runBank (opts) {
   tim._send = function (toRootHash, msg, recipientInfo) {
     // TODO: figure out a better way to determine which transport
     // to send reply with
-    var transport = websocketRelay && websocketRelay.hasClient(toRootHash)
+    var transport = websocketRelay && recipientInfo.identity.pubkeys.some(function (k) {
+        return websocketRelay.hasClient(k.fingerprint)
+      })
       ? websocketClient
       : httpServer
 
@@ -398,16 +398,6 @@ function printUsage () {
   */
   }.toString().split(/\n/).slice(2, -2).join('\n'))
   process.exit(0)
-}
-
-function pick (obj) {
-  var picked = {}
-  for (var i = 1; i < arguments.length; i++) {
-    var p = arguments[i]
-    picked[p] = obj[p]
-  }
-
-  return picked
 }
 
 function getTxId (info) {

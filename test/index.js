@@ -63,7 +63,7 @@ var TYPE = constants.TYPE
 var NONCE = constants.NONCE
 var CUR_HASH = constants.CUR_HASH
 var ROOT_HASH = constants.ROOT_HASH
-var origBuildNode = require('../lib/buildNode')
+var testUtils = require('./utils')
 var utils = require('../lib/utils')
 var Bank = require('../simple')
 Bank.ALLOW_CHAINING = true
@@ -101,7 +101,7 @@ var COMMON_OPTS = {
 var APPLICANT
 var BANK_SERVER
 var WEBSOCKET_RELAY
-var BANK_REPS = [{
+var BANK_BOTS = [{
   pub: tedPub,
   priv: tedPriv
 }, {
@@ -137,7 +137,7 @@ function runTests (setup, idx) {
         var bankTims = BANKS.map(function (b) { return b.tim })
         return publishIdentities(bankTims)
       })
-      .finally(function () {
+      .done(function () {
         t.end()
       })
   })
@@ -164,7 +164,10 @@ function runTests (setup, idx) {
     APPLICANT.on('unchained', onUnchained)
 
     cleanCache()
-    sendIdentity()
+
+    // tryUnacquainted() // TODO: get this working
+    Q()
+      .then(sendIdentity)
       // bank shouldn't publish you twice
       .then(sendIdentityAgain)
       .then(runBank1Scenario)
@@ -250,6 +253,22 @@ function runTests (setup, idx) {
               console.log(JSON.stringify(item.value, null, 2))
             })
           })
+        })
+    }
+
+    function tryUnacquainted () {
+      var msg = {
+        [TYPE]: 'tradle.SimpleMessage',
+        [NONCE]: '' + nonce++,
+        hey: 'ho'
+      }
+
+      signNSend(msg)
+      return Q.all([
+          awaitType('tradle.NotFound')
+        ])
+        .then(function () {
+          t.pass('unacquainted gets NotFound')
         })
     }
 
@@ -588,13 +607,13 @@ function getTims () {
 }
 
 function buildNode (opts) {
-  return origBuildNode(extend(COMMON_OPTS, {
+  return testUtils.buildNode(extend(COMMON_OPTS, {
     pathPrefix: opts.identity.name() + initCount,
     syncInterval: 0,
     unchainThrottle: 0,
     chainThrottle: 0,
     sendThrottle: 0,
-    keeper: newKeeper()
+    keeper: testUtils.newKeeper(sharedKeeper)
   }, opts))
 }
 
@@ -646,10 +665,17 @@ function initP2P () {
     })
   })
 
-  BANKS = BANK_REPS.map(function (rep, i) {
+  BANKS = BANK_BOTS.map(function (rep, i) {
     var port = BASE_PORT++
     var dht = new DHT(dhtConf)
     dht.listen(port)
+
+    var messenger = newMessenger({
+      keys: rep.priv,
+      identityJSON: rep.pub,
+      port: port,
+      dht: dht
+    })
 
     var tim = buildNode({
       dht: dht,
@@ -657,21 +683,19 @@ function initP2P () {
       identity: Identity.fromJSON(rep.pub),
       keys: rep.priv,
       port: port,
-      messenger: newMessenger({
-        keys: rep.priv,
-        identityJSON: rep.pub,
-        port: port,
-        dht: dht
-      })
+      messenger: messenger,
+      _send: messenger.send.bind(messenger)
     })
 
     var bank = new Bank({
       tim: tim,
       name: 'Bank ' + i,
       path: getNextBankPath(),
-      leveldown: memdown
+      leveldown: memdown,
+      manual: true
     })
 
+    messenger.on('message', bank.receiveMsg)
     return bank
   })
 
@@ -716,7 +740,7 @@ function init () {
   var bankApp = express()
   BANK_SERVER = bankApp.listen(serverPort)
 
-  BANKS = BANK_REPS.map(function (rep, i) {
+  BANKS = BANK_BOTS.map(function (rep, i) {
     var port = BASE_PORT++
     // var dht = new DHT(dhtConf)
     // dht.listen(port)
@@ -732,7 +756,8 @@ function init () {
       identity: Identity.fromJSON(rep.pub),
       keys: rep.priv,
       port: port,
-      messenger: httpServer
+      messenger: httpServer,
+      _send: httpServer.send.bind(httpServer)
     })
 
     var bank = new Bank({
@@ -787,14 +812,13 @@ function initWebsockets () {
     messenger: applicantClient,
     identity: Identity.fromJSON(billPub),
     keys: applicantKeys,
-    port: aPort
+    port: aPort,
+    _send: applicantClient.send.bind(applicantClient)
   })
 
-  APPLICANT.once('ready', function () {
-    APPLICANT.messenger.setRootHash(APPLICANT.myRootHash())
-  })
+  applicantClient.on('message', APPLICANT.receiveMsg)
 
-  BANKS = BANK_REPS.map(function (rep, i) {
+  BANKS = BANK_BOTS.map(function (rep, i) {
     var port = BASE_PORT++
     var client = new WebSocketClient({
       url: relayURL,
@@ -807,11 +831,8 @@ function initWebsockets () {
       identity: Identity.fromJSON(rep.pub),
       keys: rep.priv,
       port: port,
-      messenger: client
-    })
-
-    tim.once('ready', function () {
-      tim.messenger.setRootHash(tim.myRootHash())
+      messenger: client,
+      _send: client.send.bind(client)
     })
 
     var bank = new Bank({
@@ -823,7 +844,7 @@ function initWebsockets () {
     })
 
     client.on('message', function (buf, senderInfo) {
-      bank.receiveMsg(buf, senderInfo)
+      bank.receiveMsg(buf, senderInfo).done()
     })
 
     return bank
@@ -903,31 +924,6 @@ function getDSAKey (keys) {
   })[0]
 
   return DSA.parsePrivate(key.priv)
-}
-
-/**
- * returns mock keeper with fallback to sharedKeeper (which hosts identities)
- */
-function newKeeper () {
-  var k = FakeKeeper.empty()
-  var getOne = k.getOne
-  k.getOne = function (key) {
-    return getOne.apply(this, arguments)
-      .catch(function (err) {
-        return sharedKeeper.getOne(key)
-      })
-  }
-
-  k.push = function (opts) {
-    typeforce({
-      key: 'String',
-      value: 'Buffer'
-    }, opts)
-
-    return sharedKeeper.put(opts.key, opts.value)
-  }
-
-  return k
 }
 
 function newMessenger (opts) {

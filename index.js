@@ -4,6 +4,7 @@ var assert = require('assert')
 var extend = require('xtend')
 var levelup = require('levelup')
 var map = require('map-stream')
+var find = require('array-find')
 var typeforce = require('typeforce')
 var collect = require('stream-collector')
 var tutils = require('@tradle/utils')
@@ -46,7 +47,7 @@ function Bank (options) {
 
   var tim = options.tim
   tim.on('chained', function (info) {
-    self._debugf('wrote chain-seal for {0} in tx with id {1}', info[TYPE], info.txId)
+    self._debug(`wrote chain-seal for ${info[TYPE]} in tx with id ${info.txId}`)
   })
 
   Object.defineProperty(this, 'tim', {
@@ -196,11 +197,6 @@ Bank.prototype._saveParsedMsg = function (req) {
   })
 }
 
-Bank.prototype._debugf = function () {
-  var str = utils.format.apply(utils, arguments)
-  return debug(this._name + ' ' + str)
-}
-
 Bank.prototype._debug = function () {
   var args = [].slice.call(arguments)
   args.unshift(this._name)
@@ -239,7 +235,7 @@ Bank.prototype._onMessage = function (msg) {
   var req = new RequestState(msg)
   var res = {}
   var from = req.from[ROOT_HASH]
-  this._debugf('received {0} from {1}', req[TYPE], from)
+  this._debug(`received ${req[TYPE]} from ${from}`)
 
   return this._getCustomerState(from)
     .catch(function (err) {
@@ -324,7 +320,7 @@ Bank.prototype.send = function (req, resp, opts) {
   }
 
   var recipient = getSender(req.msg)
-  this._debugf('sending {0} to {1}', resp[TYPE], recipient[ROOT_HASH])
+  this._debug(`sending ${resp[TYPE]} to ${JSON.stringify(recipient)}`)
 
   var maybeSign
   if (!(constants.SIG in resp)) {
@@ -335,12 +331,15 @@ Bank.prototype.send = function (req, resp, opts) {
 
   return maybeSign
     .then(function (signed) {
-      return self.tim.send(extend({
+      var sendOpts = extend({
         to: [recipient],
         msg: signed,
-        chain: Bank.ALLOW_CHAINING,
         deliver: true
-      }, opts))
+      }, opts)
+
+      if (!Bank.ALLOW_CHAINING) opts.chain = false
+
+      return self.tim.send(sendOpts)
     })
     .then(function (entries) {
       entries.forEach(function (e) {
@@ -368,9 +367,14 @@ Bank.prototype.destroy = function () {
 }
 
 function getSender (msg) {
-  var sender = {}
-  sender[ROOT_HASH] = msg.from[ROOT_HASH]
-  return sender
+  var from = msg.from
+  var identifier = find([ROOT_HASH, CUR_HASH, 'fingerprint'], (key) => {
+    return key in from
+  })
+
+  return {
+    [identifier]: from[identifier]
+  }
 }
 
 function prefixKey (type, key) {
