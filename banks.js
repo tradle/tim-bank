@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+'use strict'
 
 var path = require('path')
 var argv = require('minimist')(process.argv.slice(2), {
@@ -28,8 +29,10 @@ var typeforce = require('typeforce')
 var Q = require('./q-to-bluebird')
 var debug = require('debug')('bankd')
 var leveldown = require('leveldown')
+var find = require('array-find')
 var constants = require('@tradle/constants')
 var ROOT_HASH = constants.ROOT_HASH
+var CUR_HASH = constants.CUR_HASH
 var Builder = require('@tradle/chained-obj').Builder
 var Bank = require('./')
 Bank.ALLOW_CHAINING = argv.chain
@@ -237,7 +240,7 @@ function runBank (opts) {
   if (otrKey) {
     // websockets
     debug('websockets enabled')
-    var wsPath = '/ws/' + name
+    var wsPath = name + '/ws/'
     websocketRelay = new WebSocketRelay({
       server: server,
       path: wsPath
@@ -254,14 +257,17 @@ function runBank (opts) {
   }
 
   debug('http enabled, port', port)
-  var router = express.Router()
+  var providerRouter = express.Router()
+  app.use(`/${name}`, providerRouter)
+
+  var chatRouter = express.Router()
   var httpServer = new HttpServer({
-    router: router
+    router: chatRouter
   })
 
   httpServer.receive = bank.receiveMsg
   tim.once('ready', function () {
-    app.use('/' + name + '/send', router)
+    providerRouter.use('/send', chatRouter)
   })
 
   tim._send = function (toRootHash, msg, recipientInfo) {
@@ -290,20 +296,29 @@ function runBank (opts) {
     })
   }
 
-  var byType = '/' + name + '/list/:type'
-  app.get(byType, localOnly)
-  app.get(byType, function (req, res, next) {
+  var byType = '/list/:type'
+  providerRouter.get(byType, localOnly)
+  providerRouter.get(byType, function (req, res, next) {
     bank.list(req.params.type)
       .then(res.json.bind(res))
       .catch(sendErr.bind(null, res))
   })
 
-  var timRouter = express.Router()
-  app.use('/' + name, timRouter)
+  providerRouter.get('/employee/:hash', function (req, res) {
+    let employee = find(conf.employees, function (e) {
+      return e[CUR_HASH] === req.params.hash
+    })
+
+    if (employee) {
+      res.status(200).json(employee)
+    } else {
+      res.status(404).end()
+    }
+  })
 
   installServer({
     tim: tim,
-    app: timRouter,
+    app: providerRouter,
     public: argv.public
   })
 
@@ -368,7 +383,7 @@ function cleanup () {
     }))
     .done(function () {
       debug('shutting down')
-      process.exit()
+      process.exit(0)
     })
 }
 
