@@ -231,16 +231,15 @@ function runBank (opts) {
     manual: true // receive msgs manually
   })
 
-  var otrKey = keys.filter(function (k) {
-    return k.type === 'dsa'
-  })[0].priv
+  var otrKey = keys.filter(k => k.type === 'dsa')[0]
+  if (otrKey) otrKey = otrKey.priv
 
   var websocketRelay
   var websocketClient
   if (otrKey) {
     // websockets
     debug('websockets enabled')
-    var wsPath = name + '/ws/'
+    var wsPath = `/${name}/ws/`
     websocketRelay = new WebSocketRelay({
       server: server,
       path: wsPath
