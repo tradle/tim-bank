@@ -85,14 +85,20 @@ providerIds.forEach(function (id) {
   }
 
   var bConf = conf.providers[id]
-  console.log(id, bConf.bot)
   var bDir = path.resolve(path.dirname(confPath), id)
   bConf.bot = require(path.resolve(bDir, 'bot-pub.json'))
   bConf.botPriv = require(path.resolve(bDir, 'bot-priv.json'))
   try {
+    bConf.style = require(path.resolve(bDir, 'style.json'))
+  } catch (err) {
+    // punks got no style!
+    bConf.style = {}
+  }
+
+  try {
     bConf.employees = require(path.resolve(bDir, 'employees.json'))
   } catch (err) {
-    // no employees, that's ok
+    // no employees, it's a pure digibank!
   }
 })
 
