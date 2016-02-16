@@ -205,11 +205,15 @@ SimpleBank.prototype.sendProductList = function (req) {
   for (var p in formModels)
     list.push(formModels[p])
 
+  let name = req.from.identity.name()
+  let greeting = name
+    ? `Hello ${name}!`
+    : 'Hello!'
   return bank.send(req, {
     _t: types.PRODUCT_LIST,
     welcome: true,
     // message: '[Hello! It very nice to meet you](Please choose the product)',
-    message: '[Hello ' + req.from.identity.name() + '!](Click for a list of products)',
+    message: `[${greeting}](Click for a list of products)`,
     list: JSON.stringify(list)
   })
 }
