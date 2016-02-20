@@ -9,7 +9,7 @@ RUN mkdir -p /opt/app
 WORKDIR /opt/app
 
 ADD package.json npm-shrinkwrap.json /opt/app/
-RUN echo "force reinstall"
+RUN npm config set registry https://registry.npmjs.org/
 RUN cd /opt/app && npm install
 
 # From here we load our application's code in, therefore the previous docker
