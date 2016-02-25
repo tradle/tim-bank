@@ -3,8 +3,16 @@
 const typeforce = require('typeforce')
 const Q = require('q')
 const find = require('array-find')
+const clone = require('clone')
 const constants = require('@tradle/constants')
-const MODELS = require('@tradle/models')
+const BUILTIN_MODELS = require('@tradle/models')
+const DEFAULT_PRODUCT_LIST = [
+  'tradle.CurrentAccount',
+  'tradle.BusinessAccount',
+  'tradle.Mortgage',
+  'tradle.JumboMortgage'
+]
+
 const Builder = require('@tradle/chained-obj').Builder
 const tradleUtils = require('@tradle/utils')
 const Identity = require('@tradle/identity').Identity
@@ -18,31 +26,6 @@ const TYPE = constants.TYPE
 const types = constants.TYPES
 const FORGET_ME = 'tradle.ForgetMe'
 const FORGOT_YOU = 'tradle.ForgotYou'
-const MODELS_BY_ID = {}
-
-MODELS.forEach(function (m) {
-  MODELS_BY_ID[m.id] = m
-})
-
-const PRODUCT_TYPES = MODELS.filter(function (m) {
-  return m.subClassOf === 'tradle.FinancialProduct'
-}).map(function (m) {
-  return m.id
-})
-
-const PRODUCT_TO_DOCS = {}
-const DOC_TYPES = []
-PRODUCT_TYPES.forEach(function (productType) {
-  var model = MODELS_BY_ID[productType]
-  var docTypes = getForms(model)
-  PRODUCT_TO_DOCS[productType] = docTypes
-  docTypes.forEach(function (t) {
-    if (DOC_TYPES.indexOf(t) === -1) {
-      DOC_TYPES.push(t)
-    }
-  })
-})
-
 const noop = function () {}
 
 module.exports = SimpleBank
@@ -54,17 +37,24 @@ function SimpleBank (opts) {
 
   tradleUtils.bindPrototypeFunctions(this)
 
+  this._models = utils.processModels(opts.models)
+  this._productList = opts.productList || DEFAULT_PRODUCT_LIST
+  const missingProduct = find(this._productList, p => !this._models[p])
+  if (missingProduct) {
+    throw new Error(`missing model for product: ${missingProduct}`)
+  }
+
   this._employees = opts.employees
   this.tim = opts.tim
 
   var bank = this.bank = new Bank(opts)
-  bank._shouldChainReceivedMessage = function (msg) {
+  bank._shouldChainReceivedMessage = (msg) => {
     return msg[TYPE] === types.VERIFICATION ||
-      DOC_TYPES.indexOf(msg[TYPE]) !== -1
+      this._models.docs.indexOf(msg[TYPE]) !== -1
   }
 
   bank.use((req, res) => {
-    if (DOC_TYPES.indexOf(req.type) !== -1) {
+    if (this._models.docs.indexOf(req.type) !== -1) {
       return this.handleDocument(req)
     }
   })
@@ -81,7 +71,7 @@ function SimpleBank (opts) {
 
     var parsed = utils.parseSimpleMsg(msg)
     if (parsed.type) {
-      if (PRODUCT_TYPES.indexOf(parsed.type) !== -1) {
+      if (this._models.products.indexOf(parsed.type) !== -1) {
         req.productType = parsed.type
         return this.handleNewApplication(req)
       }
@@ -185,20 +175,16 @@ SimpleBank.prototype.replyNotFound = function (req) {
 SimpleBank.prototype.sendProductList = function (req) {
   var bank = this.bank
   var formModels = {}
-  var productTypes = [
-    'tradle.CurrentAccount',
-    'tradle.BusinessAccount',
-    'tradle.Mortgage',
-    'tradle.JumboMortgage'
-  ]
-
-  var list = productTypes.map(function (a) {
-    var model = MODELS_BY_ID[a]
-    var forms = getForms(model)
-    forms.forEach(function(f) {
-      if (MODELS_BY_ID[f])
-        formModels[f] = MODELS_BY_ID[f]
+  var list = this._productList.map(productModelId => {
+    var model = this._models[productModelId]
+    var forms = utils.getForms(model)
+    forms.forEach(formModelId => {
+      if (this._models[formModelId]) {
+        // avoid duplicates by using object
+        formModels[formModelId] = this._models[formModelId]
+      }
     })
+
     return model
   })
 
@@ -209,6 +195,7 @@ SimpleBank.prototype.sendProductList = function (req) {
   let greeting = name
     ? `Hello ${name}!`
     : 'Hello!'
+
   return bank.send(req, {
     _t: types.PRODUCT_LIST,
     welcome: true,
@@ -364,12 +351,12 @@ SimpleBank.prototype.sendNextFormOrApprove = function (req) {
 
   var msg = req.msg
   var app = msg.parsed.data
-  var productType = req.productType || getRelevantPending(pendingApps, req)
+  var productType = req.productType || this._getRelevantPending(pendingApps, req)
   if (!productType) {
     return utils.rejectWithHttpError(400, 'unable to determine product requested')
   }
 
-  var productModel = MODELS_BY_ID[productType]
+  var productModel = this._models[productType]
   if (!productModel) {
     return utils.rejectWithHttpError(400, 'no such product model: ' + productType)
   }
@@ -393,8 +380,8 @@ SimpleBank.prototype.sendNextFormOrApprove = function (req) {
     thisProduct = state.products[productType] = []
   }
 
-  var isFormOrVerification = req[TYPE] === types.VERIFICATION || DOC_TYPES.indexOf(req[TYPE]) !== -1
-  var reqdForms = getForms(productModel)
+  var isFormOrVerification = req[TYPE] === types.VERIFICATION || this._models.docs.indexOf(req[TYPE]) !== -1
+  var reqdForms = utils.getForms(productModel)
   var skip
   var missing
   reqdForms.forEach(function (fType) {
@@ -456,6 +443,22 @@ SimpleBank.prototype.sendNextFormOrApprove = function (req) {
 
       return entries
     })
+}
+
+SimpleBank.prototype._getRelevantPending = function (pending, reqState) {
+  var found
+  var docType = reqState[TYPE] === types.VERIFICATION
+    ? getType(reqState.parsed.data.document)
+    : reqState[TYPE]
+
+  pending.some(productType => {
+    if (this._models.docs[productType].indexOf(docType) !== -1) {
+      found = productType
+      return true
+    }
+  })
+
+  return found
 }
 
 SimpleBank.prototype.lookupAndSend = function (req) {
@@ -567,32 +570,14 @@ SimpleBank.prototype._debug = function () {
   return debug.apply(null, args)
 }
 
-function getForms (model) {
-  try {
-    return model.forms || model.properties.forms.items
-  } catch (err) {
-    return []
-  }
-}
-
-function getRelevantPending (pending, reqState) {
-  var found
-  var docType = reqState[TYPE] === types.VERIFICATION
-    ? getType(reqState.parsed.data.document)
-    : reqState[TYPE]
-
-  pending.some(function (productType) {
-    if (PRODUCT_TO_DOCS[productType].indexOf(docType) !== -1) {
-      found = productType
-      return true
-    }
-  })
-
-  return found
-}
-
 function getType (obj) {
   if (obj[TYPE]) return obj[TYPE]
   if (!obj.id) return
   return obj.id.split('_')[0]
+}
+
+function assert (statement, errMsg) {
+  if (!statement) {
+    throw new Error(errMsg || 'assertion failed')
+  }
 }

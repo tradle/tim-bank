@@ -111,6 +111,41 @@ var BANK_BOTS = [{
 
 var BANKS
 
+test('models', function (t) {
+  const models = [
+    {
+      id: 'productA',
+      subClassOf: 'tradle.FinancialProduct',
+      forms: ['form1', 'form2']
+    },
+    {
+      id: 'productB',
+      subClassOf: 'tradle.FinancialProduct',
+      forms: ['form1', 'form3']
+    },
+    {
+      id: 'form1'
+    },
+    {
+      id: 'form2'
+    },
+    {
+      id: 'form3'
+    }
+  ]
+
+  const modelsInfo = utils.processModels(models)
+  t.deepEqual(modelsInfo.docs.productA, models[0].forms)
+  t.deepEqual(modelsInfo.docs.productB, models[1].forms)
+  t.ok(['form1', 'form2', 'form3'].every(f => modelsInfo.docs.indexOf(f) !== -1))
+  t.ok(['productA', 'productB'].every(p => modelsInfo.products.indexOf(p) !== -1))
+  models.forEach(m => {
+    t.deepEqual(modelsInfo[m.id], m)
+  })
+
+  t.end()
+})
+
 ;[
   {
     name: 'websockets',
@@ -126,21 +161,28 @@ var BANKS
   }
 ].forEach(runTests)
 
+// testCustomProductList()
+
+// function testCustomProductList () {
+//   const models = MODELS.slice()
+
+//   runSetup({
+//     name: 'websockets',
+//     init: initWebsockets.bind(null, {
+//       models: models,
+//       productList: ['tradle.CurrentAccount']
+//     })
+//   })
+
+//   test('custom product list', function (t) {
+
+//   })
+// }
+
 function runTests (setup, idx) {
   BANKS = []
   APPLICANT = null
-  test('setup ' + setup.name, function (t) {
-    initCount++
-    setup.init()
-      .then(function () {
-        // var everyone = getTims()
-        var bankTims = BANKS.map(function (b) { return b.tim })
-        return publishIdentities(bankTims)
-      })
-      .done(function () {
-        t.end()
-      })
-  })
+  runSetup(setup)
 
   test('current account', function (t) {
     var bank = BANKS[0]
@@ -149,17 +191,6 @@ function runTests (setup, idx) {
     var verifications
     var verificationsTogo
     var verificationsDefer
-
-    // logging
-    // getTims().forEach(function (tim) {
-    //   var who = tim === APPLICANT ? 'applicant' : tim === BANKS[0].tim ? 'bank2' : 'bank2'
-    //   tim.on('message', function (info) {
-    //     tim.lookupObject(info)
-    //       .then(function (obj) {
-    //         console.log(who, 'received', JSON.stringify(obj.parsed.data, null, 2))
-    //       })
-    //   })
-    // })
 
     APPLICANT.on('unchained', onUnchained)
 
@@ -286,7 +317,9 @@ function runTests (setup, idx) {
       identityPubReq[TYPE] = constants.TYPES.IDENTITY_PUBLISHING_REQUEST
       signNSend(identityPubReq, { public: true })
       return Q.all([
-          awaitTypeUnchained('tradle.Identity'),
+          awaitTypeUnchained('tradle.Identity', APPLICANT),
+          awaitTypeUnchained('tradle.Identity', BANKS[0].tim),
+          awaitTypeUnchained('tradle.Identity', BANKS[1].tim),
           awaitType('tradle.IdentityPublished')
         ])
         .then(function () {
@@ -505,12 +538,13 @@ function runTests (setup, idx) {
       }
     }
 
-    function awaitTypeUnchained (type) {
+    function awaitTypeUnchained (type, tim) {
       var defer = Q.defer()
-      APPLICANT.on('unchained', unchainedHandler)
+      tim = tim || APPLICANT
+      tim.on('unchained', unchainedHandler)
       return defer.promise
         .then(function () {
-          APPLICANT.removeListener('unchained', unchainedHandler)
+          tim.removeListener('unchained', unchainedHandler)
         })
 
       function unchainedHandler (info) {
@@ -598,6 +632,48 @@ function runTests (setup, idx) {
         t.end()
       })
   })
+}
+
+function runSetup (setup) {
+  test('setup ' + setup.name, function (t) {
+    initCount++
+    setup.init()
+      .then(function () {
+        // var everyone = getTims()
+        // var bankTims = BANKS.map(function (b) { return b.tim })
+
+        APPLICANT.watchAddresses(constants.IDENTITY_PUBLISH_ADDRESS)
+        BANKS.forEach(function (b) {
+          b.tim.watchAddresses(constants.IDENTITY_PUBLISH_ADDRESS)
+          b.tim.publishMyIdentity().done()
+        })
+
+        var defer = Q.defer()
+        // each bank + applicant unchains each bank
+        var togo = (BANKS.length + 1) * BANKS.length
+
+        getTims().forEach(function (tim) {
+          tim.on('unchained', onUnchainedOne)
+        })
+
+        function onUnchainedOne (info) {
+          if (--togo === 0) {
+            defer.resolve()
+          }
+        }
+
+        return defer.promise
+          .then(() => {
+            getTims().forEach(tim => {
+              tim.removeListener('unchained', onUnchainedOne)
+            })
+          })
+      })
+      .done(function () {
+        t.end()
+      })
+  })
+
 }
 
 function getTims () {
@@ -786,7 +862,7 @@ function init () {
   }))
 }
 
-function initWebsockets () {
+function initWebsockets (bankOpts) {
   var aPort = BASE_PORT++
   var applicantKeys = billPriv
   var applicantWallet = walletFor(applicantKeys, null, 'messaging')
@@ -835,13 +911,13 @@ function initWebsockets () {
       _send: client.send.bind(client)
     })
 
-    var bank = new Bank({
+    var bank = new Bank(extend({
       tim: tim,
       manual: true,
       name: 'Bank ' + i,
       path: getNextBankPath(),
       leveldown: memdown
-    })
+    }, bankOpts || {}))
 
     client.on('message', function (buf, senderInfo) {
       bank.receiveMsg(buf, senderInfo).done()
