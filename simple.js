@@ -314,37 +314,23 @@ SimpleBank.prototype.handleDocument = function (req, res) {
   var docState = state.forms[type] = state.forms[type] || {}
 
   docState.form = {
+    [ROOT_HASH]: req[ROOT_HASH],
     body: req.data, // raw buffer
     txId: req.txId
   }
 
-  docState.form[ROOT_HASH] = req[ROOT_HASH]
   docState.verifications = docState.verifications || []
   if (!this._auto.verify) {
     return this.sendNextFormOrApprove({req})
   }
 
   return this._sendVerification({
-    req: req,
-    verifiedItem: msg
-  })
-}
-
-SimpleBank.prototype.sendVerification = function (opts) {
-  typeforce({
-    verifiedItem: typeforce.oneOf('String', 'Object')
-  }, opts)
-
-  const lookup = typeof opts.verifiedItem === 'string'
-    ? this.bank.tim.lookupObject(opts.verifiedItem)
-    : opts.verifiedItem
-
-  lookup.then(verifiedItem => {
-    return this._sendVerification({
-      req: new RequestState(verifiedItem),
-      verifiedItem: verifiedItem
+      req: req,
+      verifiedItem: msg
     })
-  })
+    .then(() => {
+      return this.sendNextFormOrApprove({req})
+    })
 }
 
 SimpleBank.prototype._sendVerification = function (opts) {
@@ -372,8 +358,24 @@ SimpleBank.prototype._sendVerification = function (opts) {
       const rootHash = entries[0].toJSON()[ROOT_HASH]
       // stored[ROOT_HASH] = req[ROOT_HASH]
       stored[ROOT_HASH] = rootHash
-      return this.sendNextFormOrApprove({req})
     })
+}
+
+SimpleBank.prototype.sendVerification = function (opts) {
+  typeforce({
+    verifiedItem: typeforce.oneOf('String', 'Object')
+  }, opts)
+
+  const lookup = typeof opts.verifiedItem === 'string'
+    ? this.bank.tim.lookupObject(opts.verifiedItem)
+    : opts.verifiedItem
+
+  return lookup.then(verifiedItem => {
+    return this._sendVerification({
+      req: new RequestState(verifiedItem),
+      verifiedItem: verifiedItem
+    })
+  })
 }
 
 SimpleBank.prototype.newVerificationFor = function (msg) {
@@ -437,7 +439,7 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
     state.products = {}
   }
 
-  let thisProduct = state.products[productType]
+  const thisProduct = state.products[productType]
   if (thisProduct) {
     if (thisProduct.length) {
       const msg = utils.buildSimpleMsg(
@@ -451,7 +453,7 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
     }
   }
   else {
-    thisProduct = state.products[productType] = []
+    state.products[productType] = []
   }
 
   const isFormOrVerification = req[TYPE] === types.VERIFICATION || this._models.docs.indexOf(req[TYPE]) !== -1
@@ -505,10 +507,18 @@ SimpleBank.prototype._getMyForms = function (product, state) {
     : product
 
   return utils.getForms(model).map(f => {
-    let formId = state.forms[f].verifications[0].body.document.id
-    let parts = formId.split('_')
-    formId = parts.length === 2 ? formId : parts.splice(0, 2).join('_')
-    return formId
+    const ret = { [TYPE]: f }
+    const docState = state.forms[f]
+    const verifications = docState.verifications
+    if (verifications && verifications.length) {
+      let formId = state.forms[f].verifications[0].body.document.id
+      let parts = formId.split('_')
+      ret[ROOT_HASH] = formId[1]
+    } else {
+      ret[ROOT_HASH] = docState.form[ROOT_HASH]
+    }
+
+    return ret
   })
 }
 
@@ -545,7 +555,24 @@ SimpleBank.prototype._approveProduct = function (opts) {
   const state = req.state
   const productType = opts.productType
   const productModel = this._models[productType]
-  const forms = this._getMyForms(productType, state)
+  const unverified = utils.getForms(productType)
+    .map(f => state.forms[f])
+    .filter(docState => {
+      return !(docState.verifications && docState.verifications.length)
+    })
+
+  const promiseVerifications = Q.all(unverified.map(docState => {
+    return this.sendVerification({
+      req: req,
+      verifiedItem: docState.form[ROOT_HASH]
+    })
+  }))
+
+  const formIds = this._getMyForms(productType, state)
+    .map(f => {
+      return f[TYPE] + '_' + f[ROOT_HASH]
+    })
+
   const acquiredProduct = {
     [TYPE]: productType
   }
@@ -554,20 +581,23 @@ SimpleBank.prototype._approveProduct = function (opts) {
   thisProduct.push(acquiredProduct)
 
   debug('approving for product', productType)
-  const resp = {
+  const confirmation = {
     [TYPE]: productType + 'Confirmation',
     message: 'Congratulations! You were approved for: ' + productModel.title,
-    forms: forms
+    forms: formIds
   }
 
   const pendingApps = state.pendingApplications
   const idx = pendingApps.indexOf(productType)
   pendingApps.splice(idx, 1)
 
-  return this.bank.send({
-      req: req,
-      msg: resp,
-      chain: true
+  return promiseVerifications
+    .then(() => {
+      return this.bank.send({
+        req: req,
+        msg: confirmation,
+        chain: true
+      })
     })
     .then(function (entries) {
       if (acquiredProduct) {
@@ -701,7 +731,7 @@ SimpleBank.prototype.handleVerification = function (req) {
 
   docState.verifications = docState.verifications || []
   docState.verifications.push({
-    rootHash: msg[ROOT_HASH],
+    [ROOT_HASH]: msg[ROOT_HASH],
     txId: msg.txId,
     body: verification
   })

@@ -74,10 +74,10 @@ var tedPriv = require('./fixtures/ted-priv')
 var rufusPub = require('./fixtures/rufus-pub')
 var rufusPriv = require('./fixtures/rufus-priv')
 var types = constants.TYPES
-var helpers = require('@tradle/test-helpers')
+var testHelpers = require('@tradle/test-helpers')
 // var Keeper = require('offline-keeper')
-var FakeKeeper = helpers.fakeKeeper
-var createFakeWallet = helpers.fakeWallet
+var FakeKeeper = testHelpers.fakeKeeper
+var createFakeWallet = testHelpers.fakeWallet
 var NETWORK_NAME = 'testnet'
 var BASE_PORT = 22222
 var bootstrapDHT
@@ -111,40 +111,40 @@ var BANK_BOTS = [{
 
 var BANKS
 
-test('models', function (t) {
-  const models = [
-    {
-      id: 'productA',
-      subClassOf: 'tradle.FinancialProduct',
-      forms: ['form1', 'form2']
-    },
-    {
-      id: 'productB',
-      subClassOf: 'tradle.FinancialProduct',
-      forms: ['form1', 'form3']
-    },
-    {
-      id: 'form1'
-    },
-    {
-      id: 'form2'
-    },
-    {
-      id: 'form3'
-    }
-  ]
+// test('models', function (t) {
+//   const models = [
+//     {
+//       id: 'productA',
+//       subClassOf: 'tradle.FinancialProduct',
+//       forms: ['form1', 'form2']
+//     },
+//     {
+//       id: 'productB',
+//       subClassOf: 'tradle.FinancialProduct',
+//       forms: ['form1', 'form3']
+//     },
+//     {
+//       id: 'form1'
+//     },
+//     {
+//       id: 'form2'
+//     },
+//     {
+//       id: 'form3'
+//     }
+//   ]
 
-  const modelsInfo = utils.processModels(models)
-  t.deepEqual(modelsInfo.docs.productA, models[0].forms)
-  t.deepEqual(modelsInfo.docs.productB, models[1].forms)
-  t.ok(['form1', 'form2', 'form3'].every(f => modelsInfo.docs.indexOf(f) !== -1))
-  t.ok(['productA', 'productB'].every(p => modelsInfo.products.indexOf(p) !== -1))
-  models.forEach(m => {
-    t.deepEqual(modelsInfo[m.id], m)
-  })
+//   const modelsInfo = utils.processModels(models)
+//   t.deepEqual(modelsInfo.docs.productA, models[0].forms)
+//   t.deepEqual(modelsInfo.docs.productB, models[1].forms)
+//   t.ok(['form1', 'form2', 'form3'].every(f => modelsInfo.docs.indexOf(f) !== -1))
+//   t.ok(['productA', 'productB'].every(p => modelsInfo.products.indexOf(p) !== -1))
+//   models.forEach(m => {
+//     t.deepEqual(modelsInfo[m.id], m)
+//   })
 
-  t.end()
-})
+//   t.end()
+// })
 
 ;[
   {
@@ -179,22 +179,49 @@ test('models', function (t) {
 //   })
 // }
 
+// testManualMode()
+
+// function testManualMode () {
+//   runSetup({
+//     name: 'websockets',
+//     init: initWebsockets
+//   })
+
+//   test('current account', function (t) {
+//     var bank = BANKS[0]
+//     bank._auto.approve = false
+
+//     var bankCoords = getCoords(bank.tim)
+//     var forms
+//     var verifications
+//     var verificationsTogo
+//     var verificationsDefer
+
+//     APPLICANT.on('unchained', onUnchained)
+
+//     cleanCache()
+
+//   })
+// }
+
 function runTests (setup, idx) {
   BANKS = []
   APPLICANT = null
   runSetup(setup)
 
   test('current account', function (t) {
-    var bank = BANKS[0]
-    var bankCoords = getCoords(bank.tim)
+    var bank
+    var bankCoords
     var forms
     var verifications
     var verificationsTogo
     var verificationsDefer
 
+    cleanCache()
+    changeBank(BANKS[0])
+
     APPLICANT.on('unchained', onUnchained)
 
-    cleanCache()
 
     // tryUnacquainted() // TODO: get this working
     Q()
@@ -203,14 +230,13 @@ function runTests (setup, idx) {
       .then(sendIdentityAgain)
       .then(runBank1Scenario)
       .then(function () {
-        bank = BANKS[1]
-        bankCoords = getCoords(bank.tim)
+        changeBank(BANKS[1])
         return runBank2Scenario()
       })
       .then(function () {
         bank = BANKS[0]
         console.log('exercising right to be forgotten')
-        return forget()
+        return helpers.forget()
       })
       .then(function () {
         cleanCache()
@@ -222,21 +248,27 @@ function runTests (setup, idx) {
         t.end()
       })
 
+    function changeBank (newBank) {
+      bank = newBank
+      bankCoords = getCoords(bank.tim)
+      helpers = getHelpers(APPLICANT, bank, forms, verifications, t)
+    }
+
     function runBank1Scenario () {
-      return startApplication()
-        .then(sendAboutYou)
-        .then(sendYourMoney)
-        .then(sendLicense)
+      return helpers.startApplication()
+        .then(helpers.sendAboutYou)
+        .then(helpers.sendYourMoney)
+        .then(helpers.sendLicense)
         .then(function () {
           return verificationsDefer.promise
         })
     }
 
     function runBank2Scenario () {
-      return bank2startApplication()
-        .then(bank2sendAboutYouVer)
-        .then(bank2sendYourMoneyVer)
-        .then(bank2sendLicenseVer)
+      return helpers.startApplication()
+        .then(helpers.shareAboutYouVer)
+        .then(helpers.shareYourMoneyVer)
+        .then(helpers.shareLicenseVer)
     }
 
     function cleanCache () {
@@ -269,39 +301,23 @@ function runTests (setup, idx) {
         .done()
     }
 
-    function dumpDBs (bank) {
-      var lists = CurrentAccount.forms.concat([
-        'tradle.CurrentAccountConfirmation',
-        VERIFICATION
-      ])
+    // function dumpDBs (bank) {
+    //   var lists = CurrentAccount.forms.concat([
+    //     'tradle.CurrentAccountConfirmation',
+    //     VERIFICATION
+    //   ])
 
-      return Q.all(lists.map(function (name) {
-          return bank.list(name)
-        }))
-        .then(function (results) {
-          results.forEach(function (list, i) {
-            list.forEach(function (item) {
-              console.log(JSON.stringify(item.value, null, 2))
-            })
-          })
-        })
-    }
-
-    function tryUnacquainted () {
-      var msg = {
-        [TYPE]: 'tradle.SimpleMessage',
-        [NONCE]: '' + nonce++,
-        hey: 'ho'
-      }
-
-      signNSend(msg)
-      return Q.all([
-          awaitType('tradle.NotFound')
-        ])
-        .then(function () {
-          t.pass('unacquainted gets NotFound')
-        })
-    }
+    //   return Q.all(lists.map(function (name) {
+    //       return bank.list(name)
+    //     }))
+    //     .then(function (results) {
+    //       results.forEach(function (list, i) {
+    //         list.forEach(function (item) {
+    //           console.log(JSON.stringify(item.value, null, 2))
+    //         })
+    //       })
+    //     })
+    // }
 
     function sendIdentity () {
       if (setup.init === initP2P) {
@@ -315,12 +331,12 @@ function runTests (setup, idx) {
 
       identityPubReq[NONCE] = '' + nonce++
       identityPubReq[TYPE] = constants.TYPES.IDENTITY_PUBLISHING_REQUEST
-      signNSend(identityPubReq, { public: true })
+      helpers.signNSend(identityPubReq, { public: true })
       return Q.all([
-          awaitTypeUnchained('tradle.Identity', APPLICANT),
-          awaitTypeUnchained('tradle.Identity', BANKS[0].tim),
-          awaitTypeUnchained('tradle.Identity', BANKS[1].tim),
-          awaitType('tradle.IdentityPublished')
+          helpers.awaitTypeUnchained('tradle.Identity', APPLICANT),
+          helpers.awaitTypeUnchained('tradle.Identity', BANKS[0].tim),
+          helpers.awaitTypeUnchained('tradle.Identity', BANKS[1].tim),
+          helpers.awaitType('tradle.IdentityPublished')
         ])
         .then(function () {
           t.pass('customer\'s identity was published')
@@ -336,247 +352,283 @@ function runTests (setup, idx) {
 
       identityPubReq[NONCE] = '' + nonce++
       identityPubReq[TYPE] = constants.TYPES.IDENTITY_PUBLISHING_REQUEST
-      signNSend(identityPubReq, { public: true })
-      return awaitForm('tradle.Identity')
+      helpers.signNSend(identityPubReq, { public: true })
+      return helpers.awaitForm('tradle.Identity')
         .then(function () {
           t.pass('customer\'s identity was not published twice')
         })
     }
-
-    function startApplication () {
-      var msg = utils.buildSimpleMsg(
-        'application for',
-        'tradle.CurrentAccount'
-      )
-
-      signNSend(msg)
-      return awaitForm(ABOUT_YOU)
-        .then(function () {
-          t.pass('got next form')
-        })
-    }
-
-    function sendAboutYou () {
-      var msg = {
-        nationality: 'British',
-        residentialStatus: 'Living with parents',
-        maritalStatus: 'Single'
-      }
-
-      msg[NONCE] = crypto.randomBytes(32).toString('base64')// '' + (nonce++)
-      msg[TYPE] = ABOUT_YOU
-
-      signNSend(msg)
-      return Q.all([
-          awaitForm(YOUR_MONEY),
-          awaitTypeUnchained(ABOUT_YOU),
-          awaitVerification()
-        ])
-        .then(function () {
-          t.pass('got next form')
-        })
-    }
-
-    function sendYourMoney () {
-      var msg = {
-        monthlyIncome: '5000 pounds',
-        whenHired: 1414342441249
-      }
-
-      msg[NONCE] = '' + (nonce++)
-      msg[TYPE] = YOUR_MONEY
-
-      signNSend(msg)
-      return Q.all([
-          awaitForm(LICENSE),
-          awaitTypeUnchained(YOUR_MONEY),
-          awaitVerification()
-        ])
-        .then(function () {
-          t.pass('got next form')
-        })
-    }
-
-    function sendLicense () {
-      var msg = {
-        licenseNumber: 'abc',
-        dateOfIssue: 1414342441249
-      }
-
-      msg[NONCE] = '' + (nonce++)
-      msg[TYPE] = LICENSE
-
-      signNSend(msg)
-      return Q.all([
-        awaitTypeUnchained(LICENSE),
-        awaitVerification(),
-        awaitConfirmation()
-      ])
-    }
-
-    function bank2startApplication () {
-      var msg = utils.buildSimpleMsg(
-        'application for',
-        'tradle.CurrentAccount'
-      )
-
-      signNSend(msg)
-      return awaitForm(ABOUT_YOU)
-    }
-
-    function bank2sendAboutYouVer () {
-      shareVerification(ABOUT_YOU)
-        .then(function () {
-          shareForm(ABOUT_YOU)
-        })
-
-      return Q.all([
-        awaitForm(YOUR_MONEY),
-        awaitTypeUnchained(VERIFICATION)
-      ])
-    }
-
-    function bank2sendYourMoneyVer () {
-      shareVerification(YOUR_MONEY)
-        .then(function () {
-          shareForm(YOUR_MONEY)
-        })
-
-      return Q.all([
-        awaitForm(LICENSE),
-        awaitTypeUnchained(VERIFICATION)
-      ])
-    }
-
-    function bank2sendLicenseVer () {
-      shareVerification(LICENSE)
-        .then(function () {
-          shareForm(LICENSE)
-        })
-
-      return Q.all([
-        awaitConfirmation(),
-        awaitTypeUnchained(VERIFICATION)
-      ])
-    }
-
-    function forget () {
-      var msg = {
-        reason: 'none of your business'
-      }
-
-      msg[NONCE] = '' + (nonce++)
-      msg[TYPE] = 'tradle.ForgetMe'
-      signNSend(msg)
-      return awaitType('tradle.ForgotYou')
-    }
-
-    function signNSend (msg, opts) {
-      APPLICANT.sign(msg)
-        .then(function (signed) {
-          // console.log(JSON.stringify(JSON.parse(signed), null, 2))
-          return APPLICANT.send(extend({
-            msg: signed,
-            to: bankCoords,
-            deliver: true
-          }, opts || {}))
-        })
-        .done(function (entries) {
-          var info = entries[0]
-          forms[info.get(TYPE)] = info.get(ROOT_HASH)
-        })
-    }
-
-    function shareForm (type) {
-      var opts = {
-        chain: false,
-        deliver: true,
-        to: bankCoords
-      }
-
-      opts[CUR_HASH] = forms[type]
-      return APPLICANT.share(opts)
-    }
-
-    function shareVerification (type) {
-      var opts = {
-        chain: false,
-        deliver: true,
-        to: bankCoords
-      }
-
-      opts[CUR_HASH] = verifications[type]
-      return APPLICANT.share(opts)
-    }
-
-    function awaitVerification () {
-      return awaitType(VERIFICATION)
-        .then(function () {
-          t.pass('received tradle.Verification')
-        })
-    }
-
-    function awaitConfirmation () {
-      return awaitType('tradle.CurrentAccountConfirmation')
-        .then(function () {
-          t.pass('customer got account')
-        })
-    }
-
-    function awaitType (type) {
-      var defer = Q.defer()
-      APPLICANT.on('message', onmessage)
-      return defer.promise
-        .then(function () {
-          APPLICANT.removeListener('message', onmessage)
-        })
-
-      function onmessage (info) {
-        if (info[TYPE] === type) {
-          defer.resolve()
-        }
-      }
-    }
-
-    function awaitTypeUnchained (type, tim) {
-      var defer = Q.defer()
-      tim = tim || APPLICANT
-      tim.on('unchained', unchainedHandler)
-      return defer.promise
-        .then(function () {
-          tim.removeListener('unchained', unchainedHandler)
-        })
-
-      function unchainedHandler (info) {
-        if (info[TYPE] === type) {
-          t.pass('unchained ' + type)
-          defer.resolve()
-        }
-      }
-    }
-
-    function awaitForm (nextFormType) {
-      var defer = Q.defer()
-      APPLICANT.on('message', onmessage)
-      return defer.promise
-        .then(function () {
-          APPLICANT.removeListener('message', onmessage)
-        })
-
-      function onmessage (info) {
-        if (info[TYPE] !== types.SIMPLE_MESSAGE) {
-          return
-        }
-
-        APPLICANT.lookupObject(info)
-          .done(function (obj) {
-            var text = obj.parsed.data.message
-            t.equal(utils.parseSimpleMsg(text).type, nextFormType, 'got ' + nextFormType)
-            defer.resolve()
-          })
-      }
-    }
   })
+
+  test('teardown', function (t) {
+    teardown()
+      .done(function () {
+        t.end()
+      })
+  })
+}
+
+function getHelpers (applicant, bank, forms, verifications, t) {
+  const bankCoords = getCoords(bank.tim)
+  return {
+    startApplication,
+    tryUnacquainted,
+    sendAboutYou,
+    sendYourMoney,
+    sendLicense,
+    shareAboutYouVer,
+    shareYourMoneyVer,
+    shareLicenseVer,
+    forget,
+    signNSend,
+    shareForm,
+    shareVerification,
+    awaitForm,
+    awaitVerification,
+    awaitType,
+    awaitConfirmation,
+    awaitTypeUnchained
+  }
+
+  function startApplication () {
+    var msg = utils.buildSimpleMsg(
+      'application for',
+      'tradle.CurrentAccount'
+    )
+
+    signNSend(msg)
+    return awaitForm(ABOUT_YOU)
+      .then(function () {
+        t.pass('got next form')
+      })
+  }
+
+  function tryUnacquainted () {
+    var msg = {
+      [TYPE]: 'tradle.SimpleMessage',
+      [NONCE]: '' + nonce++,
+      hey: 'ho'
+    }
+
+    signNSend(msg)
+    return Q.all([
+        awaitType('tradle.NotFound')
+      ])
+      .then(function () {
+        t.pass('unacquainted gets NotFound')
+      })
+  }
+
+  function sendAboutYou () {
+    var msg = {
+      nationality: 'British',
+      residentialStatus: 'Living with parents',
+      maritalStatus: 'Single'
+    }
+
+    msg[NONCE] = crypto.randomBytes(32).toString('base64')// '' + (nonce++)
+    msg[TYPE] = ABOUT_YOU
+
+    signNSend(msg)
+    return Q.all([
+        awaitForm(YOUR_MONEY),
+        awaitTypeUnchained(ABOUT_YOU),
+        awaitVerification()
+      ])
+      .then(function () {
+        t.pass('got next form')
+      })
+  }
+
+  function sendYourMoney () {
+    var msg = {
+      monthlyIncome: '5000 pounds',
+      whenHired: 1414342441249
+    }
+
+    msg[NONCE] = '' + (nonce++)
+    msg[TYPE] = YOUR_MONEY
+
+    signNSend(msg)
+    return Q.all([
+        awaitForm(LICENSE),
+        awaitTypeUnchained(YOUR_MONEY),
+        awaitVerification()
+      ])
+      .then(function () {
+        t.pass('got next form')
+      })
+  }
+
+  function sendLicense () {
+    var msg = {
+      licenseNumber: 'abc',
+      dateOfIssue: 1414342441249
+    }
+
+    msg[NONCE] = '' + (nonce++)
+    msg[TYPE] = LICENSE
+
+    signNSend(msg)
+    return Q.all([
+      awaitTypeUnchained(LICENSE),
+      awaitVerification(),
+      awaitConfirmation()
+    ])
+  }
+
+  function shareAboutYouVer () {
+    shareVerification(ABOUT_YOU)
+      .then(function () {
+        shareForm(ABOUT_YOU)
+      })
+
+    return Q.all([
+      awaitForm(YOUR_MONEY),
+      awaitTypeUnchained(VERIFICATION)
+    ])
+  }
+
+  function shareYourMoneyVer () {
+    shareVerification(YOUR_MONEY)
+      .then(function () {
+        shareForm(YOUR_MONEY)
+      })
+
+    return Q.all([
+      awaitForm(LICENSE),
+      awaitTypeUnchained(VERIFICATION)
+    ])
+  }
+
+  function shareLicenseVer () {
+    shareVerification(LICENSE)
+      .then(function () {
+        shareForm(LICENSE)
+      })
+
+    return Q.all([
+      awaitConfirmation(),
+      awaitTypeUnchained(VERIFICATION)
+    ])
+  }
+
+  function forget () {
+    var msg = {
+      reason: 'none of your business'
+    }
+
+    msg[NONCE] = '' + (nonce++)
+    msg[TYPE] = 'tradle.ForgetMe'
+    signNSend(msg)
+    return awaitType('tradle.ForgotYou')
+  }
+
+  function signNSend (msg, opts) {
+    applicant.sign(msg)
+      .then(function (signed) {
+        // console.log(JSON.stringify(JSON.parse(signed), null, 2))
+        return applicant.send(extend({
+          msg: signed,
+          to: bankCoords,
+          deliver: true
+        }, opts || {}))
+      })
+      .done(function (entries) {
+        var info = entries[0]
+        forms[info.get(TYPE)] = info.get(ROOT_HASH)
+      })
+  }
+
+  function shareForm (type) {
+    var opts = {
+      chain: false,
+      deliver: true,
+      to: bankCoords
+    }
+
+    opts[CUR_HASH] = forms[type]
+    return applicant.share(opts)
+  }
+
+  function shareVerification (type) {
+    var opts = {
+      chain: false,
+      deliver: true,
+      to: bankCoords
+    }
+
+    opts[CUR_HASH] = verifications[type]
+    return applicant.share(opts)
+  }
+
+  function awaitVerification () {
+    return awaitType(VERIFICATION)
+      .then(function () {
+        t.pass('received tradle.Verification')
+      })
+  }
+
+  function awaitConfirmation () {
+    return awaitType('tradle.CurrentAccountConfirmation')
+      .then(function () {
+        t.pass('customer got account')
+      })
+  }
+
+  function awaitType (type) {
+    var defer = Q.defer()
+    applicant.on('message', onmessage)
+    return defer.promise
+      .then(function () {
+        applicant.removeListener('message', onmessage)
+      })
+
+    function onmessage (info) {
+      if (info[TYPE] === type) {
+        defer.resolve()
+      }
+    }
+  }
+
+  function awaitTypeUnchained (type, tim) {
+    var defer = Q.defer()
+    tim = tim || applicant
+    tim.on('unchained', unchainedHandler)
+    return defer.promise
+      .then(function () {
+        tim.removeListener('unchained', unchainedHandler)
+      })
+
+    function unchainedHandler (info) {
+      if (info[TYPE] === type) {
+        t.pass('unchained ' + type)
+        defer.resolve()
+      }
+    }
+  }
+
+  function awaitForm (nextFormType) {
+    var defer = Q.defer()
+    applicant.on('message', onmessage)
+    return defer.promise
+      .then(function () {
+        applicant.removeListener('message', onmessage)
+      })
+
+    function onmessage (info) {
+      if (info[TYPE] !== types.SIMPLE_MESSAGE) {
+        return
+      }
+
+      applicant.lookupObject(info)
+        .done(function (obj) {
+          var text = obj.parsed.data.message
+          t.equal(utils.parseSimpleMsg(text).type, nextFormType, 'got ' + nextFormType)
+          defer.resolve()
+        })
+    }
+  }
 
   // test('wipe and recover', function (t) {
   //   var backup
@@ -625,13 +677,6 @@ function runTests (setup, idx) {
   //     }
   //   }
   // })
-
-  test('teardown', function (t) {
-    teardown()
-      .done(function () {
-        t.end()
-      })
-  })
 }
 
 function runSetup (setup) {
