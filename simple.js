@@ -1,6 +1,9 @@
 'use strict'
 
+const util = require('util')
+const EventEmitter = require('events').EventEmitter
 const typeforce = require('typeforce')
+const extend = require('xtend')
 const Q = require('q')
 const find = require('array-find')
 const clone = require('clone')
@@ -28,14 +31,19 @@ const FORGET_ME = 'tradle.ForgetMe'
 const FORGOT_YOU = 'tradle.ForgotYou'
 const noop = function () {}
 
-module.exports = SimpleBank
-
 function SimpleBank (opts) {
   if (!(this instanceof SimpleBank)) {
     return new SimpleBank(opts)
   }
 
   tradleUtils.bindPrototypeFunctions(this)
+  EventEmitter.call(this)
+
+  this._auto = extend({
+    approve: true,
+    prompt: true,
+    verify: true
+  }, opts.auto)
 
   this._models = utils.processModels(opts.models)
   this._productList = opts.productList || DEFAULT_PRODUCT_LIST
@@ -77,11 +85,14 @@ function SimpleBank (opts) {
       }
     }
     else {
-      return bank.send(req, {
-        _t: types.SIMPLE_MESSAGE,
-        welcome: true,
-        // message: '[Hello! It very nice to meet you](Please choose the product)',
-        message: 'Switching to representative mode is not yet implemented.',
+      return bank.send({
+        req: req,
+        msg: {
+          _t: types.SIMPLE_MESSAGE,
+          welcome: true,
+          // message: '[Hello! It very nice to meet you](Please choose the product)',
+          message: 'Switching to representative mode is not yet implemented.',
+        }
       })
       // return bank.send(req, {
       //   _t: types.REQUEST_FOR_REPRESENTATIVE,
@@ -100,6 +111,9 @@ function SimpleBank (opts) {
   //   })
   // })
 }
+
+module.exports = SimpleBank
+util.inherits(SimpleBank, EventEmitter)
 
 SimpleBank.prototype.receiveMsg = function (msgBuf, senderInfo) {
   var bank = this.bank
@@ -160,13 +174,17 @@ SimpleBank.prototype.receivePrivateMsg = function (msgBuf, senderInfo) {
 }
 
 SimpleBank.prototype.replyNotFound = function (req) {
-  return this.bank.send(req, {
+  return this.bank.send({
+    req: req,
+    msg: {
       [TYPE]: 'tradle.NotFound',
       resource: req.from
-    }, { public: true })
-    .then(() => {
-      return req.end()
-    })
+    },
+    public: true
+  })
+  .then(() => {
+    return req.end()
+  })
 
   // public=true because not knowing their identity,
   // we don't know how to encrypt messages for them
@@ -196,12 +214,15 @@ SimpleBank.prototype.sendProductList = function (req) {
     ? `Hello ${name}!`
     : 'Hello!'
 
-  return bank.send(req, {
-    _t: types.PRODUCT_LIST,
-    welcome: true,
-    // message: '[Hello! It very nice to meet you](Please choose the product)',
-    message: `[${greeting}](Click for a list of products)`,
-    list: JSON.stringify(list)
+  return bank.send({
+    req: req,
+    msg: {
+      _t: types.PRODUCT_LIST,
+      welcome: true,
+      // message: '[Hello! It very nice to meet you](Please choose the product)',
+      message: `[${greeting}](Click for a list of products)`,
+      list: JSON.stringify(list)
+    }
   })
 }
 
@@ -234,7 +255,10 @@ SimpleBank.prototype.publishCustomerIdentity = function (req) {
         // if (obj.dateChained) // actually chained
         // may not be published yet, but def queued
         var resp = utils.buildSimpleMsg('already published', types.IDENTITY)
-        return bank.send(req, resp)
+        return bank.send({
+          req: req,
+          msg: resp
+        })
       } else {
         return publish()
       }
@@ -260,7 +284,10 @@ SimpleBank.prototype.publishCustomerIdentity = function (req) {
     var resp = {}
     resp[TYPE] = 'tradle.IdentityPublished'
     resp.identity = curHash
-    return bank.send(req, resp)
+    return bank.send({
+      req: req,
+      msg: resp
+    })
   }
 }
 
@@ -276,7 +303,7 @@ SimpleBank.prototype.handleNewApplication = function (req, res) {
   if (idx !== -1) pending.splice(idx, 1)
 
   pending.unshift(req.productType)
-  return this.sendNextFormOrApprove(req)
+  return this.sendNextFormOrApprove({req})
 }
 
 SimpleBank.prototype.handleDocument = function (req, res) {
@@ -293,25 +320,59 @@ SimpleBank.prototype.handleDocument = function (req, res) {
 
   docState.form[ROOT_HASH] = req[ROOT_HASH]
   docState.verifications = docState.verifications || []
-  // docState[req[ROOT_HASH]] = {
-  //   form: req.parsed.data,
-  //   verifications: verifications
-  // }
+  if (!this._auto.verify) {
+    return this.sendNextFormOrApprove({req})
+  }
 
-  // pretend we verified it
-  var verification = this.newVerificationFor(msg)
-  var stored = {
+  return this._sendVerification({
+    req: req,
+    verifiedItem: msg
+  })
+}
+
+SimpleBank.prototype.sendVerification = function (opts) {
+  typeforce({
+    verifiedItem: typeforce.oneOf('String', 'Object')
+  }, opts)
+
+  const lookup = typeof opts.verifiedItem === 'string'
+    ? this.bank.tim.lookupObject(opts.verifiedItem)
+    : opts.verifiedItem
+
+  lookup.then(verifiedItem => {
+    return this._sendVerification({
+      req: new RequestState(verifiedItem),
+      verifiedItem: verifiedItem
+    })
+  })
+}
+
+SimpleBank.prototype._sendVerification = function (opts) {
+  typeforce({
+    req: 'RequestState',
+    verifiedItem: 'Object'
+  }, opts)
+
+  const req = opts.req
+  const doc = opts.verifiedItem
+  const verification = this.newVerificationFor(doc)
+  const stored = {
     txId: null,
     body: verification
   }
 
+  const docState = req.state.forms[req.type]
   docState.verifications.push(stored)
-  return bank.send(req, verification, { chain: true })
+  return this.bank.send({
+      req: req,
+      msg: verification,
+      chain: true
+    })
     .then((entries) => {
-      var rootHash = entries[0].toJSON()[ROOT_HASH]
+      const rootHash = entries[0].toJSON()[ROOT_HASH]
       // stored[ROOT_HASH] = req[ROOT_HASH]
       stored[ROOT_HASH] = rootHash
-      return this.sendNextFormOrApprove(req)
+      return this.sendNextFormOrApprove({req})
     })
 }
 
@@ -341,22 +402,32 @@ SimpleBank.prototype.newVerificationFor = function (msg) {
   return verification
 }
 
-SimpleBank.prototype.sendNextFormOrApprove = function (req) {
-  var bank = this.bank
-  var state = req.state
-  var pendingApps = state.pendingApplications
+SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
+  if (!(this._auto.prompt || this._auto.approve)) return Q()
+
+  typeforce({
+    state: '?Object',
+    req: '?RequestState',
+    productType: '?String'
+  }, opts)
+
+  const req = opts.req
+  const state = (req || opts).state
+  const pendingApps = state.pendingApplications
   if (!pendingApps.length) {
     return Q()
   }
 
-  var msg = req.msg
-  var app = msg.parsed.data
-  var productType = req.productType || this._getRelevantPending(pendingApps, req)
+  let productType = opts.productType
+  if (req && !productType) {
+    productType = req.productType || this._getRelevantPending(pendingApps, req)
+  }
+
   if (!productType) {
     return utils.rejectWithHttpError(400, 'unable to determine product requested')
   }
 
-  var productModel = this._models[productType]
+  const productModel = this._models[productType]
   if (!productModel) {
     return utils.rejectWithHttpError(400, 'no such product model: ' + productType)
   }
@@ -366,24 +437,27 @@ SimpleBank.prototype.sendNextFormOrApprove = function (req) {
     state.products = {}
   }
 
-  var thisProduct = state.products[productType]
+  let thisProduct = state.products[productType]
   if (thisProduct) {
     if (thisProduct.length) {
-      var resp = utils.buildSimpleMsg(
+      const msg = utils.buildSimpleMsg(
         'You already have a ' + productModel.title + ' with us!'
       )
 
-      return bank.send(req, resp)
+      return this.bank.send({
+        msg: msg,
+        req: req
+      })
     }
   }
   else {
     thisProduct = state.products[productType] = []
   }
 
-  var isFormOrVerification = req[TYPE] === types.VERIFICATION || this._models.docs.indexOf(req[TYPE]) !== -1
-  var reqdForms = utils.getForms(productModel)
-  var skip
-  var missing
+  const isFormOrVerification = req[TYPE] === types.VERIFICATION || this._models.docs.indexOf(req[TYPE]) !== -1
+  const reqdForms = utils.getForms(productModel)
+  let skip
+  let missing
   reqdForms.forEach(function (fType) {
     var existing = state.forms[fType]
     if (existing) {
@@ -403,41 +477,101 @@ SimpleBank.prototype.sendNextFormOrApprove = function (req) {
 
   if (isFormOrVerification && skip) return Q()
 
-  var acquiredProduct
-  var opts = {}
-  var resp
   if (missing) {
-    debug('requesting form', missing)
-    resp = utils.buildSimpleMsg(
-      'Please fill out this form and attach a snapshot of the original document',
-      missing
-    )
+    if (!this._auto.prompt) return Q()
 
-    opts.chain = false
-  } else {
-    debug('approving for product', productType)
-    resp = {}
-    resp[TYPE] = productType + 'Confirmation'
-    resp.message = 'Congratulations! You were approved for: ' + productModel.title
-    resp.forms = reqdForms.map(function(f) {
-      var formId = state.forms[f].verifications[0].body.document.id
-      var parts = formId.split('_')
-      formId = parts.length === 2 ? formId : parts.splice(0, 2).join('_')
-      return formId
+    return this.sendForm({
+      req: req,
+      form: missing
     })
-
-    acquiredProduct = {}
-    acquiredProduct[TYPE] = productType
-    thisProduct.push(acquiredProduct)
-    var idx = pendingApps.indexOf(productType)
-    pendingApps.splice(idx, 1)
-    opts.chain = true
   }
 
-  return bank.send(req, resp, opts)
+  const app = {
+    productType: productType,
+    forms: this._getMyForms(productType, state),
+    req: req
+  }
+
+  this.emit('application', app)
+
+  if (!this._auto.approve) return Q()
+
+  return this._approveProduct(app)
+}
+
+SimpleBank.prototype._getMyForms = function (product, state) {
+  const model = typeof product === 'string'
+    ? this._models[product]
+    : product
+
+  return utils.getForms(model).map(f => {
+    let formId = state.forms[f].verifications[0].body.document.id
+    let parts = formId.split('_')
+    formId = parts.length === 2 ? formId : parts.splice(0, 2).join('_')
+    return formId
+  })
+}
+
+SimpleBank.prototype._simulateReq = function (customerHash) {
+  return this.bank._getCustomerState(customerHash)
+    .then(state => {
+      return new RequestState({
+        state: state,
+        from: {
+          [ROOT_HASH]: customerHash
+        }
+      })
+    })
+}
+
+SimpleBank.prototype.approveProduct = function (opts) {
+  typeforce({
+    customerRootHash: 'String',
+    productType: 'String'
+  }, opts)
+
+  return this._simulateReq(opts.customerRootHash)
+    .then(req => {
+      return this._approveProduct({
+        req: req,
+        productType: opts.productType
+      })
+    })
+}
+
+SimpleBank.prototype._approveProduct = function (opts) {
+  // TODO: minimize code repeat with sendNextFormOrApprove
+  const req = opts.req
+  const state = req.state
+  const productType = opts.productType
+  const productModel = this._models[productType]
+  const forms = this._getMyForms(productType, state)
+  const acquiredProduct = {
+    [TYPE]: productType
+  }
+
+  const thisProduct = state.products[productType]
+  thisProduct.push(acquiredProduct)
+
+  debug('approving for product', productType)
+  const resp = {
+    [TYPE]: productType + 'Confirmation',
+    message: 'Congratulations! You were approved for: ' + productModel.title,
+    forms: forms
+  }
+
+  const pendingApps = state.pendingApplications
+  const idx = pendingApps.indexOf(productType)
+  pendingApps.splice(idx, 1)
+
+  return this.bank.send({
+      req: req,
+      msg: resp,
+      chain: true
+    })
     .then(function (entries) {
       if (acquiredProduct) {
-        var entry = entries[0]
+        const entry = entries[0]
         acquiredProduct[ROOT_HASH] = entry.get(ROOT_HASH)
       }
 
@@ -445,20 +579,34 @@ SimpleBank.prototype.sendNextFormOrApprove = function (req) {
     })
 }
 
+SimpleBank.prototype.sendForm = function (opts) {
+  typeforce({
+    form: 'String'
+  }, opts)
+
+  const form = opts.form
+  const msg = utils.buildSimpleMsg(
+    'Please fill out this form and attach a snapshot of the original document',
+    form
+  )
+
+  debug('requesting form', form)
+  return this.bank.send({
+    req: opts.req,
+    msg: msg
+  })
+}
+
 SimpleBank.prototype._getRelevantPending = function (pending, reqState) {
-  var found
   var docType = reqState[TYPE] === types.VERIFICATION
     ? getType(reqState.parsed.data.document)
     : reqState[TYPE]
 
-  pending.some(productType => {
+  return find(pending, productType => {
     if (this._models.docs[productType].indexOf(docType) !== -1) {
-      found = productType
-      return true
+      return productType
     }
   })
-
-  return found
 }
 
 SimpleBank.prototype.lookupAndSend = function (req) {
@@ -491,7 +639,10 @@ SimpleBank.prototype.lookupAndSend = function (req) {
       throw httpErr
     })
     .then(function (obj) {
-      return bank.send(req, obj.parsed.data)
+      return bank.send({
+        req: req,
+        msg: obj.parsed.data
+      })
     })
 }
 
@@ -503,7 +654,10 @@ SimpleBank.prototype.sendHistory = function (req) {
   return this.tim.history(from)
     .then(function (objs) {
       return Q.all(objs.map(function (obj) {
-        return bank.send(req, obj.parsed.data)
+        return bank.send({
+          req: req,
+          msg: obj.parsed.data
+        })
       }))
     })
 }
@@ -521,7 +675,10 @@ SimpleBank.prototype.getEmployee = function (req) {
       identifier: employeeIdentifier
     }
 
-    return this.bank.send(req, employeeNotFound)
+    return this.bank.send({
+      req: req,
+      msg: employeeNotFound
+    })
   }
 
   var resp = {
@@ -529,11 +686,13 @@ SimpleBank.prototype.getEmployee = function (req) {
     employee: utils.pick(employeeInfo, 'pub', 'profile')
   }
 
-  return this.bank.send(req, resp)
+  return this.bank.send({
+    req: req,
+    msg: resp
+  })
 }
 
 SimpleBank.prototype.handleVerification = function (req) {
-  var bank = this.bank
   var msg = req.msg
   var state = req.state
   var verification = msg.parsed.data
@@ -547,7 +706,7 @@ SimpleBank.prototype.handleVerification = function (req) {
     body: verification
   })
 
-  return this.sendNextFormOrApprove(req)
+  return this.sendNextFormOrApprove({req})
 }
 
 SimpleBank.prototype.forgetMe = function (req) {
@@ -556,7 +715,11 @@ SimpleBank.prototype.forgetMe = function (req) {
     .then(function () {
       var forgotYou = {}
       forgotYou[TYPE] = FORGOT_YOU
-      return bank.send(req, forgotYou, { chain: true })
+      return bank.send({
+        req: req,
+        msg: forgotYou,
+        chain: true
+      })
     })
 }
 

@@ -1,3 +1,5 @@
+'use strict'
+
 require('@tradle/multiplex-utp')
 
 var assert = require('assert')
@@ -308,47 +310,57 @@ Bank.prototype._delResource = function (type, rootHash) {
   return Q.ninvoke(this._db, 'del', prefixKey(type, rootHash))
 };
 
-Bank.prototype.send = function (req, resp, opts) {
+/**
+ * Send message to customer
+ * @param  {Object} opts
+ * @param  {?RequestState} opts.req
+ * @return {Promise}
+ */
+Bank.prototype.send = function (opts) {
   var self = this
-  typeforce('RequestState', req)
-  typeforce('Object', resp)
+  // typeforce('RequestState', req)
+  // typeforce('Object', resp)
 
-  opts = opts || {}
-
-  if (!('time' in resp)) {
-    resp.time = Date.now()
+  const req = opts.req
+  const msg = opts.msg
+  if (!('time' in msg)) {
+    msg.time = Date.now()
   }
 
-  var recipient = getSender(req.msg)
-  this._debug(`sending ${resp[TYPE]} to ${JSON.stringify(recipient)}`)
+  const recipient = msg.to || getSender(req.msg)
+  this._debug(`sending ${msg[TYPE]} to ${JSON.stringify(recipient)}`)
 
-  var maybeSign
-  if (!(constants.SIG in resp)) {
-    maybeSign = this.tim.sign(resp)
+  let maybeSign
+  if (!(constants.SIG in msg)) {
+    maybeSign = this.tim.sign(msg)
   } else {
-    maybeSign = Q(resp)
+    maybeSign = Q(msg)
   }
 
   return maybeSign
     .then(function (signed) {
-      var sendOpts = extend({
-        to: [recipient],
+      var sendOpts = {
+        to: [].concat(recipient), // coerce to array
         msg: signed,
-        deliver: true
-      }, opts)
+        deliver: true,
+        chain: opts.chain,
+        public: opts.public
+      }
 
-      if (!Bank.ALLOW_CHAINING) opts.chain = false
+      if (!Bank.ALLOW_CHAINING) sendOpts.chain = false
 
       return self.tim.send(sendOpts)
     })
     .then(function (entries) {
-      entries.forEach(function (e) {
-        var getSent = utils.waitForEvent(self.tim, 'sent', e)
-        req.promise(getSent)
-      })
+      if (req) {
+        entries.forEach(function (e) {
+          var getSent = utils.waitForEvent(self.tim, 'sent', e)
+          req.promise(getSent)
+        })
+      }
 
       var rh = entries[0].get(ROOT_HASH)
-      self._setResource(resp[TYPE], rh, resp)
+      self._setResource(msg[TYPE], rh, msg)
       return entries
     })
 }
