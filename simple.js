@@ -79,7 +79,9 @@ function SimpleBank (opts) {
 
     var parsed = utils.parseSimpleMsg(msg)
     if (parsed.type) {
-      if (this._models.products.indexOf(parsed.type) !== -1) {
+      if (this._productList.indexOf(parsed.type) === -1) {
+        return this.replyNotFound(req, parsed.type)
+      } else {
         req.productType = parsed.type
         return this.handleNewApplication(req)
       }
@@ -174,12 +176,12 @@ SimpleBank.prototype.receivePrivateMsg = function (msgBuf, senderInfo) {
     )
 }
 
-SimpleBank.prototype.replyNotFound = function (req) {
+SimpleBank.prototype.replyNotFound = function (req, whatWasntFound) {
   return this.bank.send({
     req: req,
     msg: {
       [TYPE]: 'tradle.NotFound',
-      resource: req.from
+      resource: whatWasntFound || req.from
     },
     public: true
   })
