@@ -1,3 +1,4 @@
+'use strict'
 
 // require('q-to-bluebird')
 require('@tradle/multiplex-utp')
@@ -22,6 +23,11 @@ var LICENSE = 'tradle.LicenseVerification'
 var ABOUT_YOU = 'tradle.AboutYou'
 var YOUR_MONEY = 'tradle.YourMoney'
 var VERIFICATION = constants.TYPES.VERIFICATION
+var DEFAULT_AWAIT_OPTS = {
+  awaitVerification: true,
+  awaitConfirmation: true
+}
+
 
 CurrentAccount.forms = [
   ABOUT_YOU,
@@ -111,40 +117,44 @@ var BANK_BOTS = [{
 
 var BANKS
 
-// test('models', function (t) {
-//   const models = [
-//     {
-//       id: 'productA',
-//       subClassOf: 'tradle.FinancialProduct',
-//       forms: ['form1', 'form2']
-//     },
-//     {
-//       id: 'productB',
-//       subClassOf: 'tradle.FinancialProduct',
-//       forms: ['form1', 'form3']
-//     },
-//     {
-//       id: 'form1'
-//     },
-//     {
-//       id: 'form2'
-//     },
-//     {
-//       id: 'form3'
-//     }
-//   ]
+test('models', function (t) {
+  const models = [
+    {
+      id: 'productA',
+      subClassOf: 'tradle.FinancialProduct',
+      forms: ['form1', 'form2']
+    },
+    {
+      id: 'productB',
+      subClassOf: 'tradle.FinancialProduct',
+      forms: ['form1', 'form3']
+    },
+    {
+      id: 'form1'
+    },
+    {
+      id: 'form2'
+    },
+    {
+      id: 'form3'
+    }
+  ]
 
-//   const modelsInfo = utils.processModels(models)
-//   t.deepEqual(modelsInfo.docs.productA, models[0].forms)
-//   t.deepEqual(modelsInfo.docs.productB, models[1].forms)
-//   t.ok(['form1', 'form2', 'form3'].every(f => modelsInfo.docs.indexOf(f) !== -1))
-//   t.ok(['productA', 'productB'].every(p => modelsInfo.products.indexOf(p) !== -1))
-//   models.forEach(m => {
-//     t.deepEqual(modelsInfo[m.id], m)
-//   })
+  const modelsInfo = utils.processModels(models)
+  t.deepEqual(modelsInfo.docs.productA, models[0].forms)
+  t.deepEqual(modelsInfo.docs.productB, models[1].forms)
+  t.ok(['form1', 'form2', 'form3'].every(f => modelsInfo.docs.indexOf(f) !== -1))
+  t.ok(['productA', 'productB'].every(p => modelsInfo.products.indexOf(p) !== -1))
+  models.forEach(m => {
+    t.deepEqual(modelsInfo[m.id], m)
+  })
 
-//   t.end()
-// })
+  t.end()
+})
+
+// testSemiManualMode()
+testManualMode()
+// testManualMode1()
 
 ;[
   {
@@ -179,30 +189,216 @@ var BANKS
 //   })
 // }
 
-// testManualMode()
-
-// function testManualMode () {
-//   runSetup({
+// function testSemiManualMode () {
+//   BANKS = []
+//   APPLICANT = null
+//   var setup = {
 //     name: 'websockets',
 //     init: initWebsockets
-//   })
+//   }
 
-//   test('current account', function (t) {
+//   runSetup(setup)
+
+//   test('semi-manual mode', function (t) {
 //     var bank = BANKS[0]
-//     bank._auto.approve = false
+//     bank._auto.verify = false
 
 //     var bankCoords = getCoords(bank.tim)
-//     var forms
-//     var verifications
-//     var verificationsTogo
-//     var verificationsDefer
+//     var product = 'tradle.CurrentAccount'
+//     var approved = false
+//     var confirmed = false
+//     var helpers = getHelpers({
+//       applicant: APPLICANT,
+//       bank: bank,
+//       forms: {},
+//       verifications: {},
+//       setup: setup,
+//       t: t
+//     })
 
-//     APPLICANT.on('unchained', onUnchained)
+//     helpers.sendIdentity(setup)
+//       .then(() => helpers.startApplication(product))
+//       .then(helpers.sendAboutYou)
+//       .then(helpers.sendYourMoney)
+//       .then(() => helpers.sendLicense({ awaitConfirmation: false }))
+//       .then(() => {
+//         return Q.Promise(resolve => setTimeout(resolve, 2000))
+//       })
+//       .then(() => {
+//         debugger
+//         t.equal(confirmed, false)
+//         approved = true
+//         return bank.approveProduct({
+//           customerRootHash: APPLICANT.myRootHash(),
+//           productType: product
+//         })
+//       })
+//       .done()
 
-//     cleanCache()
-
+//     helpers.awaitConfirmation()
+//       .then(() => {
+//         debugger
+//         t.equal(approved, true)
+//         confirmed = true
+//         return teardown()
+//       })
+//       .done(function () {
+//         t.end()
+//       })
 //   })
 // }
+
+// function testManualMode () {
+//   BANKS = []
+//   APPLICANT = null
+//   var setup = {
+//     name: 'websockets',
+//     init: initWebsockets
+//   }
+
+//   runSetup(setup)
+
+//   test('manual mode (confirmation triggers verifications)', function (t) {
+//     var bank = BANKS[0]
+//     bank._auto.approve = false
+//     bank._auto.verify = false
+
+//     var bankCoords = getCoords(bank.tim)
+//     var product = 'tradle.CurrentAccount'
+//     var approved = false
+//     var confirmed = false
+//     var helpers = getHelpers({
+//       applicant: APPLICANT,
+//       bank: bank,
+//       forms: {},
+//       verifications: {},
+//       setup: setup,
+//       t: t
+//     })
+
+//     helpers.sendIdentity(setup)
+//       .then(() => helpers.startApplication(product))
+//       .then(() => helpers.sendAboutYou({ awaitVerification: false }))
+//       .then(() => helpers.sendYourMoney({ awaitVerification: false }))
+//       .then(() => helpers.sendLicense({ awaitConfirmation: false }))
+//       .then(() => {
+//         return Q.Promise(resolve => setTimeout(resolve, 2000))
+//       })
+//       .then(() => {
+//         t.equal(confirmed, false)
+//         // should trigger verifications
+//         return bank.approveProduct({
+//           customerRootHash: APPLICANT.myRootHash(),
+//           productType: product
+//         })
+//       })
+//       .done(() => approved = true)
+
+//     let verificationsTogo = 3
+//     APPLICANT.on('message', info => {
+//       if (info[TYPE] !== VERIFICATION) return
+
+//       APPLICANT.lookupObject(info)
+//         .then(obj => {
+//           verificationsTogo--
+//           t.pass('got verification for ' + obj.parsed.data.document.id)
+//         })
+//     })
+
+//     helpers.awaitConfirmation()
+//       .then(() => {
+//         t.equal(approved, true)
+//         t.equal(verificationsTogo, 0)
+//         confirmed = true
+//         return teardown()
+//       })
+//       .done(function () {
+//         t.end()
+//       })
+//   })
+// }
+
+function testManualMode () {
+  BANKS = []
+  APPLICANT = null
+  var setup = {
+    name: 'websockets',
+    init: initWebsockets
+  }
+
+  runSetup(setup)
+
+  test('manual verifications + confirmation', function (t) {
+    var bank = BANKS[0]
+    bank._auto.verify = false
+
+    var bankCoords = getCoords(bank.tim)
+    var product = 'tradle.CurrentAccount'
+    var forms = {}
+    var approved = false
+    var helpers = getHelpers({
+      applicant: APPLICANT,
+      bank: bank,
+      forms: forms,
+      verifications: {},
+      setup: setup,
+      t: t
+    })
+
+    helpers.sendIdentity(setup)
+      .then(() => helpers.startApplication(product))
+      .then(() => helpers.sendAboutYou({ awaitVerification: false }))
+      .then(() => helpers.sendYourMoney({ awaitVerification: false }))
+      .then(() => helpers.sendLicense({ awaitConfirmation: false }))
+      // delay to make sure no auto-confirmation happens
+      .then(() => Q.Promise(resolve => setTimeout(resolve, 2000)))
+      .then(() => {
+        // should fail
+        return bank.approveProduct({
+          customerRootHash: APPLICANT.myRootHash(),
+          productType: product
+        })
+      })
+      .then(() => t.fail('approval should not be possible without verifications'))
+      .catch(err => t.pass('verifications enforced as pre-req to approval'))
+      .then(() => {
+        return Q.all(Object.keys(forms).map(type => {
+          return bank.sendVerification({
+            verifiedItem: forms[type]
+          })
+        }))
+      })
+      .then(() => {
+        // should succeed
+        return bank.approveProduct({
+          customerRootHash: APPLICANT.myRootHash(),
+          productType: product
+        })
+      })
+      .done(() => approved = true)
+
+    let verificationsTogo = 3
+    APPLICANT.on('message', info => {
+      if (info[TYPE] !== VERIFICATION) return
+
+      APPLICANT.lookupObject(info)
+        .then(obj => {
+          t.equal(--verificationsTogo >= 0, true)
+          t.pass('got verification for ' + obj.parsed.data.document.id.split('_')[0])
+        })
+    })
+
+    helpers.awaitConfirmation()
+      .then(() => {
+        t.equal(approved, true)
+        t.equal(verificationsTogo, 0)
+        return teardown()
+      })
+      .done(function () {
+        t.end()
+      })
+  })
+}
 
 function runTests (setup, idx) {
   BANKS = []
@@ -216,6 +412,7 @@ function runTests (setup, idx) {
     var verifications
     var verificationsTogo
     var verificationsDefer
+    var helpers
 
     cleanCache()
     changeBank(BANKS[0])
@@ -225,9 +422,9 @@ function runTests (setup, idx) {
 
     // tryUnacquainted() // TODO: get this working
     Q()
-      .then(sendIdentity)
+      .then(() => helpers.sendIdentity(setup))
       // bank shouldn't publish you twice
-      .then(sendIdentityAgain)
+      .then(() => helpers.sendIdentityAgain(setup))
       .then(runBank1Scenario)
       .then(function () {
         changeBank(BANKS[1])
@@ -251,7 +448,14 @@ function runTests (setup, idx) {
     function changeBank (newBank) {
       bank = newBank
       bankCoords = getCoords(bank.tim)
-      helpers = getHelpers(APPLICANT, bank, forms, verifications, t)
+      helpers = getHelpers({
+        applicant: APPLICANT,
+        bank: bank,
+        forms: forms,
+        verifications: verifications,
+        setup: setup,
+        t: t
+      })
     }
 
     function runBank1Scenario () {
@@ -318,46 +522,6 @@ function runTests (setup, idx) {
     //       })
     //     })
     // }
-
-    function sendIdentity () {
-      if (setup.init === initP2P) {
-        // not implemented, publish manually
-        return publishIdentities(APPLICANT)
-      }
-
-      var identityPubReq = {
-        identity: APPLICANT.identityJSON
-      }
-
-      identityPubReq[NONCE] = '' + nonce++
-      identityPubReq[TYPE] = constants.TYPES.IDENTITY_PUBLISHING_REQUEST
-      helpers.signNSend(identityPubReq, { public: true })
-      return Q.all([
-          helpers.awaitTypeUnchained('tradle.Identity', APPLICANT),
-          helpers.awaitTypeUnchained('tradle.Identity', BANKS[0].tim),
-          helpers.awaitTypeUnchained('tradle.Identity', BANKS[1].tim),
-          helpers.awaitType('tradle.IdentityPublished')
-        ])
-        .then(function () {
-          t.pass('customer\'s identity was published')
-        })
-    }
-
-    function sendIdentityAgain () {
-      if (setup.init === initP2P) return
-
-      var identityPubReq = {
-        identity: APPLICANT.identityJSON
-      }
-
-      identityPubReq[NONCE] = '' + nonce++
-      identityPubReq[TYPE] = constants.TYPES.IDENTITY_PUBLISHING_REQUEST
-      helpers.signNSend(identityPubReq, { public: true })
-      return helpers.awaitForm('tradle.Identity')
-        .then(function () {
-          t.pass('customer\'s identity was not published twice')
-        })
-    }
   })
 
   test('teardown', function (t) {
@@ -368,9 +532,26 @@ function runTests (setup, idx) {
   })
 }
 
-function getHelpers (applicant, bank, forms, verifications, t) {
+function getHelpers (opts) {
+  typeforce({
+    applicant: 'Object',
+    bank: 'Object',
+    forms: 'Object',
+    verifications: 'Object',
+    setup: 'Object',
+    t: 'Object'
+  }, opts)
+
+  const applicant = opts.applicant
+  const bank = opts.bank
+  const forms = opts.forms
+  const verifications = opts.verifications
+  const setup = opts.setup
+  const t = opts.t
   const bankCoords = getCoords(bank.tim)
   return {
+    sendIdentity,
+    sendIdentityAgain,
     startApplication,
     tryUnacquainted,
     sendAboutYou,
@@ -390,10 +571,50 @@ function getHelpers (applicant, bank, forms, verifications, t) {
     awaitTypeUnchained
   }
 
-  function startApplication () {
+  function sendIdentity () {
+    if (setup.init === initP2P) {
+      // not implemented, publish manually
+      return publishIdentities(APPLICANT)
+    }
+
+    var identityPubReq = {
+      identity: APPLICANT.identityJSON
+    }
+
+    identityPubReq[NONCE] = '' + nonce++
+    identityPubReq[TYPE] = constants.TYPES.IDENTITY_PUBLISHING_REQUEST
+    signNSend(identityPubReq, { public: true })
+    return Q.all([
+        awaitTypeUnchained('tradle.Identity', APPLICANT),
+        awaitTypeUnchained('tradle.Identity', BANKS[0].tim),
+        awaitTypeUnchained('tradle.Identity', BANKS[1].tim),
+        awaitType('tradle.IdentityPublished')
+      ])
+      .then(function () {
+        t.pass('customer\'s identity was published')
+      })
+  }
+
+  function sendIdentityAgain () {
+    if (setup.init === initP2P) return
+
+    var identityPubReq = {
+      identity: APPLICANT.identityJSON
+    }
+
+    identityPubReq[NONCE] = '' + nonce++
+    identityPubReq[TYPE] = constants.TYPES.IDENTITY_PUBLISHING_REQUEST
+    signNSend(identityPubReq, { public: true })
+    return awaitForm('tradle.Identity')
+      .then(function () {
+        t.pass('customer\'s identity was not published twice')
+      })
+  }
+
+  function startApplication (productType) {
     var msg = utils.buildSimpleMsg(
       'application for',
-      'tradle.CurrentAccount'
+      productType || 'tradle.CurrentAccount'
     )
 
     signNSend(msg)
@@ -419,7 +640,8 @@ function getHelpers (applicant, bank, forms, verifications, t) {
       })
   }
 
-  function sendAboutYou () {
+  function sendAboutYou (opts) {
+    opts = opts || DEFAULT_AWAIT_OPTS
     var msg = {
       nationality: 'British',
       residentialStatus: 'Living with parents',
@@ -433,14 +655,15 @@ function getHelpers (applicant, bank, forms, verifications, t) {
     return Q.all([
         awaitForm(YOUR_MONEY),
         awaitTypeUnchained(ABOUT_YOU),
-        awaitVerification()
+        opts.awaitVerification && awaitVerification()
       ])
       .then(function () {
         t.pass('got next form')
       })
   }
 
-  function sendYourMoney () {
+  function sendYourMoney (opts) {
+    opts = opts || DEFAULT_AWAIT_OPTS
     var msg = {
       monthlyIncome: '5000 pounds',
       whenHired: 1414342441249
@@ -453,14 +676,15 @@ function getHelpers (applicant, bank, forms, verifications, t) {
     return Q.all([
         awaitForm(LICENSE),
         awaitTypeUnchained(YOUR_MONEY),
-        awaitVerification()
+        opts.awaitVerification && awaitVerification()
       ])
       .then(function () {
         t.pass('got next form')
       })
   }
 
-  function sendLicense () {
+  function sendLicense (opts) {
+    opts = opts || DEFAULT_AWAIT_OPTS
     var msg = {
       licenseNumber: 'abc',
       dateOfIssue: 1414342441249
@@ -472,8 +696,8 @@ function getHelpers (applicant, bank, forms, verifications, t) {
     signNSend(msg)
     return Q.all([
       awaitTypeUnchained(LICENSE),
-      awaitVerification(),
-      awaitConfirmation()
+      opts.awaitVerification && awaitVerification(),
+      opts.awaitConfirmation && awaitConfirmation()
     ])
   }
 
@@ -536,7 +760,10 @@ function getHelpers (applicant, bank, forms, verifications, t) {
       })
       .done(function (entries) {
         var info = entries[0]
-        forms[info.get(TYPE)] = info.get(ROOT_HASH)
+        var type = info.get(TYPE)
+        if (MODELS_BY_ID[type].subClassOf === 'tradle.Form') {
+          forms[info.get(TYPE)] = info.get(ROOT_HASH)
+        }
       })
   }
 

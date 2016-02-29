@@ -239,7 +239,8 @@ Bank.prototype._onMessage = function (msg) {
   var from = req.from[ROOT_HASH]
   this._debug(`received ${req[TYPE]} from ${from}`)
 
-  return this._getCustomerState(from)
+  return req.start()
+    .then(() => this._getCustomerState(from))
     .catch(function (err) {
       if (!err.notFound) throw err
 
