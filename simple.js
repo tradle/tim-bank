@@ -317,7 +317,7 @@ SimpleBank.prototype.handleDocument = function (req, res) {
   var docState = state.forms[type] = state.forms[type] || {}
 
   docState.form = {
-    [ROOT_HASH]: req[ROOT_HASH],
+    [CUR_HASH]: req[CUR_HASH],
     body: req.data, // raw buffer
     txId: req.txId
   }
@@ -351,6 +351,10 @@ SimpleBank.prototype._sendVerification = function (opts) {
   }
 
   const docState = req.state.forms[doc[TYPE]]
+  if (!docState) {
+    return utils.rejectWithHttpError(400, new Error('form not found'))
+  }
+
   docState.verifications.push(stored)
   return this.bank.send({
       req: req,
@@ -360,7 +364,7 @@ SimpleBank.prototype._sendVerification = function (opts) {
     .then((entries) => {
       const rootHash = entries[0].toJSON()[ROOT_HASH]
       // stored[ROOT_HASH] = req[ROOT_HASH]
-      stored[ROOT_HASH] = rootHash
+      stored[ROOT_HASH] = stored[CUR_HASH] = rootHash
     })
 }
 
@@ -400,7 +404,7 @@ SimpleBank.prototype.newVerificationFor = function (msg) {
   var doc = msg.parsed.data
   var verification = {
     document: {
-      id: doc[TYPE] + '_' + msg[ROOT_HASH],
+      id: doc[TYPE] + '_' + msg[CUR_HASH],
       title: doc.title || doc[TYPE]
     },
     documentOwner: {
@@ -505,17 +509,26 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
     })
   }
 
-  const app = {
-    productType: productType,
-    forms: this._getMyForms(productType, state),
-    req: req
-  }
+  let forms = utils.getForms(productModel).map(f => {
+    const form = state.forms[f].form
+    return {
+      [CUR_HASH]: form[CUR_HASH] || form[ROOT_HASH],
+      body: JSON.parse(form.body.toString('binary'))
+    }
+  })
 
-  this.emit('application', app)
+  this.emit('application', {
+    customer: req.from[ROOT_HASH],
+    productType: productType,
+    forms: forms
+  })
 
   if (!this._auto.verify) return Q()
 
-  return this._approveProduct(app)
+  return this._approveProduct({
+    productType: productType,
+    req: req
+  })
 }
 
 SimpleBank.prototype._getMyForms = function (product, state) {
@@ -587,7 +600,7 @@ SimpleBank.prototype._approveProduct = function (opts) {
     })
 
   if (unverified.length) {
-    return Q.reject(new Error('verify the following forms first: ' + unverified.join(', ')))
+    return utils.rejectWithHttpError(400, 'verify the following forms first: ' + unverified.join(', '))
   }
 
   // const promiseVerifications = Q.all(unverified.map(docState => {
@@ -760,7 +773,7 @@ SimpleBank.prototype.handleVerification = function (req) {
 
   docState.verifications = docState.verifications || []
   docState.verifications.push({
-    [ROOT_HASH]: msg[ROOT_HASH],
+    [CUR_HASH]: msg[CUR_HASH],
     txId: msg.txId,
     body: verification
   })

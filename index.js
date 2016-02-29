@@ -267,6 +267,12 @@ Bank.prototype._onMessage = function (msg) {
       self._saveParsedMsg(req)
       return req.end()
     })
+    .catch(err => {
+      // end() either way otherwise the customer
+      // won't be able to make more requests
+      req.end()
+      throw err
+    })
 }
 
 Bank.prototype.shouldChainReceivedMessage = function (req) {
@@ -303,6 +309,7 @@ Bank.prototype._getResource = function (type, rootHash) {
   typeforce('String', type)
   typeforce('String', rootHash)
   return Q.ninvoke(this._db, 'get', prefixKey(type, rootHash))
+    .then(r => tutils.rebuf(r))
 }
 
 Bank.prototype._delResource = function (type, rootHash) {

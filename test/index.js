@@ -349,7 +349,7 @@ function testManualMode () {
       .then(() => helpers.startApplication(product))
       .then(() => helpers.sendAboutYou({ awaitVerification: false }))
       .then(() => helpers.sendYourMoney({ awaitVerification: false }))
-      .then(() => helpers.sendLicense({ awaitConfirmation: false }))
+      .then(() => helpers.sendLicense({ awaitVerification: false, awaitConfirmation: false }))
       // delay to make sure no auto-confirmation happens
       .then(() => Q.Promise(resolve => setTimeout(resolve, 2000)))
       .then(() => {
