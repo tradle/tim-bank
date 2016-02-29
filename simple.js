@@ -45,7 +45,7 @@ function SimpleBank (opts) {
     verify: true
   }, opts.auto)
 
-  this._models = utils.processModels(opts.models)
+  this._models = Object.freeze(utils.processModels(opts.models))
   this._productList = opts.productList || DEFAULT_PRODUCT_LIST
   const missingProduct = find(this._productList, p => !this._models[p])
   if (missingProduct) {
@@ -587,20 +587,28 @@ SimpleBank.prototype.approveProduct = function (opts) {
     .finally(() => req.end())
 }
 
+SimpleBank.prototype.models = function () {
+  return this._models
+}
+
+SimpleBank.prototype.getCustomerState = function (customerHash) {
+  return this.bank._getCustomerState(customerHash)
+}
+
 SimpleBank.prototype._approveProduct = function (opts) {
   // TODO: minimize code repeat with sendNextFormOrApprove
   const req = opts.req
   const state = req.state
   const productType = opts.productType
   const productModel = this._models[productType]
-  const unverified = utils.getForms(productModel)
-    .filter(f => {
-      const docState = state.forms[f]
-      return !(docState.verifications && docState.verifications.length)
-    })
+  const missingForms = utils.getMissingForms(state, productModel)
+  if (missingForms.length) {
+    return utils.rejectWithHttpError(400, 'request the following forms first: ' + missingForms.join(', '))
+  }
 
-  if (unverified.length) {
-    return utils.rejectWithHttpError(400, 'verify the following forms first: ' + unverified.join(', '))
+  const missingVerifications = utils.getUnverifiedForms(state, productModel)
+  if (missingVerifications.length) {
+    return utils.rejectWithHttpError(400, 'verify the following forms first: ' + missingVerifications.join(', '))
   }
 
   // const promiseVerifications = Q.all(unverified.map(docState => {
@@ -816,3 +824,4 @@ function assert (statement, errMsg) {
     throw new Error(errMsg || 'assertion failed')
   }
 }
+
