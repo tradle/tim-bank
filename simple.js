@@ -543,9 +543,9 @@ SimpleBank.prototype._getMyForms = function (product, state) {
     if (verifications && verifications.length) {
       let formId = state.forms[f].verifications[0].body.document.id
       let parts = formId.split('_')
-      ret[ROOT_HASH] = formId[1]
+      ret[CUR_HASH] = parts[1]
     } else {
-      ret[ROOT_HASH] = docState.form[ROOT_HASH]
+      ret[CUR_HASH] = docState.form[CUR_HASH]
     }
 
     return ret
@@ -608,7 +608,8 @@ SimpleBank.prototype._approveProduct = function (opts) {
 
   const missingVerifications = utils.getUnverifiedForms(state, productModel)
   if (missingVerifications.length) {
-    return utils.rejectWithHttpError(400, 'verify the following forms first: ' + missingVerifications.join(', '))
+    const types = missingForms.map(f => f[TYPE]).join(', ')
+    return utils.rejectWithHttpError(400, 'verify the following forms first: ' + types)
   }
 
   // const promiseVerifications = Q.all(unverified.map(docState => {
@@ -620,7 +621,7 @@ SimpleBank.prototype._approveProduct = function (opts) {
 
   const formIds = this._getMyForms(productType, state)
     .map(f => {
-      return f[TYPE] + '_' + f[ROOT_HASH]
+      return f[TYPE] + '_' + f[CUR_HASH]
     })
 
   const acquiredProduct = {

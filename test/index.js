@@ -348,6 +348,15 @@ function testManualMode () {
     helpers.sendIdentity(setup)
       .then(() => helpers.startApplication(product))
       .then(() => helpers.sendAboutYou({ awaitVerification: false }))
+      .then(() => {
+        // should fail
+        return bank.approveProduct({
+          customerRootHash: APPLICANT.myRootHash(),
+          productType: product
+        })
+      })
+      .then(() => t.fail('approval should not be possible without requisite forms'))
+      .catch(err => t.pass('approval prevented without required forms'))
       .then(() => helpers.sendYourMoney({ awaitVerification: false }))
       .then(() => helpers.sendLicense({ awaitVerification: false, awaitConfirmation: false }))
       // delay to make sure no auto-confirmation happens
