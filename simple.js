@@ -809,6 +809,7 @@ SimpleBank.prototype.forgetMe = function (req) {
 }
 
 SimpleBank.prototype.destroy = function () {
+  this._destroyed = true
   return this.bank.destroy()
 }
 
