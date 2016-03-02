@@ -520,10 +520,14 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
   this.emit('application', {
     customer: req.from[ROOT_HASH],
     productType: productType,
-    forms: forms
+    forms: forms,
+    req: this._auto.verify ? null : req
   })
 
-  if (!this._auto.verify) return Q()
+  if (!this._auto.verify) {
+    // 'application' event ugly side-effect
+    return req.continue || Q()
+  }
 
   return this._approveProduct({
     productType: productType,
