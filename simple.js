@@ -612,7 +612,7 @@ SimpleBank.prototype._approveProduct = function (opts) {
 
   const missingVerifications = utils.getUnverifiedForms(state, productModel)
   if (missingVerifications.length) {
-    const types = missingForms.map(f => f[TYPE]).join(', ')
+    const types = missingVerifications.map(f => f[TYPE]).join(', ')
     return utils.rejectWithHttpError(400, 'verify the following forms first: ' + types)
   }
 
