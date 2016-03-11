@@ -770,7 +770,7 @@ function getHelpers (opts) {
       .done(function (entries) {
         var info = entries[0]
         var type = info.get(TYPE)
-        if (MODELS_BY_ID[type].subClassOf === 'tradle.Form') {
+        if (MODELS_BY_ID[type].subClassOf === 'tradle.Form' || CurrentAccount.forms.indexOf(type) !== -1) {
           forms[info.get(TYPE)] = info.get(ROOT_HASH)
         }
       })
