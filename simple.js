@@ -158,10 +158,16 @@ SimpleBank.prototype.receiveMsg = function (msgBuf, senderInfo) {
     return utils.rejectWithHttpError(400, 'invalid identity')
   }
 
-  return req.start()
+  const from = senderInfo[ROOT_HASH] || senderInfo.fingerprint
+  return this.bank._lock(from)
     .then(() => this.publishCustomerIdentity(req))
     .then(() => this.sendProductList(req))
-    .finally(() => req.end())
+    .finally(() => {
+      return req.end()
+    })
+    .finally(() => {
+      this.bank._unlock(from)
+    })
 }
 
 SimpleBank.prototype.receivePrivateMsg = function (msgBuf, senderInfo) {
@@ -170,8 +176,7 @@ SimpleBank.prototype.receivePrivateMsg = function (msgBuf, senderInfo) {
       (them) => this.bank.receiveMsg(msgBuf, them),
       (err) => {
         const req = new RequestState({ from: senderInfo })
-        return req.start()
-          .then(() => this.replyNotFound(req))
+        return this.replyNotFound(req)
       }
     )
 }
@@ -383,7 +388,7 @@ SimpleBank.prototype.sendVerification = function (opts) {
     .then(_verifiedItem => {
       verifiedItem = _verifiedItem
       req = new RequestState(verifiedItem)
-      return req.start()
+      return this.bank._lock(verifiedItem.from[ROOT_HASH])
     })
     .then(() => {
       return this.bank._getCustomerState(verifiedItem.from[ROOT_HASH])
@@ -397,6 +402,7 @@ SimpleBank.prototype.sendVerification = function (opts) {
     })
     .then(() => this.bank._setCustomerState(req))
     .finally(() => req.end())
+    .finally(() => this.bank._unlock(verifiedItem.from[ROOT_HASH]))
 }
 
 SimpleBank.prototype.newVerificationFor = function (msg) {
@@ -567,7 +573,7 @@ SimpleBank.prototype._simulateReq = function (customerHash) {
         }
       })
 
-      return req.start()
+      return this.bank._lock(customerHash)
     })
     .then(() => req)
 }
@@ -589,6 +595,7 @@ SimpleBank.prototype.approveProduct = function (opts) {
     })
     .then(() => this.bank._setCustomerState(req))
     .finally(() => req.end())
+    .finally(() => this.bank._unlock(opts.customerRootHash))
 }
 
 SimpleBank.prototype.models = function () {

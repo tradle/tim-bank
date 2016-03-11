@@ -5,6 +5,7 @@ require('@tradle/multiplex-utp')
 var assert = require('assert')
 var extend = require('xtend')
 var levelup = require('levelup')
+var mutexify = require('mutexify')
 var map = require('map-stream')
 var find = require('array-find')
 var typeforce = require('typeforce')
@@ -92,6 +93,8 @@ function Bank (options) {
 
   var readyDefer = Q.defer()
   this._readyPromise = readyDefer.promise
+  this._locks = {}
+  this._manualReleases = {}
 
   this.listenOnce(tim, 'ready', function () {
     self._ready = true
@@ -106,6 +109,38 @@ function Bank (options) {
   })
 
   this._middles = utils.middles()
+}
+
+Bank.prototype._lock = function (customerHash) {
+  const self = this
+  const lock = this._locks[customerHash] = this._locks[customerHash] || mutexify()
+  const defer = Q.defer()
+  let release
+  let released
+
+  lock(_release => {
+    release = () => {
+      clearTimeout(timeout)
+      if (!released) {
+        released = true
+        _release()
+      }
+    }
+
+    var timeout = setTimeout(release, 10000)
+    self._manualReleases[customerHash] = release
+    defer.resolve()
+  })
+
+  return defer.promise
+}
+
+Bank.prototype._unlock = function (customerHash) {
+  const release = this._manualReleases[customerHash]
+  if (release) {
+    delete this._manualReleases[customerHash]
+    release()
+  }
 }
 
 /**
@@ -239,7 +274,7 @@ Bank.prototype._onMessage = function (msg) {
   var from = req.from[ROOT_HASH]
   this._debug(`received ${req[TYPE]} from ${from}`)
 
-  return req.start()
+  return this._lock(from)
     .then(() => this._getCustomerState(from))
     .catch(function (err) {
       if (!err.notFound) throw err
@@ -272,6 +307,9 @@ Bank.prototype._onMessage = function (msg) {
       // won't be able to make more requests
       req.end()
       throw err
+    })
+    .finally(() => {
+      this._unlock(from)
     })
 }
 
@@ -382,6 +420,10 @@ Bank.prototype.destroy = function () {
     this.tim.destroy(),
     Q.ninvoke(this._db, 'close')
   ])
+
+  for (var customer in this._manualReleases) {
+    this._manualReleases[customer]()
+  }
 
   return this._destroyPromise
 }
