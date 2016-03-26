@@ -1,6 +1,6 @@
 {
   "name": "@tradle/tim-bank",
-  "version": "1.10.2",
+  "version": "1.10.3",
   "dependencies": {
     "@tradle/bitcoinjs-lib": {
       "version": "1.6.0",
