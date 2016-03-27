@@ -159,7 +159,7 @@ SimpleBank.prototype.receiveMsg = function (msgBuf, senderInfo) {
   }
 
   const from = senderInfo[ROOT_HASH] || senderInfo.fingerprint
-  return this.bank._lock(from)
+  return this.bank._lock(from, 'publish identity')
     .then(() => this.publishCustomerIdentity(req))
     .then(() => this.sendProductList(req))
     .finally(() => {
@@ -388,7 +388,7 @@ SimpleBank.prototype.sendVerification = function (opts) {
     .then(_verifiedItem => {
       verifiedItem = _verifiedItem
       req = new RequestState(verifiedItem)
-      return this.bank._lock(verifiedItem.from[ROOT_HASH])
+      return this.bank._lock(verifiedItem.from[ROOT_HASH], 'send verification')
     })
     .then(() => {
       return this.bank._getCustomerState(verifiedItem.from[ROOT_HASH])
@@ -585,9 +585,18 @@ SimpleBank.prototype.approveProduct = function (opts) {
   }, opts)
 
   let req
-  return this._simulateReq(opts.customerRootHash)
-    .then(_req => {
-      req = _req
+  // return this._simulateReq(opts.customerRootHash)
+  const customerHash = opts.customerRootHash
+  return this.bank._lock(customerHash, 'approve product')
+    .then(() => this.bank._getCustomerState(customerHash))
+    .then(state => {
+      req = new RequestState({
+        state: state,
+        from: {
+          [ROOT_HASH]: customerHash
+        }
+      })
+
       return this._approveProduct({
         req: req,
         productType: opts.productType

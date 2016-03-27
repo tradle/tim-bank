@@ -111,14 +111,16 @@ function Bank (options) {
   this._middles = utils.middles()
 }
 
-Bank.prototype._lock = function (customerHash) {
+Bank.prototype._lock = function (customerHash, reason) {
   const self = this
+  this._debug(`locking ${customerHash}: ${reason}`)
   const lock = this._locks[customerHash] = this._locks[customerHash] || mutexify()
   const defer = Q.defer()
   let release
   let released
 
   lock(_release => {
+    this._debug(`locked ${customerHash}: ${reason}`)
     release = () => {
       clearTimeout(timeout)
       if (!released) {
@@ -138,6 +140,7 @@ Bank.prototype._lock = function (customerHash) {
 Bank.prototype._unlock = function (customerHash) {
   const release = this._manualReleases[customerHash]
   if (release) {
+    this._debug(`unlocking ${customerHash}`)
     delete this._manualReleases[customerHash]
     release()
   }
@@ -274,7 +277,7 @@ Bank.prototype._onMessage = function (msg) {
   var from = req.from[ROOT_HASH]
   this._debug(`received ${req[TYPE]} from ${from}`)
 
-  return this._lock(from)
+  return this._lock(from, 'process incoming message')
     .then(() => this._getCustomerState(from))
     .catch(function (err) {
       if (!err.notFound) throw err
@@ -398,12 +401,12 @@ Bank.prototype.send = function (opts) {
       return self.tim.send(sendOpts)
     })
     .then(function (entries) {
-      if (req) {
-        entries.forEach(function (e) {
-          var getSent = utils.waitForEvent(self.tim, 'sent', e)
-          req.promise(getSent)
-        })
-      }
+      // if (req) {
+      //   entries.forEach(function (e) {
+      //     var getSent = utils.waitForEvent(self.tim, 'sent', e)
+      //     req.promise(getSent)
+      //   })
+      // }
 
       var rh = entries[0].get(ROOT_HASH)
       self._setResource(msg[TYPE], rh, msg)
@@ -417,7 +420,7 @@ Bank.prototype.destroy = function () {
   this._destroying = true
   this.stopListening(this.tim)
   this._destroyPromise = Q.all([
-    this.tim.destroy(),
+    // this.tim.destroy(),
     Q.ninvoke(this._db, 'close')
   ])
 
