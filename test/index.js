@@ -53,11 +53,12 @@ Tim.CATCH_UP_INTERVAL = 2000
 Tim.CHAIN_WRITE_THROTTLE = 0
 Tim.CHAIN_READ_THROTTLE = 0
 Tim.SEND_THROTTLE = 0
-var Transport = extend(require('@tradle/transport-http'), {
+// var Transport = extend(require('@tradle/transport-http'), {
+var Transport = {
   P2P: require('@tradle/transport-p2p'),
   WebSocketClient: require('@tradle/ws-client'),
   WebSocketRelay: require('@tradle/ws-relay')
-})
+}
 
 var HttpClient = Transport.HttpClient
 var HttpServer = Transport.HttpServer
@@ -161,10 +162,10 @@ testManualMode()
     name: 'websockets',
     init: initWebsockets
   },
-  {
-    name: 'client/server',
-    init: init
-  },
+  // {
+  //   name: 'client/server',
+  //   init: init
+  // },
   {
     name: 'p2p',
     init: initP2P
@@ -983,6 +984,11 @@ function teardown () {
     .then(function () {
       return Q.all(getTims().map(function (t) {
         return t.messenger && t.messenger.destroy()
+      }))
+    })
+    .then(function () {
+      return Q.all(getTims().map(function (tim) {
+        return tim.destroy()
       }))
     })
     .then(function () {
