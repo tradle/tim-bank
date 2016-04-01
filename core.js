@@ -243,7 +243,7 @@ Bank.prototype._debug = function () {
   return debug.apply(null, args)
 }
 
-Bank.prototype.receiveMsg = function (msgBuf, senderInfo) {
+Bank.prototype.receiveMsg = function (msgBuf, senderInfo, sync) {
   var self = this
   return this.tim.receiveMsg(msgBuf, senderInfo)
     .then(function (entry) {
@@ -255,12 +255,12 @@ Bank.prototype.receiveMsg = function (msgBuf, senderInfo) {
       return self.tim.lookupObject(entry.toJSON())
     })
     .then(function (msg) {
-      return self._onMessage(msg)
+      return self._onMessage(msg, sync)
     })
 }
 
 // TODO: lock on sender hash to avoid race conditions
-Bank.prototype._onMessage = function (msg) {
+Bank.prototype._onMessage = function (msg, sync) {
   var self = this
   if (!this._ready) {
     return this._readyPromise.then(this._onMessage.bind(this, msg))
@@ -273,6 +273,8 @@ Bank.prototype._onMessage = function (msg) {
   // TODO: move most of this out to implementation (e.g. simple.js)
 
   var req = new RequestState(msg)
+  req.sync = sync
+
   var res = {}
   var from = req.from[ROOT_HASH]
   this._debug(`received ${req[TYPE]} from ${from}`)
@@ -320,7 +322,7 @@ Bank.prototype.shouldChainReceivedMessage = function (req) {
   // override this method
   if (!Bank.ALLOW_CHAINING) return false
 
-  if (req.chain || req.tx || req.dateUnchained) {
+  if (req.nochain || req.chain || req.tx || req.dateUnchained) {
     return false
   }
 
@@ -401,12 +403,12 @@ Bank.prototype.send = function (opts) {
       return self.tim.send(sendOpts)
     })
     .then(function (entries) {
-      // if (req) {
-      //   entries.forEach(function (e) {
-      //     var getSent = utils.waitForEvent(self.tim, 'sent', e)
-      //     req.promise(getSent)
-      //   })
-      // }
+      if (req && req.sync) {
+        entries.forEach(function (e) {
+          var getSent = utils.waitForEvent(self.tim, 'sent', e)
+          req.promise(getSent)
+        })
+      }
 
       var rh = entries[0].get(ROOT_HASH)
       self._setResource(msg[TYPE], rh, msg)
@@ -477,6 +479,7 @@ function newCustomerState (customerRootHash) {
     pendingApplications: [],
     products: {},
     forms: {},
+    prefilled: {},
     bankVersion: BANK_VERSION
   }
 

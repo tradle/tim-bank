@@ -53,12 +53,12 @@ Tim.CATCH_UP_INTERVAL = 2000
 Tim.CHAIN_WRITE_THROTTLE = 0
 Tim.CHAIN_READ_THROTTLE = 0
 Tim.SEND_THROTTLE = 0
-// var Transport = extend(require('@tradle/transport-http'), {
-var Transport = {
+var Transport = extend(require('@tradle/transport-http'), {
+// var Transport = {
   P2P: require('@tradle/transport-p2p'),
   WebSocketClient: require('@tradle/ws-client'),
   WebSocketRelay: require('@tradle/ws-relay')
-}
+})
 
 var HttpClient = Transport.HttpClient
 var HttpServer = Transport.HttpServer
@@ -153,19 +153,17 @@ test('models', function (t) {
   t.end()
 })
 
-// testSemiManualMode()
 testManualMode()
-// testManualMode1()
 
 ;[
-  {
-    name: 'websockets',
-    init: initWebsockets
-  },
   // {
-  //   name: 'client/server',
-  //   init: init
+  //   name: 'websockets',
+  //   init: initWebsockets
   // },
+  {
+    name: 'client/server',
+    init: init
+  },
   {
     name: 'p2p',
     init: initP2P
@@ -472,6 +470,7 @@ function runTests (setup, idx) {
       return helpers.startApplication()
         .then(helpers.sendAboutYou)
         .then(helpers.sendYourMoney)
+        .then(helpers.sendIncompleteLicense)
         .then(helpers.sendLicense)
         .then(function () {
           return verificationsDefer.promise
@@ -567,6 +566,7 @@ function getHelpers (opts) {
     sendAboutYou,
     sendYourMoney,
     sendLicense,
+    sendIncompleteLicense,
     shareAboutYouVer,
     shareYourMoneyVer,
     shareLicenseVer,
@@ -695,6 +695,19 @@ function getHelpers (opts) {
 
   function sendLicense (opts) {
     opts = opts || DEFAULT_AWAIT_OPTS
+    const msg = newFakeData(LICENSE)
+    msg[NONCE] = '' + (nonce++)
+
+    signNSend(msg)
+    return Q.all([
+      awaitTypeUnchained(LICENSE),
+      opts.awaitVerification && awaitVerification(),
+      opts.awaitConfirmation && awaitConfirmation()
+    ])
+  }
+
+  function sendIncompleteLicense (opts) {
+    opts = opts || DEFAULT_AWAIT_OPTS
     var msg = {
       licenseNumber: 'abc',
       dateOfIssue: 1414342441249
@@ -704,11 +717,7 @@ function getHelpers (opts) {
     msg[TYPE] = LICENSE
 
     signNSend(msg)
-    return Q.all([
-      awaitTypeUnchained(LICENSE),
-      opts.awaitVerification && awaitVerification(),
-      opts.awaitConfirmation && awaitConfirmation()
-    ])
+    return awaitType('tradle.FormError')
   }
 
   function shareAboutYouVer () {
@@ -1131,7 +1140,11 @@ function init () {
       leveldown: memdown
     })
 
-    httpServer.receive = bank.receiveMsg.bind(bank)
+    httpServer.receive = function () {
+      var args = [].slice.call(arguments)
+      args[2] = true // requires sync response
+      return bank.receiveMsg.apply(bank, args)
+    }
 
     tim.once('ready', function () {
       var rh = tim.myRootHash()
@@ -1306,4 +1319,45 @@ function newMessenger (opts) {
       key: getDSAKey(opts.keys)
     })
   })
+}
+
+function newFakeData (model) {
+  model = typeof model === 'string'
+    ? MODELS_BY_ID[model]
+    : model
+
+  if (!model) throw new Error('model not found')
+
+  const type = model.id
+  const data = {
+    [TYPE]: type
+  }
+
+  const props = model.required || Object.keys(model.properties)
+  props.forEach(name => {
+    if (name === 'from' || name === 'to') return
+
+    data[name] = fakeValue(model, name)
+  })
+
+  return data
+}
+
+function fakeValue (model, propName) {
+  const prop = model.properties[propName]
+  const type = prop.type
+  switch (type) {
+    case 'string':
+      return crypto.randomBytes(32).toString('hex')
+    case 'number':
+      return Math.random() * 100 | 0
+    case 'date':
+      return Date.now()
+    case 'boolean':
+      return Math.random() < 0.5
+    case 'array':
+      return [newFakeData(prop.items)]
+    default:
+      throw new Error(`unknown property type: ${type} for property ${propName}`)
+  }
 }

@@ -29,6 +29,7 @@ const TYPE = constants.TYPE
 const types = constants.TYPES
 const FORGET_ME = 'tradle.ForgetMe'
 const FORGOT_YOU = 'tradle.ForgotYou'
+const GUEST_SESSION = 'guestsession'
 const noop = function () {}
 
 function SimpleBank (opts) {
@@ -70,6 +71,7 @@ function SimpleBank (opts) {
   bank.use('tradle.GetMessage', this.lookupAndSend)
   bank.use('tradle.GetHistory', this.sendHistory)
   bank.use('tradle.GetEmployee', this.getEmployee)
+  bank.use('tradle.ImportSession', this.importSession)
   bank.use(FORGET_ME, this.forgetMe)
   bank.use(types.VERIFICATION, this.handleVerification)
   bank.use(types.CUSTOMER_WAITING, this.sendProductList)
@@ -117,7 +119,7 @@ function SimpleBank (opts) {
 module.exports = SimpleBank
 util.inherits(SimpleBank, EventEmitter)
 
-SimpleBank.prototype.receiveMsg = function (msgBuf, senderInfo) {
+SimpleBank.prototype.receiveMsg = function (msgBuf, senderInfo, sync) {
   var bank = this.bank
   var msg
   try {
@@ -126,7 +128,7 @@ SimpleBank.prototype.receiveMsg = function (msgBuf, senderInfo) {
   } catch (err) {}
 
   if (!msg) {
-    return this.receivePrivateMsg(msgBuf, senderInfo)
+    return this.receivePrivateMsg(msgBuf, senderInfo, sync)
   }
 
   // if it's an identity, store it
@@ -146,6 +148,7 @@ SimpleBank.prototype.receiveMsg = function (msgBuf, senderInfo) {
   // fake chainedObj format
   var req = new RequestState({
     from: senderInfo,
+    sync: sync,
     parsed: {
       data: msg
     },
@@ -162,18 +165,14 @@ SimpleBank.prototype.receiveMsg = function (msgBuf, senderInfo) {
   return this.bank._lock(from, 'publish identity')
     .then(() => this.publishCustomerIdentity(req))
     .then(() => this.sendProductList(req))
-    .finally(() => {
-      return req.end()
-    })
-    .finally(() => {
-      this.bank._unlock(from)
-    })
+    .finally(() => req.end())
+    .finally(() => this.bank._unlock(from))
 }
 
-SimpleBank.prototype.receivePrivateMsg = function (msgBuf, senderInfo) {
+SimpleBank.prototype.receivePrivateMsg = function (msgBuf, senderInfo, sync) {
   return this.tim.lookupIdentity(senderInfo)
     .then(
-      (them) => this.bank.receiveMsg(msgBuf, them),
+      (them) => this.bank.receiveMsg(msgBuf, them, sync),
       (err) => {
         const req = new RequestState({ from: senderInfo })
         return this.replyNotFound(req)
@@ -315,30 +314,55 @@ SimpleBank.prototype.handleNewApplication = function (req, res) {
 }
 
 SimpleBank.prototype.handleDocument = function (req, res) {
-  var bank = this.bank
-  var type = req.type
-  var state = req.state
-  var msg = req.msg
-  var docState = state.forms[type] = state.forms[type] || {}
+  const bank = this.bank
+  const type = req.type
+  const state = req.state
+  const msg = req.msg
+  const next = () => {
+    const docState = state.forms[type] = state.forms[type] || {}
 
-  docState.form = {
-    [CUR_HASH]: req[CUR_HASH],
-    body: req.data, // raw buffer
-    txId: req.txId
-  }
+    docState.form = {
+      [CUR_HASH]: req[CUR_HASH],
+      body: req.data, // raw buffer
+      txId: req.txId
+    }
 
-  docState.verifications = docState.verifications || []
-  if (!this._auto.verify) {
-    return this.sendNextFormOrApprove({req})
-  }
+    docState.verifications = docState.verifications || []
 
-  return this._sendVerification({
+    // delete prefilled
+    // TODO: delete guest session when it has been imported
+    delete state.prefilled[type]
+    if (!this._auto.verify) {
+      return this.sendNextFormOrApprove({req})
+    }
+
+    return this._sendVerification({
       req: req,
       verifiedItem: msg
     })
     .then(() => {
       return this.sendNextFormOrApprove({req})
     })
+  }
+
+  return this.validateDocument(req)
+    .then(
+      next,
+      errs => {
+        req.nochain = true
+        return this.requestEdit(req, errs)
+      }
+    )
+}
+
+SimpleBank.prototype.validateDocument = function (req) {
+  const doc = req.parsed.data
+  const type = doc[TYPE]
+  const model = this._models[type]
+  if (!model) throw new Error(`unknown type ${type}`)
+
+  const errs = utils.validateResource(doc, model)
+  return errs ? Q.reject(errs) : Q()
 }
 
 SimpleBank.prototype._sendVerification = function (opts) {
@@ -431,6 +455,33 @@ SimpleBank.prototype.newVerificationFor = function (msg) {
   return verification
 }
 
+SimpleBank.prototype.requestEdit = function (req, errs) {
+  typeforce({
+    message: 'String',
+    errors: '?Array'
+  }, errs)
+
+  const prefill = req.parsed.data
+  if (prefill) {
+    // clean prefilled data
+    for (let p in prefill) {
+      if (p.charAt(0) === '_' && p !== TYPE) {
+        delete prefill[p]
+      }
+    }
+  }
+
+  return this.bank.send({
+    req: req,
+    msg: {
+      [TYPE]: 'tradle.FormError',
+      prefill: prefill,
+      message: errs.message,
+      errors: errs.errors
+    }
+  })
+}
+
 SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
   if (!(this._auto.prompt || this._auto.verify)) return Q()
 
@@ -509,7 +560,21 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
   if (missing) {
     if (!this._auto.prompt) return Q()
 
-    return this.sendForm({
+    const prefilled = state.prefilled[missing]
+    if (prefilled) {
+      const docReq = new RequestState({
+        state: state,
+        from: req.from,
+        to: req.to,
+        parsed: prefilled
+      })
+
+      // run this async (instead of `return this.handleDocument(docReq)`)
+      this.handleDocument(docReq)
+      return
+    }
+
+    return this.requestForm({
       req: req,
       form: missing
     })
@@ -680,11 +745,13 @@ SimpleBank.prototype._approveProduct = function (opts) {
     })
 }
 
-SimpleBank.prototype.sendForm = function (opts) {
+SimpleBank.prototype.requestForm = function (opts) {
   typeforce({
+    req: 'RequestState',
     form: 'String'
   }, opts)
 
+  const req = opts.req
   const form = opts.form
   const msg = utils.buildSimpleMsg(
     'Please fill out this form and attach a snapshot of the original document',
@@ -693,7 +760,7 @@ SimpleBank.prototype.sendForm = function (opts) {
 
   debug('requesting form', form)
   return this.bank.send({
-    req: opts.req,
+    req: req,
     msg: msg
   })
 }
@@ -833,6 +900,55 @@ SimpleBank.prototype._debug = function () {
   var args = [].slice.call(arguments)
   args.unshift(this.tim.name())
   return debug.apply(null, args)
+}
+
+SimpleBank.prototype.storeGuestSession = function (hash, forms) {
+  return this.bank._setResource(GUEST_SESSION, hash, forms)
+}
+
+SimpleBank.prototype.importSession = function (req) {
+  const bank = this.bank
+  const hash = req.parsed.data.session
+  const customerHash = req.from[ROOT_HASH]
+  const state = req.state
+  const msg = req.msg
+  const products = []
+  return this.bank._getResource(GUEST_SESSION, hash)
+    .then(session => {
+      state.prefilled = state.prefilled || {}
+      session.forEach(data => {
+        const type = data[TYPE]
+        const model = this._models[type]
+        if (!model) throw new Error(`unknown type ${type}`)
+
+        switch (model.subClassOf) {
+          case 'tradle.Form':
+            state.prefilled[type] = data
+            break
+          case 'tradle.FinancialProduct':
+            products.push(type)
+            break
+          default:
+            throw new Error('expected application or form')
+        }
+      })
+
+      // save now just in case
+      return this.bank._setCustomerState(req)
+    })
+    .then(() => {
+      // async, no need to wait for this
+      this.bank._delResource(SESSION, hash)
+
+      if (products.length) {
+        // TODO: queue up all the products
+        req.productType = products[0]
+        return this.handleNewApplication(req)
+      } else {
+        req.type = data[0][TYPE]
+        return this.handleDocument(req)
+      }
+    })
 }
 
 function getType (obj) {

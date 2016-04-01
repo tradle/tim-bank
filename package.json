@@ -22,6 +22,7 @@
     "@tradle/otr": "^0.2.15",
     "@tradle/simple-wallet": "^1.0.0",
     "@tradle/tim-server": "^2.0.1",
+    "@tradle/transport-http": "^1.0.1",
     "@tradle/utils": "^1.3.0",
     "@tradle/ws-client": "^1.3.0",
     "@tradle/ws-relay": "^1.3.0",

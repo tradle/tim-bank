@@ -730,6 +730,10 @@
         }
       }
     },
+    "@tradle/transport-http": {
+      "version": "1.0.1",
+      "from": "@tradle/transport-http@latest"
+    },
     "@tradle/utils": {
       "version": "1.3.0",
       "from": "@tradle/utils@1.3.0",
