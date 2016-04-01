@@ -71,7 +71,7 @@ function SimpleBank (opts) {
   bank.use('tradle.GetMessage', this.lookupAndSend)
   bank.use('tradle.GetHistory', this.sendHistory)
   bank.use('tradle.GetEmployee', this.getEmployee)
-  bank.use('tradle.ImportSession', this.importSession)
+  bank.use('tradle.GuestSessionProof', this.importSession)
   bank.use(FORGET_ME, this.forgetMe)
   bank.use(types.VERIFICATION, this.handleVerification)
   bank.use(types.CUSTOMER_WAITING, this.sendProductList)
@@ -320,10 +320,12 @@ SimpleBank.prototype.handleDocument = function (req, res) {
   const msg = req.msg
   const next = () => {
     const docState = state.forms[type] = state.forms[type] || {}
+    const doc = req.parsed ? req.parsed.data : JSON.parse(req.data.toString('binary'))
 
     docState.form = {
       [CUR_HASH]: req[CUR_HASH],
-      body: req.data, // raw buffer
+      // body: req.data, // raw buffer
+      body: doc,
       txId: req.txId
     }
 
@@ -331,6 +333,13 @@ SimpleBank.prototype.handleDocument = function (req, res) {
 
     // delete prefilled
     // TODO: delete guest session when it has been imported
+    const prefilled = state.prefilled[type]
+    if (prefilled && prefilled.verification && utils.formsEqual(prefilled.form, doc)) {
+      console.log('backdating')
+      const time = prefilled.time
+      if (time) msg.time = time + 24 * 3600 * 1000 // backdate to 1 day after doc
+    }
+
     delete state.prefilled[type]
     if (!this._auto.verify) {
       return this.sendNextFormOrApprove({req})
@@ -465,7 +474,7 @@ SimpleBank.prototype.requestEdit = function (req, errs) {
   if (prefill) {
     // clean prefilled data
     for (let p in prefill) {
-      if (p.charAt(0) === '_' && p !== TYPE) {
+      if (p[0] === '_' && p !== TYPE) {
         delete prefill[p]
       }
     }
@@ -563,15 +572,16 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
     const prefilled = state.prefilled[missing]
     if (prefilled) {
       const docReq = new RequestState({
+        [TYPE]: missing,
         state: state,
         from: req.from,
         to: req.to,
-        parsed: prefilled
+        parsed: {
+          data: prefilled.form
+        }
       })
 
-      // run this async (instead of `return this.handleDocument(docReq)`)
-      this.handleDocument(docReq)
-      return
+      return this.handleDocument(docReq)
     }
 
     return this.requestForm({
@@ -584,7 +594,8 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
     const form = state.forms[f].form
     return {
       [CUR_HASH]: form[CUR_HASH] || form[ROOT_HASH],
-      body: JSON.parse(form.body.toString('binary'))
+      body: form.body
+      // body: JSON.parse(form.body.toString('binary'))
     }
   })
 
@@ -902,8 +913,8 @@ SimpleBank.prototype._debug = function () {
   return debug.apply(null, args)
 }
 
-SimpleBank.prototype.storeGuestSession = function (hash, forms) {
-  return this.bank._setResource(GUEST_SESSION, hash, forms)
+SimpleBank.prototype.storeGuestSession = function (hash, data) {
+  return this.bank._setResource(GUEST_SESSION, hash, data)
 }
 
 SimpleBank.prototype.importSession = function (req) {
@@ -912,40 +923,63 @@ SimpleBank.prototype.importSession = function (req) {
   const customerHash = req.from[ROOT_HASH]
   const state = req.state
   const msg = req.msg
-  const products = []
+  let applications
+  let forms
+  let verifications
   return this.bank._getResource(GUEST_SESSION, hash)
     .then(session => {
       state.prefilled = state.prefilled || {}
-      session.forEach(data => {
-        const type = data[TYPE]
-        const model = this._models[type]
-        if (!model) throw new Error(`unknown type ${type}`)
+      const hasUnknownType = find(session, data => {
+        return !this._models[data[TYPE]]
+      })
 
-        switch (model.subClassOf) {
-          case 'tradle.Form':
-            state.prefilled[type] = data
-            break
-          case 'tradle.FinancialProduct':
-            products.push(type)
-            break
-          default:
-            throw new Error('expected application or form')
+      if (hasUnknownType) {
+        throw new Error(`unknown type ${hasUnknownType[TYPE]}`)
+      }
+
+      forms = session.filter(data => {
+        return this._models[data[TYPE]].subClassOf === 'tradle.Form'
+      })
+
+      forms.forEach(data => {
+        const type = data[TYPE]
+        state.prefilled[type] = {
+          form: data
+        }
+        // const model = this._models[type]
+      })
+
+      verifications = session.filter(data => data[TYPE] === types.VERIFICATION)
+      verifications.forEach(verification => {
+        const prefilled = state.prefilled[type]
+        if (prefilled) {
+          prefilled.verification = verification
         }
       })
+
+      applications = session.map(data => {
+        if (data[TYPE] !== types.SIMPLE_MESSAGE) return
+
+        const productType = utils.parseSimpleMsg(data.message).type
+        if (productType && this._productList.indexOf(productType) !== -1) {
+          return productType
+        }
+      })
+      .filter(obj => obj) // filter out nulls
 
       // save now just in case
       return this.bank._setCustomerState(req)
     })
     .then(() => {
       // async, no need to wait for this
-      this.bank._delResource(SESSION, hash)
+      this.bank._delResource(GUEST_SESSION, hash)
 
-      if (products.length) {
+      if (applications.length) {
         // TODO: queue up all the products
-        req.productType = products[0]
+        req.productType = applications[0]
         return this.handleNewApplication(req)
       } else {
-        req.type = data[0][TYPE]
+        req.type = forms[0]
         return this.handleDocument(req)
       }
     })
@@ -962,4 +996,3 @@ function assert (statement, errMsg) {
     throw new Error(errMsg || 'assertion failed')
   }
 }
-

@@ -153,6 +153,7 @@ test('models', function (t) {
   t.end()
 })
 
+testGuestSession()
 testManualMode()
 
 ;[
@@ -316,6 +317,66 @@ testManualMode()
 //       })
 //   })
 // }
+
+function testGuestSession () {
+  BANKS = []
+  APPLICANT = null
+  var setup = {
+    name: 'websockets',
+    init: initWebsockets
+  }
+
+  runSetup(setup)
+
+  test('import guest session', function (t) {
+    var bank = BANKS[0]
+    var bankCoords = getCoords(bank.tim)
+    var product = 'tradle.CurrentAccount'
+    var forms = {}
+    var helpers = getHelpers({
+      applicant: APPLICANT,
+      bank: bank,
+      forms: forms,
+      verifications: {},
+      setup: setup,
+      t: t
+    })
+
+    var sessionHash = 'blah'
+    var incompleteAboutYou = newFakeData(ABOUT_YOU)
+    var missing = 'photos'
+    var missingVal = incompleteAboutYou[missing]
+    delete incompleteAboutYou[missing]
+    var session = [
+      utils.buildSimpleMsg(
+        'application for',
+        'tradle.CurrentAccount'
+      ),
+      incompleteAboutYou,
+      newFakeData(YOUR_MONEY),
+      newFakeData(LICENSE)
+    ]
+
+    bank.storeGuestSession(sessionHash, session)
+      .then(() => helpers.sendIdentity(setup))
+      .then(() => helpers.sendSessionIdentifier(sessionHash, 'tradle.FormError'))
+      .then(info => APPLICANT.lookupObject(info))
+      .then(obj => {
+        const errors = obj.parsed.data.errors
+        t.ok(errors.some(e => e.name === missing))
+        return helpers.sendAboutYou({ awaitVerification: false })
+      })
+
+    Q.all([
+        helpers.awaitVerification(3),
+        helpers.awaitConfirmation()
+      ])
+      .then(teardown)
+      .done(function () {
+        t.end()
+      })
+  })
+}
 
 function testManualMode () {
   BANKS = []
@@ -561,6 +622,7 @@ function getHelpers (opts) {
   return {
     sendIdentity,
     sendIdentityAgain,
+    sendSessionIdentifier,
     startApplication,
     tryUnacquainted,
     sendAboutYou,
@@ -621,6 +683,16 @@ function getHelpers (opts) {
       })
   }
 
+  function sendSessionIdentifier (identifier, waitType) {
+    var msg = {
+      [TYPE]: 'tradle.GuestSessionProof',
+      session: identifier
+    }
+
+    signNSend(msg)
+    return waitType && awaitType(waitType)
+  }
+
   function startApplication (productType) {
     var msg = utils.buildSimpleMsg(
       'application for',
@@ -652,16 +724,7 @@ function getHelpers (opts) {
 
   function sendAboutYou (opts) {
     opts = opts || DEFAULT_AWAIT_OPTS
-    var msg = {
-      nationality: 'British',
-      residentialStatus: 'Living with parents',
-      maritalStatus: 'Single'
-    }
-
-    msg[NONCE] = crypto.randomBytes(32).toString('base64')// '' + (nonce++)
-    msg[TYPE] = ABOUT_YOU
-
-    signNSend(msg)
+    signNSend(newFakeData(ABOUT_YOU))
     return Q.all([
         awaitForm(YOUR_MONEY),
         awaitTypeUnchained(ABOUT_YOU),
@@ -674,15 +737,7 @@ function getHelpers (opts) {
 
   function sendYourMoney (opts) {
     opts = opts || DEFAULT_AWAIT_OPTS
-    var msg = {
-      monthlyIncome: '5000 pounds',
-      whenHired: 1414342441249
-    }
-
-    msg[NONCE] = '' + (nonce++)
-    msg[TYPE] = YOUR_MONEY
-
-    signNSend(msg)
+    signNSend(newFakeData(YOUR_MONEY))
     return Q.all([
         awaitForm(LICENSE),
         awaitTypeUnchained(YOUR_MONEY),
@@ -695,10 +750,7 @@ function getHelpers (opts) {
 
   function sendLicense (opts) {
     opts = opts || DEFAULT_AWAIT_OPTS
-    const msg = newFakeData(LICENSE)
-    msg[NONCE] = '' + (nonce++)
-
-    signNSend(msg)
+    signNSend(newFakeData(LICENSE))
     return Q.all([
       awaitTypeUnchained(LICENSE),
       opts.awaitVerification && awaitVerification(),
@@ -808,10 +860,11 @@ function getHelpers (opts) {
     return applicant.share(opts)
   }
 
-  function awaitVerification () {
-    return awaitType(VERIFICATION)
+  function awaitVerification (n) {
+    n = n || 1
+    return awaitType(VERIFICATION, n)
       .then(function () {
-        t.pass('received tradle.Verification')
+        t.pass(`received ${n} tradle.Verification`)
       })
   }
 
@@ -822,17 +875,19 @@ function getHelpers (opts) {
       })
   }
 
-  function awaitType (type) {
+  function awaitType (type, n) {
+    n = n || 1
     var defer = Q.defer()
     applicant.on('message', onmessage)
     return defer.promise
-      .then(function () {
+      .then(function (ret) {
         applicant.removeListener('message', onmessage)
+        return ret
       })
 
     function onmessage (info) {
       if (info[TYPE] === type) {
-        defer.resolve()
+        if (--n === 0) defer.resolve(info)
       }
     }
   }
@@ -1335,7 +1390,7 @@ function newFakeData (model) {
 
   const props = model.required || Object.keys(model.properties)
   props.forEach(name => {
-    if (name === 'from' || name === 'to') return
+    if (name.charAt(0) === '_' || name === 'from' || name === 'to') return
 
     data[name] = fakeValue(model, name)
   })
@@ -1353,6 +1408,8 @@ function fakeValue (model, propName) {
       return Math.random() * 100 | 0
     case 'date':
       return Date.now()
+    case 'object':
+      return 'blah'
     case 'boolean':
       return Math.random() < 0.5
     case 'array':
