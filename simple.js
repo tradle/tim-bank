@@ -330,17 +330,6 @@ SimpleBank.prototype.handleDocument = function (req, res) {
     }
 
     docState.verifications = docState.verifications || []
-
-    // delete prefilled
-    // TODO: delete guest session when it has been imported
-    const prefilled = state.prefilled[type]
-    if (prefilled && prefilled.verification && utils.formsEqual(prefilled.form, doc)) {
-      console.log('backdating')
-      const time = prefilled.time
-      if (time) msg.time = time + 24 * 3600 * 1000 // backdate to 1 day after doc
-    }
-
-    delete state.prefilled[type]
     if (!this._auto.verify) {
       return this.sendNextFormOrApprove({req})
     }
@@ -382,7 +371,7 @@ SimpleBank.prototype._sendVerification = function (opts) {
 
   const req = opts.req
   const doc = opts.verifiedItem
-  const verification = this.newVerificationFor(doc)
+  const verification = this.newVerificationFor(req, doc)
   const stored = {
     txId: null,
     body: verification
@@ -438,24 +427,29 @@ SimpleBank.prototype.sendVerification = function (opts) {
     .finally(() => this.bank._unlock(verifiedItem.from[ROOT_HASH]))
 }
 
-SimpleBank.prototype.newVerificationFor = function (msg) {
-  var bank = this.bank
-  var doc = msg.parsed.data
-  var verification = {
-    document: {
-      id: doc[TYPE] + '_' + msg[CUR_HASH],
-      title: doc.title || doc[TYPE]
-    },
-    documentOwner: {
-      id: types.IDENTITY + '_' + msg.from[ROOT_HASH],
-      title: msg.from.identity.name()
-    }
+SimpleBank.prototype.newVerificationFor = function (req, msg) {
+  const bank = this.bank
+  const doc = msg.parsed.data
+  const prefilled = req.state.prefilled[doc[TYPE]]
+  let time
+  let verification = {}
+  if (prefilled && prefilled.verification && utils.formsEqual(prefilled.form, doc)) {
+    verification = prefilled.verification
+  } else {
+    verification = {}
   }
 
-  // verification.document[TYPE] = doc[TYPE]
-  // verification.documentOwner[TYPE] = types.IDENTITY
+  verification.document = {
+    id: doc[TYPE] + '_' + msg[CUR_HASH],
+    title: doc.title || doc[TYPE]
+  }
 
-  var org = this.tim.identityJSON.organization
+  verification.documentOwner = {
+    id: types.IDENTITY + '_' + msg.from[ROOT_HASH],
+    title: msg.from.identity.name()
+  }
+
+  const org = this.tim.identityJSON.organization
   if (org) {
     verification.organization = org
   }
@@ -582,6 +576,10 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
       })
 
       return this.handleDocument(docReq)
+        .then(ret => {
+          delete state.prefilled[missing]
+          return ret
+        })
     }
 
     return this.requestForm({
