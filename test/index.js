@@ -347,14 +347,16 @@ function testGuestSession () {
     var missing = 'photos'
     var missingVal = incompleteAboutYou[missing]
     delete incompleteAboutYou[missing]
+    var yourMoney = newFakeData(YOUR_MONEY)
+    var license = newFakeData(LICENSE)
     var session = [
       utils.buildSimpleMsg(
         'application for',
         'tradle.CurrentAccount'
       ),
       incompleteAboutYou,
-      newFakeData(YOUR_MONEY),
-      newFakeData(LICENSE),
+      yourMoney,
+      license,
       {
         [TYPE]: VERIFICATION,
         [NONCE]: '' + (nonce++),
@@ -372,8 +374,25 @@ function testGuestSession () {
       .then(obj => {
         const errors = obj.parsed.data.errors
         t.ok(errors.some(e => e.name === missing))
-        return helpers.sendAboutYou({ awaitVerification: false })
+        incompleteAboutYou[missing] = missingVal
+        helpers.signNSend(incompleteAboutYou)
+        return helpers.awaitType('tradle.FormError')
       })
+      .then(info => APPLICANT.lookupObject(info))
+      .then(obj => {
+        const message = obj.parsed.data.message
+        t.ok(/review/.test(message))
+        helpers.signNSend(yourMoney)
+        return helpers.awaitType('tradle.FormError')
+      })
+      .then(info => APPLICANT.lookupObject(info))
+      .then(obj => {
+        const message = obj.parsed.data.message
+        t.ok(/review/.test(message))
+        helpers.signNSend(license)
+        return helpers.awaitConfirmation()
+      })
+      .done()
 
     Q.all([
         helpers.awaitVerification(3),

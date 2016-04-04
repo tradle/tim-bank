@@ -383,6 +383,9 @@ SimpleBank.prototype._sendVerification = function (opts) {
   }
 
   docState.verifications.push(stored)
+  const prefilled = req.state.prefilled
+  if (prefilled) delete prefilled[doc[TYPE]]
+
   return this.bank.send({
       req: req,
       msg: verification,
@@ -575,10 +578,6 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
       })
 
       return this.handleDocument(docReq)
-        .then(ret => {
-          delete state.prefilled[missing]
-          return ret
-        })
     }
 
     return this.requestForm({
