@@ -431,7 +431,6 @@ SimpleBank.prototype.newVerificationFor = function (req, msg) {
   const bank = this.bank
   const doc = msg.parsed.data
   const prefilled = req.state.prefilled[doc[TYPE]]
-  let time
   let verification = {}
   if (prefilled && prefilled.verification && utils.formsEqual(prefilled.form, doc)) {
     verification = prefilled.verification
@@ -949,6 +948,7 @@ SimpleBank.prototype.importSession = function (req) {
 
       verifications = session.filter(data => data[TYPE] === types.VERIFICATION)
       verifications.forEach(verification => {
+        const type = verification.document[TYPE]
         const prefilled = state.prefilled[type]
         if (prefilled) {
           prefilled.verification = verification

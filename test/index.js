@@ -354,7 +354,15 @@ function testGuestSession () {
       ),
       incompleteAboutYou,
       newFakeData(YOUR_MONEY),
-      newFakeData(LICENSE)
+      newFakeData(LICENSE),
+      {
+        [TYPE]: VERIFICATION,
+        [NONCE]: '' + (nonce++),
+        time: 10000,
+        document: {
+          [TYPE]: YOUR_MONEY
+        }
+      }
     ]
 
     bank.storeGuestSession(sessionHash, session)
@@ -371,7 +379,17 @@ function testGuestSession () {
         helpers.awaitVerification(3),
         helpers.awaitConfirmation()
       ])
-      .then(teardown)
+      .spread(verifications => {
+        return Q.all(verifications.map(APPLICANT.lookupObject))
+      })
+      .then(verifications => {
+        const yourMoneyV = find(verifications, v => {
+          return v.parsed.data.document.id.split('_')[0] === YOUR_MONEY
+        })
+
+        t.equal(yourMoneyV.parsed.data.time, 10000)
+        return teardown()
+      })
       .done(function () {
         t.end()
       })
@@ -863,8 +881,9 @@ function getHelpers (opts) {
   function awaitVerification (n) {
     n = n || 1
     return awaitType(VERIFICATION, n)
-      .then(function () {
+      .then(function (verifications) {
         t.pass(`received ${n} tradle.Verification`)
+        return verifications
       })
   }
 
@@ -877,7 +896,9 @@ function getHelpers (opts) {
 
   function awaitType (type, n) {
     n = n || 1
-    var defer = Q.defer()
+    let togo = n
+    const defer = Q.defer()
+    const received = []
     applicant.on('message', onmessage)
     return defer.promise
       .then(function (ret) {
@@ -887,7 +908,8 @@ function getHelpers (opts) {
 
     function onmessage (info) {
       if (info[TYPE] === type) {
-        if (--n === 0) defer.resolve(info)
+        received.push(info)
+        if (--togo === 0) defer.resolve(n === 1 ? received[0] : received)
       }
     }
   }
