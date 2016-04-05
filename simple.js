@@ -969,16 +969,35 @@ SimpleBank.prototype.importSession = function (req) {
     })
     .then(() => {
       // async, no need to wait for this
-      this.bank._delResource(GUEST_SESSION, hash)
+      // this.bank._delResource(GUEST_SESSION, hash)
 
       if (applications.length) {
         // TODO: queue up all the products
         req.productType = applications[0]
         return this.handleNewApplication(req)
-      } else {
-        req.type = forms[0]
-        return this.handleDocument(req)
       }
+      // else if (forms.length) {
+      //   // TODO: unhack this crap as soon as we scrap `sync`
+      //   var docReq = new RequestState({
+      //     from: senderInfo,
+      //     parsed: {
+      //       data: forms[0]
+      //     },
+      //     // data: msgBuf
+      //   })
+
+      //   for (var p in req) {
+      //     if (!(p in docReq)) delete req[p]
+      //   }
+
+      //   for (var p in docReq) {
+      //     if (typeof docReq[p] !== 'function') {
+      //       req[p] = docReq[p]
+      //     }
+      //   }
+
+      //   return this.handleDocument(req)
+      // }
     })
 }
 
