@@ -577,6 +577,9 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
         }
       })
 
+      // TODO: figure out how to continue on req
+      docReq.promise = req.promise.bind(req)
+      docReq.sync = req.sync
       return this.handleDocument(docReq)
     }
 
@@ -922,6 +925,7 @@ SimpleBank.prototype.importSession = function (req) {
   let applications
   let forms
   let verifications
+  let confirmations
   return this.bank._getResource(GUEST_SESSION, hash)
     .then(session => {
       state.prefilled = state.prefilled || {}
@@ -964,6 +968,13 @@ SimpleBank.prototype.importSession = function (req) {
       })
       .filter(obj => obj) // filter out nulls
 
+      // confirmations = session.map(data => {
+      //   return data[TYPE].indexOf('Confirmation') !== -1
+      // })
+
+      // confirmations.forEach(c => {
+      // })
+
       // save now just in case
       return this.bank._setCustomerState(req)
     })
@@ -976,6 +987,7 @@ SimpleBank.prototype.importSession = function (req) {
         req.productType = applications[0]
         return this.handleNewApplication(req)
       }
+
       // else if (forms.length) {
       //   // TODO: unhack this crap as soon as we scrap `sync`
       //   var docReq = new RequestState({
