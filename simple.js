@@ -437,6 +437,10 @@ SimpleBank.prototype.newVerificationFor = function (req, msg) {
   let verification = {}
   if (prefilled && prefilled.verification && utils.formsEqual(prefilled.form, doc)) {
     verification = prefilled.verification
+    if (verification.time) {
+      verification.backDated = verification.time
+      delete verification.time
+    }
   } else {
     verification = {}
   }
