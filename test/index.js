@@ -1,5 +1,6 @@
 'use strict'
 
+// var LOG = require('why-is-node-running')
 // require('q-to-bluebird')
 require('@tradle/multiplex-utp')
 
@@ -52,7 +53,7 @@ Tim.CATCH_UP_INTERVAL = 2000
 // Tim.Zlorp.ANNOUNCE_INTERVAL = Tim.Zlorp.LOOKUP_INTERVAL = 5000
 Tim.CHAIN_WRITE_THROTTLE = 0
 Tim.CHAIN_READ_THROTTLE = 0
-Tim.SEND_THROTTLE = 0
+Tim.SEND_THROTTLE = 2000
 var Transport = extend(require('@tradle/transport-http'), {
 // var Transport = {
   P2P: require('@tradle/transport-p2p'),
@@ -154,6 +155,7 @@ test('models', function (t) {
 })
 
 testGuestSession()
+testRemediation()
 testManualMode()
 
 ;[
@@ -352,7 +354,7 @@ function testGuestSession () {
     var session = [
       utils.buildSimpleMsg(
         'application for',
-        'tradle.CurrentAccount'
+        product
       ),
       incompleteAboutYou,
       yourMoney,
@@ -406,12 +408,107 @@ function testGuestSession () {
           return v.parsed.data.document.id.split('_')[0] === YOUR_MONEY
         })
 
-        t.equal(yourMoneyV.parsed.data.time, 10000)
+        t.equal(yourMoneyV.parsed.data.backDated, 10000)
         return teardown()
       })
       .done(function () {
         t.end()
       })
+  })
+}
+
+function testRemediation () {
+  BANKS = []
+  APPLICANT = null
+  var setup = {
+    name: 'websockets',
+    init: initWebsockets
+  }
+
+  runSetup(setup)
+
+  test('import remediation', function (t) {
+    var bank = BANKS[0]
+    var bankCoords = getCoords(bank.tim)
+    var product = 'tradle.Remediation'
+    var forms = {}
+    var helpers = getHelpers({
+      applicant: APPLICANT,
+      bank: bank,
+      forms: forms,
+      verifications: {},
+      setup: setup,
+      t: t
+    })
+
+    var sessionHash = 'blah'
+    var aboutYou = newFakeData(ABOUT_YOU)
+    var yourMoney = newFakeData(YOUR_MONEY)
+    var license = newFakeData(LICENSE)
+    var session = [
+      utils.buildSimpleMsg(
+        'application for',
+        product
+      ),
+      aboutYou,
+      yourMoney,
+      license,
+      {
+        [TYPE]: VERIFICATION,
+        [NONCE]: '' + (nonce++),
+        time: 10000,
+        document: {
+          [TYPE]: YOUR_MONEY
+        }
+      }
+    ]
+
+    const verified = helpers.awaitVerification(3)
+      .then(verifications => {
+        return Q.all(verifications.map(APPLICANT.lookupObject))
+      })
+      .then(verifications => {
+        const yourMoneyV = find(verifications, v => {
+          return v.parsed.data.document.id.split('_')[0] === YOUR_MONEY
+        })
+
+        t.equal(yourMoneyV.parsed.data.backDated, 10000)
+      })
+
+    bank.storeGuestSession(sessionHash, session)
+      .then(() => helpers.sendIdentity(setup))
+      .then(() => helpers.sendSessionIdentifier(sessionHash, 'tradle.FormError'))
+      .then(info => APPLICANT.lookupObject(info))
+      .then(obj => {
+        const message = obj.parsed.data.message
+        t.ok(/review/.test(message))
+        helpers.signNSend(aboutYou)
+        return helpers.awaitType('tradle.FormError')
+      })
+      .then(info => APPLICANT.lookupObject(info))
+      .then(obj => {
+        const message = obj.parsed.data.message
+        t.ok(/review/.test(message))
+        helpers.signNSend(yourMoney)
+        return helpers.awaitType('tradle.FormError')
+      })
+      .then(info => APPLICANT.lookupObject(info))
+      .then(obj => {
+        const message = obj.parsed.data.message
+        t.ok(/review/.test(message))
+        helpers.signNSend(license)
+        return helpers.awaitType('tradle.SimpleMessage')
+      })
+      .then(info => APPLICANT.lookupObject(info))
+      .then(msg => {
+        t.ok(/confirm/.test(msg.parsed.data.message))
+        return verified
+      })
+      .then(teardown)
+      .done(function () {
+        t.end()
+      })
+
   })
 }
 

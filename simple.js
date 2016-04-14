@@ -30,6 +30,15 @@ const types = constants.TYPES
 const FORGET_ME = 'tradle.ForgetMe'
 const FORGOT_YOU = 'tradle.ForgotYou'
 const GUEST_SESSION = 'guestsession'
+const REMEDIATION = 'tradle.Remediation'
+const REMEDIATION_MODEL = {
+  [TYPE]: 'tradle.Model',
+  id: REMEDIATION,
+  subClassOf: 'tradle.FinancialProduct',
+  interfaces: ['tradle.Message'],
+  forms: []
+}
+
 const noop = function () {}
 
 function SimpleBank (opts) {
@@ -46,8 +55,12 @@ function SimpleBank (opts) {
     verify: true
   }, opts.auto)
 
-  this._models = Object.freeze(utils.processModels(opts.models))
-  this._productList = opts.productList || DEFAULT_PRODUCT_LIST
+  const rawModels = (opts.models || []).concat(REMEDIATION_MODEL)
+  this._models = Object.freeze(utils.processModels(rawModels))
+
+  this._productList = (opts.productList || DEFAULT_PRODUCT_LIST).slice()
+  this._productList.push(REMEDIATION)
+
   const missingProduct = find(this._productList, p => !this._models[p])
   if (missingProduct) {
     throw new Error(`missing model for product: ${missingProduct}`)
@@ -200,18 +213,20 @@ SimpleBank.prototype.replyNotFound = function (req, whatWasntFound) {
 SimpleBank.prototype.sendProductList = function (req) {
   var bank = this.bank
   var formModels = {}
-  var list = this._productList.map(productModelId => {
-    var model = this._models[productModelId]
-    var forms = utils.getForms(model)
-    forms.forEach(formModelId => {
-      if (this._models[formModelId]) {
-        // avoid duplicates by using object
-        formModels[formModelId] = this._models[formModelId]
-      }
-    })
+  var list = this._productList
+    .filter(productModelId => productModelId !== REMEDIATION)
+    .map(productModelId => {
+      var model = this._models[productModelId]
+      var forms = utils.getForms(model)
+      forms.forEach(formModelId => {
+        if (this._models[formModelId]) {
+          // avoid duplicates by using object
+          formModels[formModelId] = this._models[formModelId]
+        }
+      })
 
-    return model
-  })
+      return model
+    })
 
   for (var p in formModels)
     list.push(formModels[p])
@@ -341,6 +356,9 @@ SimpleBank.prototype.handleDocument = function (req, res) {
     .then(() => {
       return this.sendNextFormOrApprove({req})
     })
+    .then(() => {
+      if (state.prefilled) delete state.prefilled[type]
+    })
   }
 
   return this.validateDocument(req)
@@ -383,8 +401,8 @@ SimpleBank.prototype._sendVerification = function (opts) {
   }
 
   docState.verifications.push(stored)
-  const prefilled = req.state.prefilled
-  if (prefilled) delete prefilled[doc[TYPE]]
+//   const prefilled = req.state.prefilled
+//   if (prefilled) delete prefilled[doc[TYPE]]
 
   return this.bank.send({
       req: req,
@@ -425,7 +443,12 @@ SimpleBank.prototype.sendVerification = function (opts) {
         verifiedItem: verifiedItem
       })
     })
-    .then(() => this.bank._setCustomerState(req))
+    .then(() => {
+      const prefilled = req.state.prefilled
+      if (prefilled) delete prefilled[verifiedItem.parsed.data[TYPE]]
+
+      return this.bank._setCustomerState(req)
+    })
     .finally(() => req.end())
     .finally(() => this.bank._unlock(verifiedItem.from[ROOT_HASH]))
 }
@@ -480,12 +503,17 @@ SimpleBank.prototype.requestEdit = function (req, errs) {
     }
   }
 
+  let message = errs.message
+  if (req.productType === REMEDIATION) {
+    message = 'Importing...' + message[0].toLowerCase() + message.slice(1)
+  }
+
   return this.bank.send({
     req: req,
     msg: {
       [TYPE]: 'tradle.FormError',
       prefill: prefill,
-      message: errs.message,
+      message: message,
       errors: errs.errors
     }
   })
@@ -516,7 +544,8 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
     return utils.rejectWithHttpError(400, 'unable to determine product requested')
   }
 
-  const productModel = this._models[productType]
+  const isRemediation = productType === REMEDIATION
+  const productModel = isRemediation ? REMEDIATION_MODEL : this._models[productType]
   if (!productModel) {
     return utils.rejectWithHttpError(400, 'no such product model: ' + productType)
   }
@@ -539,12 +568,15 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
       })
     }
   }
-  else {
+  else if (productType !== REMEDIATION) {
     state.products[productType] = []
   }
 
   const isFormOrVerification = req[TYPE] === types.VERIFICATION || this._models.docs.indexOf(req[TYPE]) !== -1
-  const reqdForms = utils.getForms(productModel)
+  const reqdForms = isRemediation
+    ? Object.keys(state.prefilled)
+    : utils.getForms(productModel)
+
   let skip
   let missing
   reqdForms.forEach(function (fType) {
@@ -576,6 +608,7 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
         state: state,
         from: req.from,
         to: req.to,
+        productType: productType,
         parsed: {
           data: prefilled.form
         }
@@ -590,6 +623,18 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
     return this.requestForm({
       req: req,
       form: missing
+    })
+  }
+
+  if (isRemediation) {
+    const msg = utils.buildSimpleMsg(
+      'Thank you for confirming your information with us!'
+    )
+
+    debug('finished remediation')
+    return this.bank.send({
+      req: req,
+      msg: msg
     })
   }
 
@@ -784,7 +829,12 @@ SimpleBank.prototype._getRelevantPending = function (pending, reqState) {
     ? getType(reqState.parsed.data.document)
     : reqState[TYPE]
 
+  var state = reqState && reqState.state
   return find(pending, productType => {
+    if (productType === REMEDIATION) {
+      return state && state.prefilled && state.prefilled[docType]
+    }
+
     if (this._models.docs[productType].indexOf(docType) !== -1) {
       return productType
     }
@@ -989,7 +1039,15 @@ SimpleBank.prototype.importSession = function (req) {
       if (applications.length) {
         // TODO: queue up all the products
         req.productType = applications[0]
-        return this.handleNewApplication(req)
+        return this.bank.send({
+          req: req,
+          msg: {
+            _t: types.SIMPLE_MESSAGE,
+            message: 'Thank you for choosing to import your data into the Tradle app. ' +
+              'This will save you time when applying for financial products, and enable providers to approve you faster!',
+          }
+        })
+        .then(() => this.handleNewApplication(req))
       }
 
       // else if (forms.length) {
