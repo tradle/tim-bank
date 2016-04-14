@@ -1,6 +1,6 @@
 {
   "name": "@tradle/tim-bank",
-  "version": "1.12.5",
+  "version": "1.13.0",
   "description": "tradle bank server",
   "main": "./index.js",
   "scripts": {
