@@ -812,11 +812,10 @@ SimpleBank.prototype._newProductConfirmation = function (req, productType) {
    * @return {Object} confirmation
    */
   const copyProperties = (confirmation, confirmationType) => {
-    debugger
     const confirmationModel = this._models[confirmationType]
     const props = confirmationModel.properties
     for (let id in forms) {
-      const form = forms[id].body
+      const form = forms[id].form.body
       for (let pName in form) {
         if (pName.charAt[0] === '_') continue
         if (pName in props) {
