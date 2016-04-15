@@ -21,6 +21,7 @@ var CurrentAccount = MODELS_BY_ID['tradle.CurrentAccount']
 var currentAccountForms = CurrentAccount.forms
 var IDENTITY_PUBLISHING_REQUEST = 'tradle.IdentityPublishRequest'
 var LICENSE = 'tradle.LicenseVerification'
+var MORTGAGE_LOAN_DETAIL = 'tradle.MortgageLoanDetail'
 var ABOUT_YOU = 'tradle.AboutYou'
 var YOUR_MONEY = 'tradle.YourMoney'
 var VERIFICATION = constants.TYPES.VERIFICATION
@@ -28,7 +29,6 @@ var DEFAULT_AWAIT_OPTS = {
   awaitVerification: true,
   awaitConfirmation: true
 }
-
 
 CurrentAccount.forms = [
   ABOUT_YOU,
@@ -154,6 +154,7 @@ test('models', function (t) {
   t.end()
 })
 
+testCustomProductConfirmation()
 testGuestSession()
 testRemediation()
 testManualMode()
@@ -319,6 +320,59 @@ testManualMode()
 //       })
 //   })
 // }
+
+function testCustomProductConfirmation () {
+  BANKS = []
+  APPLICANT = null
+  var setup = {
+    name: 'websockets',
+    init: initWebsockets
+  }
+
+  runSetup(setup)
+
+  test('custom product confirmation', function (t) {
+    var bank = BANKS[0]
+    var bankCoords = getCoords(bank.tim)
+    var product = 'tradle.Mortgage'
+    var forms = {}
+    var helpers = getHelpers({
+      applicant: APPLICANT,
+      bank: bank,
+      forms: forms,
+      verifications: {},
+      setup: setup,
+      t: t
+    })
+
+    helpers.sendIdentity(setup)
+      .then(() => helpers.startApplication(product))
+      .then(() => helpers.sendForm({
+        form: ABOUT_YOU,
+        nextForm: YOUR_MONEY,
+        awaitVerification: false
+      }))
+      .then(() => helpers.sendForm({
+        form: YOUR_MONEY,
+        nextForm: MORTGAGE_LOAN_DETAIL,
+        awaitVerification: false
+      }))
+      .then(() => helpers.sendForm({
+        form: MORTGAGE_LOAN_DETAIL,
+        awaitVerification: false
+      }))
+      .done()
+
+    Q.all([
+        helpers.awaitVerification(3),
+        helpers.awaitType('tradle.MyMortgage')
+      ])
+      .then(teardown)
+      .done(function () {
+        t.end()
+      })
+  })
+}
 
 function testGuestSession () {
   BANKS = []
@@ -759,6 +813,7 @@ function getHelpers (opts) {
     sendSessionIdentifier,
     startApplication,
     tryUnacquainted,
+    sendForm,
     sendAboutYou,
     sendYourMoney,
     sendLicense,
@@ -890,6 +945,31 @@ function getHelpers (opts) {
       opts.awaitVerification && awaitVerification(),
       opts.awaitConfirmation && awaitConfirmation()
     ])
+  }
+
+  // function sendMortgageLoanDetail (opts) {
+  //   opts = opts || DEFAULT_AWAIT_OPTS
+  //   return sendForm(extend({
+  //     form: MORTGAGE_LOAN_DETAIL
+  //   }, DEFAULT_AWAIT_OPTS))
+  // }
+
+  function sendForm (opts) {
+    typeforce({
+      form: 'String'
+    }, opts)
+
+    const form = opts.form
+    signNSend(newFakeData(form))
+    return Q.all([
+        opts.nextForm && awaitForm(opts.nextForm),
+        awaitTypeUnchained(form),
+        opts.awaitVerification && awaitVerification(),
+        opts.awaitConfirmation && awaitConfirmation()
+      ])
+      .then(function () {
+        if (opts.nextForm) t.pass('got next form')
+      })
   }
 
   function sendIncompleteLicense (opts) {
@@ -1024,6 +1104,7 @@ function getHelpers (opts) {
 
     function onmessage (info) {
       if (info[TYPE] === type) {
+        t.pass('received ' + type)
         received.push(info)
         if (--togo === 0) defer.resolve(n === 1 ? received[0] : received)
       }

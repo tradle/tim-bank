@@ -2,8 +2,10 @@
 
 const util = require('util')
 const EventEmitter = require('events').EventEmitter
+const crypto = require('crypto')
 const typeforce = require('typeforce')
 const extend = require('xtend')
+const mutableExtend = require('xtend/mutable')
 const Q = require('q')
 const find = require('array-find')
 const clone = require('clone')
@@ -763,11 +765,6 @@ SimpleBank.prototype._approveProduct = function (opts) {
   //   })
   // }))
 
-  const formIds = this._getMyForms(productType, state)
-    .map(f => {
-      return f[TYPE] + '_' + f[CUR_HASH]
-    })
-
   const acquiredProduct = {
     [TYPE]: productType
   }
@@ -776,12 +773,8 @@ SimpleBank.prototype._approveProduct = function (opts) {
   thisProduct.push(acquiredProduct)
 
   debug('approving for product', productType)
-  const confirmation = {
-    [TYPE]: productType + 'Confirmation',
-    message: 'Congratulations! You were approved for: ' + productModel.title,
-    forms: formIds
-  }
 
+  const confirmation = this._newProductConfirmation(req, productType)
   const pendingApps = state.pendingApplications
   const idx = pendingApps.indexOf(productType)
   pendingApps.splice(idx, 1)
@@ -802,6 +795,76 @@ SimpleBank.prototype._approveProduct = function (opts) {
 
       return entries
     })
+}
+
+SimpleBank.prototype._newProductConfirmation = function (req, productType) {
+  const productModel = this._models[productType]
+  const state = req.state
+  const forms = state.forms
+  const customerHash = req.from[ROOT_HASH]
+
+  /**
+   * Heuristic:
+   * Copy all properties from forms to confirmation object
+   * where the property with the same name exists in both
+   * the form and confirmation model
+   * @param  {Object} confirmation
+   * @return {Object} confirmation
+   */
+  const copyProperties = (confirmation, confirmationType) => {
+    debugger
+    const confirmationModel = this._models[confirmationType]
+    const props = confirmationModel.properties
+    for (let id in forms) {
+      const form = forms[id].body
+      for (let pName in form) {
+        if (pName.charAt[0] === '_') continue
+        if (pName in props) {
+          confirmation[pName] = props[pName]
+        }
+      }
+    }
+
+    return confirmation
+  }
+
+  let confirmation = {}
+  let confirmationType
+  switch (productType) {
+    case 'tradle.LifeInsurance':
+      confirmationType = 'tradle.MyLifeInsurance'
+      copyProperties(confirmation, confirmationType)
+      mutableExtend(confirmation, {
+        [TYPE]: confirmationType,
+        policyNumber: crypto.randomBytes(5).toString('hex'), // 10 chars long
+      })
+
+      return confirmation
+    case 'tradle.Mortgage':
+    case 'tradle.MortgageProduct':
+      confirmationType = 'tradle.MyMortgage'
+      copyProperties(confirmation, confirmationType)
+      mutableExtend(confirmation, {
+        [TYPE]: confirmationType,
+        mortgageNumber: crypto.randomBytes(5).toString('hex'),
+      })
+
+      return confirmation
+    default:
+      confirmationType = productType + 'Confirmation'
+      const formIds = this._getMyForms(productType, state)
+        .map(f => {
+          return f[TYPE] + '_' + f[CUR_HASH]
+        })
+
+      return {
+        [TYPE]: confirmationType,
+        message: 'Congratulations! You were approved for: ' + productModel.title,
+        // customer: customerHash,
+        forms: formIds
+      }
+  }
+
 }
 
 SimpleBank.prototype.requestForm = function (opts) {
