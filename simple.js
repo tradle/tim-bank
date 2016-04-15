@@ -819,7 +819,7 @@ SimpleBank.prototype._newProductConfirmation = function (req, productType) {
       for (let pName in form) {
         if (pName.charAt[0] === '_') continue
         if (pName in props) {
-          confirmation[pName] = props[pName]
+          confirmation[pName] = form[pName]
         }
       }
     }
