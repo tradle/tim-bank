@@ -27,6 +27,8 @@ const RequestState = require('./lib/requestState')
 const debug = require('./debug')
 const ROOT_HASH = constants.ROOT_HASH
 const CUR_HASH = constants.CUR_HASH
+const SIG = constants.SIG
+const SIGNEE = constants.SIGNEE
 const TYPE = constants.TYPE
 const types = constants.TYPES
 const FORGET_ME = 'tradle.ForgetMe'
@@ -411,10 +413,11 @@ SimpleBank.prototype._sendVerification = function (opts) {
       msg: verification,
       chain: true
     })
-    .then((entries) => {
-      const rootHash = entries[0].toJSON()[ROOT_HASH]
-      // stored[ROOT_HASH] = req[ROOT_HASH]
-      stored[ROOT_HASH] = stored[CUR_HASH] = rootHash
+    .then(entries => {
+      return this.tim.lookupObject(entries[0].toJSON())
+    })
+    .then(obj => {
+      mutableExtend(stored, obj.parsed.data)
     })
 }
 
@@ -752,7 +755,7 @@ SimpleBank.prototype._approveProduct = function (opts) {
     return utils.rejectWithHttpError(400, 'request the following forms first: ' + missingForms.join(', '))
   }
 
-  const missingVerifications = utils.getUnverifiedForms(state, productModel)
+  const missingVerifications = utils.getUnverifiedForms(this.tim.myRootHash(), state, productModel)
   if (missingVerifications.length) {
     const types = missingVerifications.map(f => f[TYPE]).join(', ')
     return utils.rejectWithHttpError(400, 'verify the following forms first: ' + types)
