@@ -586,7 +586,7 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
     if (existing) {
       // have verification, missing form
       // skip, wait to get the form
-      // starting with v1.0.7, the bank wants both the form and the verification
+      // starting with v1.0.7, the bank doesn't settle for just the verification, it wants the form
       skip = existing.verifications.length && !existing.form
 
       // missing both form and verification
@@ -765,7 +765,12 @@ SimpleBank.prototype._approveProduct = function (opts) {
   //   })
   // }))
 
-  const acquiredProduct = {
+  let unconfirmedProduct
+  // if (state.unconfirmedProducts && state.unconfirmedProducts[productType]) {
+  //   unconfirmedProduct = state.unconfirmedProducts[productType].shift()
+  // }
+
+  const acquiredProduct = unconfirmedProduct || {
     [TYPE]: productType
   }
 
@@ -774,7 +779,7 @@ SimpleBank.prototype._approveProduct = function (opts) {
 
   debug('approving for product', productType)
 
-  const confirmation = this._newProductConfirmation(req, productType)
+  const confirmation = this._newProductConfirmation(req, productType, !!unconfirmedProduct)
   const pendingApps = state.pendingApplications
   const idx = pendingApps.indexOf(productType)
   pendingApps.splice(idx, 1)
@@ -797,7 +802,7 @@ SimpleBank.prototype._approveProduct = function (opts) {
     })
 }
 
-SimpleBank.prototype._newProductConfirmation = function (req, productType) {
+SimpleBank.prototype._newProductConfirmation = function (req, productType, imported) {
   const productModel = this._models[productType]
   const state = req.state
   const forms = state.forms
@@ -835,7 +840,7 @@ SimpleBank.prototype._newProductConfirmation = function (req, productType) {
       copyProperties(confirmation, confirmationType)
       mutableExtend(confirmation, {
         [TYPE]: confirmationType,
-        policyNumber: crypto.randomBytes(5).toString('hex'), // 10 chars long
+        policyNumber: utils.randomDecimalString(10), // 10 chars long
       })
 
       return confirmation
@@ -845,7 +850,7 @@ SimpleBank.prototype._newProductConfirmation = function (req, productType) {
       copyProperties(confirmation, confirmationType)
       mutableExtend(confirmation, {
         [TYPE]: confirmationType,
-        mortgageNumber: crypto.randomBytes(5).toString('hex'),
+        mortgageNumber: utils.randomDecimalString(10),
       })
 
       return confirmation
@@ -858,7 +863,9 @@ SimpleBank.prototype._newProductConfirmation = function (req, productType) {
 
       return {
         [TYPE]: confirmationType,
-        message: 'Congratulations! You were approved for: ' + productModel.title,
+        message: imported
+          ? `Imported product: ${productModel.title}`
+          : `Congratulations! You were approved for: ${productModel.title}`,
         // customer: customerHash,
         forms: formIds
       }
@@ -1040,6 +1047,7 @@ SimpleBank.prototype.importSession = function (req) {
   const msg = req.msg
   let applications
   let forms
+  let products
   let verifications
   let confirmations
   return this.bank._getResource(GUEST_SESSION, hash)
@@ -1057,12 +1065,23 @@ SimpleBank.prototype.importSession = function (req) {
         return this._models[data[TYPE]].subClassOf === 'tradle.Form'
       })
 
+      // products = session.filter(data => {
+      //   return this._models[data[TYPE]].subClassOf === 'tradle.MyProduct'
+      // })
+
+      // products.forEach(product => {
+      //   const pType = product[TYPE]
+      //   if (!state.importedProducts) state.importedProducts = {}
+      //   if (!state.importedProducts[pType]) state.importedProducts[pType] = []
+
+      //   state.importedProducts[pType].push(product)
+      // })
+
+      // forms.concat(products).forEach(data => {
       forms.forEach(data => {
-        const type = data[TYPE]
-        state.prefilled[type] = {
+        state.prefilled[data[TYPE]] = {
           form: data
         }
-        // const model = this._models[type]
       })
 
       verifications = session.filter(data => data[TYPE] === types.VERIFICATION)
@@ -1101,15 +1120,20 @@ SimpleBank.prototype.importSession = function (req) {
       if (applications.length) {
         // TODO: queue up all the products
         req.productType = applications[0]
-        return this.bank.send({
-          req: req,
-          msg: {
-            _t: types.SIMPLE_MESSAGE,
-            message: 'Thank you for choosing to import your data into the Tradle app. ' +
-              'This will save you time when applying for financial products, and enable providers to approve you faster!',
-          }
-        })
-        .then(() => this.handleNewApplication(req))
+        let sendMsg
+        if (req.productType === REMEDIATION) {
+          sendMsg = this.bank.send({
+            req: req,
+            msg: {
+              _t: types.SIMPLE_MESSAGE,
+              message: 'Thank you for choosing to import your data into the Tradle app. ' +
+                'This will save you time when applying for financial products, and enable providers to approve you faster!',
+            }
+          })
+        }
+
+        return (sendMsg || Q())
+          .then(() => this.handleNewApplication(req))
       }
 
       // else if (forms.length) {

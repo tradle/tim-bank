@@ -30,6 +30,14 @@ var DEFAULT_AWAIT_OPTS = {
   awaitConfirmation: true
 }
 
+var testProductList = [
+  'tradle.CurrentAccount',
+  'tradle.BusinessAccount',
+  'tradle.Mortgage',
+  'tradle.JumboMortgage',
+  'tradle.MortgageProduct'
+]
+
 CurrentAccount.forms = [
   ABOUT_YOU,
   YOUR_MONEY,
@@ -160,13 +168,13 @@ testRemediation()
 testManualMode()
 
 ;[
-  // {
-  //   name: 'websockets',
-  //   init: initWebsockets
-  // },
+  {
+    name: 'websockets',
+    init: initWebsockets
+  },
   {
     name: 'client/server',
-    init: init
+    init: initHTTP
   },
   {
     name: 'p2p',
@@ -325,8 +333,8 @@ function testCustomProductConfirmation () {
   BANKS = []
   APPLICANT = null
   var setup = {
-    name: 'websockets',
-    init: initWebsockets
+    name: 'client/server',
+    init: initHTTP
   }
 
   runSetup(setup)
@@ -334,7 +342,9 @@ function testCustomProductConfirmation () {
   test('custom product confirmation', function (t) {
     var bank = BANKS[0]
     var bankCoords = getCoords(bank.tim)
-    var product = 'tradle.Mortgage'
+    var product = 'tradle.MortgageProduct'
+    var productModel = MODELS[product]
+    var productForms = productModel.forms
     var forms = {}
     var helpers = getHelpers({
       applicant: APPLICANT,
@@ -346,21 +356,21 @@ function testCustomProductConfirmation () {
     })
 
     helpers.sendIdentity(setup)
-      .then(() => helpers.startApplication(product))
-      .then(() => helpers.sendForm({
-        form: ABOUT_YOU,
-        nextForm: YOUR_MONEY,
-        awaitVerification: false
-      }))
-      .then(() => helpers.sendForm({
-        form: YOUR_MONEY,
-        nextForm: MORTGAGE_LOAN_DETAIL,
-        awaitVerification: false
-      }))
-      .then(() => helpers.sendForm({
-        form: MORTGAGE_LOAN_DETAIL,
-        awaitVerification: false
-      }))
+      // .then(() => helpers.startApplication(product))
+      .then(() => {
+        helpers.signNSend(utils.buildSimpleMsg(
+          'application for',
+          product
+        ))
+
+        return helpers.awaitForm(productForms[0])
+      })
+      .then(() => {
+        return helpers.sendForms({
+          forms: productForms,
+          awaitVerification: false
+        })
+      })
       .done()
 
     Q.all([
@@ -814,6 +824,7 @@ function getHelpers (opts) {
     startApplication,
     tryUnacquainted,
     sendForm,
+    sendForms,
     sendAboutYou,
     sendYourMoney,
     sendLicense,
@@ -883,13 +894,15 @@ function getHelpers (opts) {
   }
 
   function startApplication (productType) {
+    productType = productType || 'tradle.CurrentAccount'
+    var model = MODELS_BY_ID[productType]
     var msg = utils.buildSimpleMsg(
       'application for',
-      productType || 'tradle.CurrentAccount'
+      productType
     )
 
     signNSend(msg)
-    return awaitForm(ABOUT_YOU)
+    return awaitForm(model.forms[0])
       .then(function () {
         t.pass('got next form')
       })
@@ -970,6 +983,22 @@ function getHelpers (opts) {
       .then(function () {
         if (opts.nextForm) t.pass('got next form')
       })
+  }
+
+  function sendForms (opts) {
+    typeforce({
+      forms: 'Array'
+    }, opts)
+
+    const forms = opts.forms
+    return forms.reduce(function (promise, f, idx) {
+      return promise.then(function () {
+        return sendForm(extend({
+          form: f,
+          nextForm: forms[idx + 1]
+        }, opts))
+      })
+    }, Q())
   }
 
   function sendIncompleteLicense (opts) {
@@ -1338,6 +1367,7 @@ function initP2P () {
       name: 'Bank ' + i,
       path: getNextBankPath(),
       leveldown: memdown,
+      productList: testProductList,
       manual: true
     })
 
@@ -1354,7 +1384,7 @@ function getNextBankPath () {
   return 'storage' + pathCounter++
 }
 
-function init () {
+function initHTTP () {
   // var bootstrapDHTPort = BASE_PORT++
   // bootstrapDHT = new DHT({ bootstrap: false })
   // bootstrapDHT.listen(bootstrapDHTPort)
@@ -1411,6 +1441,7 @@ function init () {
       manual: true,
       name: 'Bank ' + i,
       path: getNextBankPath(),
+      productList: testProductList,
       leveldown: memdown
     })
 
@@ -1490,6 +1521,7 @@ function initWebsockets (bankOpts) {
       manual: true,
       name: 'Bank ' + i,
       path: getNextBankPath(),
+      productList: testProductList,
       leveldown: memdown
     }, bankOpts || {}))
 
@@ -1632,7 +1664,7 @@ function fakeValue (model, propName) {
     case 'boolean':
       return Math.random() < 0.5
     case 'array':
-      return [newFakeData(prop.items)]
+      return [newFakeData(prop.items.ref || prop.items)]
     default:
       throw new Error(`unknown property type: ${type} for property ${propName}`)
   }
