@@ -339,7 +339,7 @@ SimpleBank.prototype.handleDocument = function (req, res) {
   const msg = req.msg
   const next = () => {
     const docState = state.forms[type] = state.forms[type] || {}
-    const doc = req.parsed ? req.parsed.data : JSON.parse(req.data.toString('binary'))
+    const doc = req.parsed ? req.parsed.data : JSON.parse(req.data.toString())
 
     docState.form = {
       [CUR_HASH]: req[CUR_HASH],

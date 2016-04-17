@@ -1660,7 +1660,14 @@ function fakeValue (model, propName) {
     case 'date':
       return Date.now()
     case 'object':
-      return 'blah'
+      if (prop.ref === 'tradle.Money') {
+        return {
+          "value": "6000",
+          "currency": "€"
+        }
+      } else {
+        return 'blah'
+      }
     case 'boolean':
       return Math.random() < 0.5
     case 'array':

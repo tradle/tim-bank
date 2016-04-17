@@ -9,7 +9,7 @@
   "author": "Mark Vayngrib <mark.vayngrib@lablz.com> (http://github.com/mvayngrib)",
   "license": "GPLv3",
   "dependencies": {
-    "@tradle/chained-obj": "^2.0.4",
+    "@tradle/chained-obj": "^2.1.0",
     "@tradle/constants": "^1.1.6",
     "@tradle/identity": "^1.2.2",
     "@tradle/models": "^4.7.0",
@@ -35,7 +35,7 @@
     "request": "^2.67.0",
     "simple-get": "^1.4.3",
     "stream-collector": "^1.0.1",
-    "tim": "^6.2.0",
+    "tim": "^6.3.0",
     "typeforce": "^1.4.0",
     "why-is-node-running": "^1.2.2",
     "xtend": "^4.0.0"
