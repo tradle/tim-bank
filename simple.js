@@ -349,7 +349,8 @@ SimpleBank.prototype.handleDocument = function (req, res) {
     }
 
     docState.verifications = docState.verifications || []
-    if (!this._auto.verify) {
+    const prefilledVerification = this._getImportedVerification(state, doc)
+    if (!prefilledVerification && !this._auto.verify) {
       return this.sendNextFormOrApprove({req})
     }
 
@@ -458,19 +459,22 @@ SimpleBank.prototype.sendVerification = function (opts) {
     .finally(() => this.bank._unlock(verifiedItem.from[ROOT_HASH]))
 }
 
+SimpleBank.prototype._getImportedVerification = function (state, doc) {
+  const prefilled = state.prefilled && state.prefilled[doc[TYPE]]
+  if (prefilled && prefilled.verification && utils.formsEqual(prefilled.form, doc)) {
+    return prefilled.verification
+  }
+}
+
 SimpleBank.prototype.newVerificationFor = function (req, msg) {
   const bank = this.bank
   const doc = msg.parsed.data
-  const prefilled = req.state.prefilled[doc[TYPE]]
-  let verification = {}
-  if (prefilled && prefilled.verification && utils.formsEqual(prefilled.form, doc)) {
-    verification = prefilled.verification
-    if (verification.time) {
-      verification.backDated = verification.time
-      delete verification.time
-    }
-  } else {
+  let verification = this._getImportedVerification(req.state, doc)
+  if (!verification) {
     verification = {}
+  } else if (verification.time) {
+    verification.backDated = verification.time
+    delete verification.time
   }
 
   verification.document = {
