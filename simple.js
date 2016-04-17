@@ -888,8 +888,12 @@ SimpleBank.prototype.requestForm = function (opts) {
 
   const req = opts.req
   const form = opts.form
+  const prompt = this._models[form].subClassOf === 'tradle.MyProduct'
+    ? 'Please share the following information'
+    : 'Please fill out this form and attach a snapshot of the original document'
+
   const msg = utils.buildSimpleMsg(
-    'Please fill out this form and attach a snapshot of the original document',
+    prompt,
     form
   )
 
