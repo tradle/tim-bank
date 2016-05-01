@@ -35,6 +35,7 @@ const FORGET_ME = 'tradle.ForgetMe'
 const FORGOT_YOU = 'tradle.ForgotYou'
 const GUEST_SESSION = 'guestsession'
 const REMEDIATION = 'tradle.Remediation'
+const PRODUCT_APPLICATION = 'tradle.ProductApplication'
 const REMEDIATION_MODEL = {
   [TYPE]: 'tradle.Model',
   id: REMEDIATION,
@@ -92,6 +93,15 @@ function SimpleBank (opts) {
   bank.use(FORGET_ME, this.forgetMe)
   bank.use(types.VERIFICATION, this.handleVerification)
   bank.use(types.CUSTOMER_WAITING, this.sendProductList)
+  bank.use(PRODUCT_APPLICATION, (req) => {
+    var product = req.parsed.data.product
+    if (this._productList.indexOf(product) === -1) {
+      return this.replyNotFound(req, product)
+    } else {
+      req.productType = product
+      return this.handleNewApplication(req)
+    }
+  })
   bank.use(types.SIMPLE_MESSAGE, (req) => {
     var msg = req.parsed.data.message
     if (!msg) return
