@@ -9,7 +9,6 @@ const mutableExtend = require('xtend/mutable')
 const Q = require('q')
 const clone = require('clone')
 const constants = require('@tradle/constants')
-const BUILTIN_MODELS = require('@tradle/models')
 const DEFAULT_PRODUCT_LIST = [
   'tradle.CurrentAccount',
   'tradle.BusinessAccount',
@@ -88,6 +87,7 @@ function SimpleBank (opts) {
     }
   })
 
+  bank.use('tradle.NextFormRequest', this.onNextFormRequest)
   bank.use('tradle.GetMessage', this.lookupAndSend)
   bank.use('tradle.GetHistory', this.sendHistory)
   bank.use('tradle.GetEmployee', this.getEmployee)
@@ -374,6 +374,11 @@ SimpleBank.prototype.handleDocument = function (req, res) {
     )
 }
 
+SimpleBank.prototype.onNextFormRequest = function (req, res) {
+  req.state = getNextState(req.state, Actions.skipForm(this._models, req.parsed.data.after))
+  return this.sendNextFormOrApprove({req})
+}
+
 SimpleBank.prototype.validateDocument = function (req) {
   const doc = req.parsed.data
   const type = doc[TYPE]
@@ -509,6 +514,7 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
     return utils.rejectWithHttpError(400, 'unable to determine product requested')
   }
 
+  const application = utils.find(pendingApps, app => app.type === productType)
   const isRemediation = productType === REMEDIATION
   const productModel = isRemediation ? REMEDIATION_MODEL : this._models[productType]
   if (!productModel) {
@@ -532,33 +538,21 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
   //   state.products[productType] = []
   // }
 
+  if (req.type === types.VERIFICATION) return Q()
+
   const isFormOrVerification = req[TYPE] === types.VERIFICATION || this._models.docs.indexOf(req[TYPE]) !== -1
   const reqdForms = isRemediation
     ? Object.keys(state.prefilled)
     : utils.getForms(productModel)
 
-  if (req.type === types.VERIFICATION) return Q()
-
-  let skip
-  let missing
-  reqdForms.some(function (fType) {
-    var existing = utils.findLast(state.forms, form => form.type === fType)
-    if (existing) {
-      // have verification, missing form
-      // skip, wait to get the form
-      // starting with v1.0.7, the bank doesn't settle for just the verification, it wants the form
-      skip = existing.verifications.length && !existing.form
-
-      // missing both form and verification
-      if (!existing.form && !existing.verifications.length) {
-        return missing = fType
-      }
-    } else {
-      return missing = fType
+  const multiEntryForms = productModel.multiEntryForms || []
+  const missing = utils.find(reqdForms, type => {
+    if (multiEntryForms.indexOf(type) !== -1) {
+      return application.skip.indexOf(type) === -1
     }
-  })
 
-  if (isFormOrVerification && skip) return Q()
+    return !utils.findLast(state.forms, form => form.type === type)
+  })
 
   if (missing) {
     if (!this._auto.prompt) return Q()
@@ -843,8 +837,8 @@ SimpleBank.prototype.requestForm = function (opts) {
 }
 
 SimpleBank.prototype._getRelevantPending = function (pending, reqState) {
-  var docType = reqState[TYPE] === types.VERIFICATION
-    ? getType(reqState.parsed.data.document)
+  var docType = reqState[TYPE] === types.VERIFICATION ? getType(reqState.parsed.data.document)
+    : reqState[TYPE] === 'tradle.NextFormRequest' ? reqState.parsed.data.after
     : reqState[TYPE]
 
   var state = reqState && reqState.state

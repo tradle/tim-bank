@@ -6,8 +6,10 @@ const CUR_HASH = constants.CUR_HASH
 const ROOT_HASH = constants.ROOT_HASH
 const TYPE = constants.TYPE
 const types = constants.TYPES
+const utils = require('../lib/utils')
 const getNewState = require('../lib/reducers')
 const Actions = require('../lib/actionCreators')
+const multiEntryProduct =  require('./fixtures/multi-entry')
 
 test('state changes', function (t) {
   const customerRootHash = 'blah'
@@ -21,8 +23,8 @@ test('state changes', function (t) {
     [ROOT_HASH]: customerRootHash
   })
 
-  state = getNewState(state, Actions.newApplication('something'))
-  t.same(state.pendingApplications, [ {type: 'something'} ])
+  state = getNewState(state, Actions.newApplication(multiEntryProduct.id))
+  t.same(state.pendingApplications, [ {type: multiEntryProduct.id, skip: []} ])
 
   let formMsg = {
     [TYPE]: 'some form',
@@ -75,6 +77,17 @@ test('state changes', function (t) {
   // receiving same verification again shouldn't change anything
   state = getNewState(state, Actions.receivedVerification(verificationMsg))
   t.same(state.forms, expectedForms)
+
+  const models = utils.processModels([
+    multiEntryProduct
+  ])
+
+  state = getNewState(state, Actions.skipForm(models, 'tradle.AboutYou'))
+  t.same(state.pendingApplications, [ { type: multiEntryProduct.id, skip: ['tradle.AboutYou'] }])
+
+  // skip again shouldn't change anything
+  state = getNewState(state, Actions.skipForm(models, 'tradle.AboutYou'))
+  t.same(state.pendingApplications, [ { type: multiEntryProduct.id, skip: ['tradle.AboutYou'] }])
 
   t.end()
 })
