@@ -127,7 +127,7 @@ var BANK_BOTS = [{
 
 var BANKS
 
-test('models', function (t) {
+test.skip('models', function (t) {
   const models = [
     {
       id: 'productA',
@@ -181,6 +181,8 @@ testManualMode()
     init: initP2P
   }
 ].forEach(runTests)
+
+
 
 // testCustomProductList()
 
@@ -1016,9 +1018,9 @@ function getHelpers (opts) {
   }
 
   function shareAboutYouVer () {
-    shareVerification(ABOUT_YOU)
+    shareForm(ABOUT_YOU)
       .then(function () {
-        shareForm(ABOUT_YOU)
+        shareVerification(ABOUT_YOU)
       })
 
     return Q.all([
@@ -1028,9 +1030,9 @@ function getHelpers (opts) {
   }
 
   function shareYourMoneyVer () {
-    shareVerification(YOUR_MONEY)
+    shareForm(YOUR_MONEY)
       .then(function () {
-        shareForm(YOUR_MONEY)
+        shareVerification(YOUR_MONEY)
       })
 
     return Q.all([
@@ -1040,9 +1042,9 @@ function getHelpers (opts) {
   }
 
   function shareLicenseVer () {
-    shareVerification(LICENSE)
+    shareForm(LICENSE)
       .then(function () {
-        shareForm(LICENSE)
+        shareVerification(LICENSE)
       })
 
     return Q.all([

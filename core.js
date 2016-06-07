@@ -18,7 +18,8 @@ var constants = require('@tradle/constants')
 var elistener = require('elistener')
 var Tim = require('tim')
 var RequestState = require('./lib/requestState')
-var BANK_VERSION = require('./package.json').version
+var getNewState = require('./lib/reducers')
+var Actions = require('./lib/actionCreators')
 var debug = require('./debug')
 var EventType = Tim.EventType
 var CUR_HASH = constants.CUR_HASH
@@ -215,7 +216,7 @@ Bank.prototype.forgetCustomer = function (req) {
   var self = this
   var v = req.state.bankVersion
   // clear customer slate
-  req.state = newCustomerState()
+  req.state = getNewState(null, Actions.newCustomer(req.from[ROOT_HASH]))
   req.state.bankVersion = v // preserve version
   this.tim.forget(req.from[ROOT_HASH])
   this.tim.on('forgot', onForgot)
@@ -284,7 +285,7 @@ Bank.prototype._onMessage = function (msg, sync) {
     .catch(function (err) {
       if (!err.notFound) throw err
 
-      req.state = newCustomerState(from)
+      req.state = getNewState(null, Actions.newCustomer(from))
       return self._setCustomerState(req)
       // return newCustomerState(req)
     })
@@ -474,15 +475,3 @@ function dumpDBs (tim) {
   })
 }
 
-function newCustomerState (customerRootHash) {
-  var state = {
-    pendingApplications: [],
-    products: {},
-    forms: {},
-    prefilled: {},
-    bankVersion: BANK_VERSION
-  }
-
-  state[ROOT_HASH] = customerRootHash
-  return state
-}
