@@ -274,8 +274,10 @@ SimpleBank.prototype.publishCustomerIdentity = function (req) {
   var rootHash
   var curHash
   var wasAlreadyPublished
+  var buf
   return Builder().data(identity).build()
-    .then(function (buf) {
+    .then(function (_buf) {
+      buf = _buf
       return Q.ninvoke(tradleUtils, 'getStorageKeyFor', buf)
     })
     .then(function (_curHash) {
@@ -283,7 +285,8 @@ SimpleBank.prototype.publishCustomerIdentity = function (req) {
       rootHash = identity[ROOT_HASH] || curHash
       return Q.all([
         Q.ninvoke(tim.messages(), 'byCurHash', curHash).catch(noop),
-        tim.addContactIdentity(identity)
+        tim.addContactIdentity(identity),
+        tim.keeper.push && tim.keeper.push({ key: curHash, value: buf })
       ])
     })
     .spread(function (obj) {
@@ -578,7 +581,8 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
 
     return this.requestForm({
       req: req,
-      form: missing
+      form: missing,
+      productModel: productModel
     })
   }
 
@@ -815,14 +819,17 @@ SimpleBank.prototype._newProductConfirmation = function (state, productType) {
 SimpleBank.prototype.requestForm = function (opts) {
   typeforce({
     req: 'RequestState',
-    form: 'String'
+    form: 'String',
+    productModel: typeforce.Object
   }, opts)
 
   const req = opts.req
   const form = opts.form
-  const prompt = this._models[form].subClassOf === 'tradle.MyProduct'
-    ? 'Please share the following information'
-    : 'Please fill out this form and attach a snapshot of the original document'
+  const multiEntryForms = opts.productModel.multiEntryForms || []
+  const isMultiEntry = multiEntryForms.indexOf(opts.form) !== -1
+  const prompt = this._models[form].subClassOf === 'tradle.MyProduct' ? 'Please share the following information' :
+    // isMultiEntry ? 'Please fill out this form and attach a snapshot of the original document' :
+    'Please fill out this form and attach a snapshot of the original document'
 
   const msg = utils.buildSimpleMsg(
     prompt,
