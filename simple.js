@@ -799,6 +799,13 @@ SimpleBank.prototype._newProductConfirmation = function (state, productType) {
 
       return confirmation
     default:
+      const guessedMyProductModel = this._models[productType.replace('.', '.My')]
+      if (guessedMyProductModel && guessedMyProductModel.subClassOf === 'tradle.MyProduct') {
+        confirmation[TYPE] = confirmationType = guessedMyProductModel.id
+        copyProperties(confirmation, confirmationType)
+        return confirmation
+      }
+
       confirmationType = productType + 'Confirmation'
       const formIds = this._getMyForms(productType, state)
         .map(f => {
