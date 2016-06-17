@@ -798,6 +798,14 @@ SimpleBank.prototype._newProductConfirmation = function (state, productType) {
       })
 
       return confirmation
+    case 'tradle.EmployeeOnboarding':
+      confirmationType = 'tradle.MyEmployeePass'
+      copyProperties(confirmation, confirmationType)
+      mutableExtend(confirmation, {
+        [TYPE]: confirmationType,
+        employeeID: utils.randomDecimalString(10),
+      })
+      return confirmation
     default:
       const guessedMyProductModel = this._models[productType.replace('.', '.My')]
       if (guessedMyProductModel && guessedMyProductModel.subClassOf === 'tradle.MyProduct') {
