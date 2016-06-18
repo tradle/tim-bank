@@ -271,6 +271,16 @@ Bank.prototype._onMessage = function (msg, sync) {
     return utils.rejectWithHttpError(400, 'message missing ' + TYPE)
   }
 
+  const fwdTo = msg.parsed.data._to
+  if (fwdTo && fwdTo !== this.tim.myRootHash()) {
+    // forwardable message
+    return this.tim.share({
+      to: [{ [ROOT_HASH]: fwdTo }],
+      deliver: true,
+      [CUR_HASH]: msg[CUR_HASH]
+    })
+  }
+
   // TODO: move most of this out to implementation (e.g. simple.js)
 
   var req = new RequestState(msg)

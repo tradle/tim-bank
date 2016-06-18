@@ -104,6 +104,7 @@ function SimpleBank (opts) {
       return this.handleNewApplication(req)
     }
   })
+
   bank.use(types.SIMPLE_MESSAGE, (req) => {
     var msg = req.parsed.data.message
     if (!msg) return
@@ -1039,7 +1040,7 @@ SimpleBank.prototype.importSession = function (req) {
           sendMsg = this.bank.send({
             req: req,
             msg: {
-              _t: types.SIMPLE_MESSAGE,
+              [TYPE]: types.SIMPLE_MESSAGE,
               message: 'Please check and correct the following data'
             }
           })

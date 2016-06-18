@@ -198,6 +198,7 @@ var setups = {
   }
 }
 
+testForwarding()
 testMultiEntry()
 testCustomProductConfirmation()
 testGuestSession()
@@ -352,6 +353,51 @@ Object.keys(setups).forEach(name => runTests(setups[name]))
 //       })
 //   })
 // }
+
+function testForwarding () {
+  test('forward message', t => {
+    runSetup(setups.websockets).then(setup => {
+      var banks = setup.banks
+      var applicant = setup.applicant
+      var a = banks[0]
+      var b = banks[1]
+
+      var helpers = getHelpers({
+        applicant: applicant,
+        bank: a,
+        banks: banks,
+        forms: {},
+        verifications: {},
+        setup: setup,
+        t: t
+      })
+
+      const product = 'tradle.CurrentAccount'
+      Q.all(banks.map(bank => bank.tim.addContactIdentity(applicant.identityJSON)))
+        .done(() => {
+          helpers.signNSend({
+            [TYPE]: 'tradle.ProductApplication',
+            _to: b.tim.myRootHash(),
+            product: product
+          })
+        })
+
+      const send = a.tim._send
+      let sent
+      a.tim._send = function (recipientHash, msg) {
+        sent = msg
+        return send.apply(this, arguments)
+      }
+
+      b.receiveMsg = function (msg) {
+        t.equal(msg.toString(), sent.toString())
+        teardown(setup).done(t.end)
+        return Q()
+      }
+    })
+    .done()
+  })
+}
 
 function testMultiEntry () {
   test('multi entry forms', t => {
