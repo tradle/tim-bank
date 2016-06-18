@@ -230,7 +230,7 @@ SimpleBank.prototype.sendProductList = function (req) {
   var bank = this.bank
   var formModels = {}
   var list = this._productList
-    .filter(productModelId => productModelId !== REMEDIATION)
+    .filter(productModelId => productModelId !== REMEDIATION && productModelId !== 'tradle.EmployeeOnboarding')
     .map(productModelId => {
       var model = this._models[productModelId]
       var forms = utils.getForms(model)
@@ -611,7 +611,7 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
     req: this._auto.verify ? null : req
   })
 
-  if (!this._auto.verify) {
+  if (!this._auto.verify || productType === 'tradle.EmployeeOnboarding') {
     // 'application' event ugly side-effect
     return req.continue || Q()
   }
