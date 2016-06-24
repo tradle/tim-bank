@@ -6,6 +6,7 @@ const crypto = require('crypto')
 const typeforce = require('typeforce')
 const extend = require('xtend')
 const mutableExtend = require('xtend/mutable')
+const collect = require('stream-collector')
 const Q = require('q')
 const clone = require('clone')
 const constants = require('@tradle/constants')
@@ -72,16 +73,23 @@ function SimpleBank (opts) {
     throw new Error(`missing model for product: ${missingProduct}`)
   }
 
-  this._employees = opts.employees
+  // this._employees = opts.employees
   this.tim = opts.tim
-
   var bank = this.bank = new Bank(opts)
+  this._ready = this._ensureEmployees(opts.employees)
+
   bank._shouldChainReceivedMessage = (msg) => {
     return msg[TYPE] === types.VERIFICATION ||
       this._models.docs.indexOf(msg[TYPE]) !== -1
   }
 
   bank.use((req, res) => {
+    // assign relationship manager if none is assigned
+    if (req.state && !req.state.relationshipManager && this._employees.length) {
+      // for now, just assign first employee
+      req.state = getNextState(req.state, Actions.assignRelationshipManager(this._employees[0]))
+    }
+
     if (this._models.docs.indexOf(req.type) !== -1) {
       return this.handleDocument(req)
     }
@@ -135,6 +143,24 @@ function SimpleBank (opts) {
       // })
     }
   })
+
+  bank.use(req => {
+    if (!this._employees.length) return
+
+    const from = req.from[ROOT_HASH]
+    const isEmployee = this._employees.some(e => e[ROOT_HASH] === from)
+    if (isEmployee) return
+
+    const relationshipManager = req.state.relationshipManager
+    if (relationshipManager) {
+      return this.tim.share({
+        to: [{ [ROOT_HASH]: relationshipManager }],
+        deliver: true,
+        [CUR_HASH]: req[CUR_HASH]
+      })
+    }
+  })
+
   // bank.use(types.REQUEST_FOR_REPRESENTATIVE, function (req) {
   //   // Find represntative
   //   return bank.send(req, {
@@ -150,6 +176,12 @@ module.exports = SimpleBank
 util.inherits(SimpleBank, EventEmitter)
 
 SimpleBank.prototype.receiveMsg = function (msgBuf, senderInfo, sync) {
+  return this._ready.then(() => {
+    return this._receiveMsg(msgBuf, senderInfo, sync)
+  })
+}
+
+SimpleBank.prototype._receiveMsg = function (msgBuf, senderInfo, sync) {
   var bank = this.bank
   var msg
   try {
@@ -197,6 +229,44 @@ SimpleBank.prototype.receiveMsg = function (msgBuf, senderInfo, sync) {
 //     .then(() => this.sendProductList(req))
     .finally(() => req.end())
     .finally(() => this.bank._unlock(from))
+}
+
+SimpleBank.prototype._ensureEmployees = function (employees) {
+  var self = this
+  return (employees ? Q(employees) : getEmployees())
+    .then(_employees => {
+      employees = _employees
+      return Q.all(employees.map(e => {
+        return this.tim.lookupIdentity({ [ROOT_HASH]: e[ROOT_HASH] })
+          .catch(() => this.tim.addContactIdentity(e.pub))
+      }))
+    })
+    .then(() => {
+      this._employees = employees
+      this.bank.setEmployees(employees)
+    })
+
+  function getEmployees () {
+    return Q.nfcall(collect, self.tim.byType('tradle.MyEmployeePass'))
+      .then(employees => {
+        return employees.filter(e => {
+          // issued by "me" (the bank bot)
+          return e.from[ROOT_HASH] === self.tim.myRootHash()
+        })
+        .map(e => {
+          const pass = e.parsed.data
+          return {
+            [CUR_HASH]: e.to[CUR_HASH],
+            [ROOT_HASH]: e.to[ROOT_HASH],
+            pub: e.to.identity,
+            profile: {
+              name: utils.pick(pass, 'firstName', 'lastName')
+            },
+            // txId: e.to.txId
+          }
+        })
+      })
+  }
 }
 
 SimpleBank.prototype.receivePrivateMsg = function (msgBuf, senderInfo, sync) {
@@ -429,14 +499,18 @@ SimpleBank.prototype.sendVerification = function (opts) {
   }, opts)
 
   const lookup = typeof opts.verifiedItem === 'string'
-    ? this.bank.tim.lookupObjectByCurHash(opts.verifiedItem)
+    ? this.bank.tim.lookupObjectByCurHash(opts.verifiedItem, true)
     : opts.verifiedItem
 
   let verifiedItem
   let req
   return lookup
-    .then(_verifiedItem => {
-      verifiedItem = _verifiedItem
+    .then(verifiedItems => {
+      verifiedItem = utils.find(verifiedItems, item => {
+        return item.from[ROOT_HASH] === item.parsed.data[SIGNEE].split(':')[0]
+      })
+
+      if (!verifiedItem) throw new Error('NotFound')
       req = new RequestState(verifiedItem)
       return this.bank._lock(verifiedItem.from[ROOT_HASH], 'send verification')
     })
@@ -454,7 +528,11 @@ SimpleBank.prototype.sendVerification = function (opts) {
       return this.bank._setCustomerState(req)
     })
     .finally(() => req.end())
-    .finally(() => this.bank._unlock(verifiedItem.from[ROOT_HASH]))
+    .finally(() => {
+      if (verifiedItem && verifiedItem.from) {
+        return this.bank._unlock(verifiedItem.from[ROOT_HASH])
+      }
+    })
 }
 
 SimpleBank.prototype.requestEdit = function (req, errs) {
@@ -568,6 +646,8 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
         state: state,
         from: req.from,
         to: req.to,
+        sync: req.sync,
+        customer: req.customer,
         productType: productType,
         parsed: {
           data: prefilled.form
@@ -576,7 +656,6 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
 
       // TODO: figure out how to continue on req
       docReq.promise = req.promise.bind(req)
-      docReq.sync = req.sync
       return this.handleDocument(docReq)
     }
 
@@ -669,9 +748,15 @@ SimpleBank.prototype.approveProduct = function (opts) {
   let req
   // return this._simulateReq(opts.customerRootHash)
   const customerHash = opts.customerRootHash
+  const productType = opts.productType
   return this.bank._lock(customerHash, 'approve product')
     .then(() => this.bank._getCustomerState(customerHash))
     .then(state => {
+      const existing = state.products[productType]
+      if (existing && existing.length) {
+        throw new Error('customer already has this product')
+      }
+
       req = new RequestState({
         state: state,
         from: {
@@ -681,7 +766,7 @@ SimpleBank.prototype.approveProduct = function (opts) {
 
       return this._approveProduct({
         req: req,
-        productType: opts.productType
+        productType: productType
       })
     })
     .then(() => this.bank._setCustomerState(req))

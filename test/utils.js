@@ -89,10 +89,11 @@ function genUser (opts, cb) {
     })
   }
 
-  tradleUtils.getStorageKeyFor(info.pub, function (err, hash) {
+  var identityBuf = new Buffer(tradleUtils.stringify(info.pub))
+  tradleUtils.getStorageKeyFor(identityBuf, function (err, hash) {
     if (err) return cb(err)
 
-    info[ROOT_HASH] = info[CUR_HASH] = hash
+    info[ROOT_HASH] = info[CUR_HASH] = hash.toString('hex')
     cb(null, info)
   })
 }
@@ -225,7 +226,8 @@ function findKey (keys, where) {
 }
 
 function getPrefix (identity) {
-  return identity.name.firstName.toLowerCase()
+  return crypto.randomBytes(32).toString('hex')
+  // return identity.name ? identity.name.firstName.toLowerCase() : identity.pubkeys[0].fingerprint
 }
 
 function signNSend (tim, sendParams) {

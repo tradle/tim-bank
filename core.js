@@ -28,6 +28,7 @@ var TYPE = constants.TYPE
 // var OWNER = constants.OWNER
 var NONCE = constants.NONCE
 var types = constants.TYPES
+var VERIFICATION = types.VERIFICATION
 var CUSTOMER = 'tradle.Customer'
 var noop = function () {}
 // var types = require('./lib/types')
@@ -203,8 +204,8 @@ Bank.prototype._getCustomerState = function (customerRootHash) {
 
 Bank.prototype._setCustomerState = function (req) {
   return req.state == null
-    ? this._delResource(CUSTOMER, req.from[ROOT_HASH])
-    : this._setResource(CUSTOMER, req.from[ROOT_HASH], req.state);
+    ? this._delResource(CUSTOMER, req.customer)
+    : this._setResource(CUSTOMER, req.customer, req.state);
 }
 
 /**
@@ -260,6 +261,10 @@ Bank.prototype.receiveMsg = function (msgBuf, senderInfo, sync) {
     })
 }
 
+Bank.prototype.setEmployees = function (employees) {
+  this._employees = employees
+}
+
 // TODO: lock on sender hash to avoid race conditions
 Bank.prototype._onMessage = function (msg, sync) {
   var self = this
@@ -271,31 +276,42 @@ Bank.prototype._onMessage = function (msg, sync) {
     return utils.rejectWithHttpError(400, 'message missing ' + TYPE)
   }
 
+  const from = msg.from[ROOT_HASH]
+  let customer = from
+  const employee = find(this._employees || [], e => {
+    return e[ROOT_HASH] === from
+  })
+
   const fwdTo = msg.parsed.data._to
-  if (fwdTo && fwdTo !== this.tim.myRootHash()) {
-    // forwardable message
-    return this.tim.share({
-      to: [{ [ROOT_HASH]: fwdTo }],
-      deliver: true,
-      [CUR_HASH]: msg[CUR_HASH]
-    })
+  if (fwdTo && fwdTo !== this.tim.myRootHash() && fwdTo !== this.tim.myCurrentHash()) {
+    if (employee && msg[TYPE] === VERIFICATION) {
+      // rewire "from"
+      customer = fwdTo
+    } else {
+      // forward message without processing
+      return this.tim.share({
+        to: [{ [ROOT_HASH]: fwdTo }],
+        deliver: true,
+        [CUR_HASH]: msg[CUR_HASH]
+      })
+    }
   }
 
   // TODO: move most of this out to implementation (e.g. simple.js)
 
   var req = new RequestState(msg)
   req.sync = sync
+  req.customer = customer
 
   var res = {}
-  var from = req.from[ROOT_HASH]
   this._debug(`received ${req[TYPE]} from ${from}`)
 
-  return this._lock(from, 'process incoming message')
-    .then(() => this._getCustomerState(from))
+  return this._lock(customer, 'process incoming message')
+    .then(() => this._getCustomerState(customer))
     .catch(function (err) {
       if (!err.notFound) throw err
 
-      req.state = getNewState(null, Actions.newCustomer(from))
+      req.state = getNewState(null, Actions.newCustomer(customer))
       return self._setCustomerState(req)
       // return newCustomerState(req)
     })
@@ -325,7 +341,7 @@ Bank.prototype._onMessage = function (msg, sync) {
       throw err
     })
     .finally(() => {
-      this._unlock(from)
+      this._unlock(customer)
     })
 }
 
@@ -362,6 +378,7 @@ Bank.prototype._setResource = function (type, rootHash, val) {
 Bank.prototype._getResource = function (type, rootHash) {
   typeforce('String', type)
   typeforce('String', rootHash)
+  if (rootHash === '2ef62c944f2824cc85b9adb83d2d7fb5552251ca') debugger
   return Q.ninvoke(this._db, 'get', prefixKey(type, rootHash))
     .then(r => tutils.rebuf(r))
 }
