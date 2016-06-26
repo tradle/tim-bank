@@ -2,13 +2,13 @@
 
 // var LOG = require('why-is-node-running')
 // require('q-to-bluebird')
-require('@tradle/multiplex-utp')
+// require('@tradle/multiplex-utp')
 
 var crypto = require('crypto')
-var constants = require('@tradle/constants')
+// var constants = require('@tradle/constants')
 // for now
-constants.TYPES.GET_MESSAGE = 'tradle.getMessage'
-constants.TYPES.GET_HISTORY = 'tradle.getHistory'
+// constants.TYPES.GET_MESSAGE = 'tradle.getMessage'
+// constants.TYPES.GET_HISTORY = 'tradle.getHistory'
 
 // overwrite models for tests
 var MODELS = require('@tradle/models')
@@ -46,11 +46,11 @@ var LICENSE = 'tradle.LicenseVerification'
 var MORTGAGE_LOAN_DETAIL = 'tradle.MortgageLoanDetail'
 var ABOUT_YOU = 'tradle.AboutYou'
 var YOUR_MONEY = 'tradle.YourMoney'
-var VERIFICATION = constants.TYPES.VERIFICATION
-var DEFAULT_AWAIT_OPTS = {
-  awaitVerification: true,
-  awaitConfirmation: true
-}
+var VERIFICATION = 'tradle.Verification'
+// var DEFAULT_AWAIT_OPTS = {
+//   awaitVerification: true,
+//   awaitConfirmation: true
+// }
 
 var testProductList = [
   'tradle.CurrentAccount',
@@ -70,66 +70,53 @@ var test = require('tape')
 var typeforce = require('typeforce')
 var express = require('express')
 var Q = require('q')
+Q.longStackSupport = true
 var extend = require('xtend')
 var clone = require('clone')
 var find = require('array-find')
 var memdown = require('memdown')
-var DHT = require('@tradle/bittorrent-dht')
 var DSA = require('@tradle/otr').DSA
-var kiki = require('@tradle/kiki')
-var Tim = require('tim')
-var Zlorp = require('zlorp')
-Tim.CATCH_UP_INTERVAL = 2000
-// Tim.Zlorp.ANNOUNCE_INTERVAL = Tim.Zlorp.LOOKUP_INTERVAL = 5000
-Tim.CHAIN_WRITE_THROTTLE = 0
-Tim.CHAIN_READ_THROTTLE = 0
-Tim.SEND_THROTTLE = 2000
-var Transport = extend(require('@tradle/transport-http'), {
-// var Transport = {
-  P2P: require('@tradle/transport-p2p'),
-  WebSocketClient: require('@tradle/ws-client'),
-  WebSocketRelay: require('@tradle/ws-relay')
-})
-
-var HttpClient = Transport.HttpClient
-var HttpServer = Transport.HttpServer
-var WebSocketClient = Transport.WebSocketClient
-var WebSocketRelay = Transport.WebSocketRelay
-var get = require('simple-get')
-var Identity = require('@tradle/identity').Identity
+var protocol = require('@tradle/protocol')
+var constants = protocol.constants
 var TYPE = constants.TYPE
-var NONCE = constants.NONCE
 var CUR_HASH = constants.CUR_HASH
 var ROOT_HASH = constants.ROOT_HASH
 var testUtils = require('./utils')
+var getCoords = testUtils.getCoords
+var testHelpers = require('@tradle/engine/test/helpers')
+var tradle = require('@tradle/engine')
+var tradleUtils = tradle.utils
+tradle.sender.DEFAULT_BACKOFF_OPTS = tradle.sealer.DEFAULT_BACKOFF_OPTS = {
+  initialDelay: 100,
+  maxDelay: 1000
+}
+
 var utils = require('../lib/utils')
 var Bank = require('../simple')
 Bank.ALLOW_CHAINING = true
-// var billPub = require('./fixtures/bill-pub')
-// var billPriv = require('./fixtures/bill-priv')
-// var tedPub = require('./fixtures/ted-pub')
-// var tedPriv = require('./fixtures/ted-priv')
-// var rufusPub = require('./fixtures/rufus-pub')
-// var rufusPriv = require('./fixtures/rufus-priv')
-var users = require('./fixtures/users1')
+var users = require('./fixtures/users')
+users.forEach(u => {
+  if (!u[ROOT_HASH]) u[ROOT_HASH] = u[CUR_HASH]
+})
+
 var applicantInfo = users.pop()
-var applicantKeys = applicantInfo.priv
-var applicantIdentity = applicantInfo.pub
-var types = constants.TYPES
+var applicantName = applicantInfo.profile.name.formatted
+var applicantKeys = applicantInfo.keys
+var applicantIdentity = applicantInfo.identity
+var types = require('../lib/types')
 var FORM_REQUEST = 'tradle.FormRequest'
 var multiEntryProduct = require('./fixtures/multi-entry')
-var testHelpers = require('@tradle/test-helpers')
+// var testHelpers = require('@tradle/test-helpers')
 // var Keeper = require('offline-keeper')
-var FakeKeeper = testHelpers.fakeKeeper
-var createFakeWallet = testHelpers.fakeWallet
+// var FakeKeeper = testHelpers.fakeKeeper
+// var createFakeWallet = testHelpers.fakeWallet
 var NETWORK_NAME = 'testnet'
 var BASE_PORT = 22222
 var bootstrapDHT
 var pathCounter = 0
 var initCount = 0
-var nonce = 0
+//// var nonce = 0
 
-var sharedKeeper = FakeKeeper.empty()
 var COMMON_OPTS = {
   leveldown: memdown,
   // TODO: test without shared keeper
@@ -139,7 +126,7 @@ var COMMON_OPTS = {
   // }),
   networkName: NETWORK_NAME,
   ip: '127.0.0.1',
-  // syncInterval: 3000
+  syncInterval: 100
 }
 
 // var applicant
@@ -186,21 +173,6 @@ test.skip('models', function (t) {
   t.end()
 })
 
-var setups = {
-  websockets: {
-    name: 'websockets',
-    init: initWebsockets
-  },
-  // http: {
-  //   name: 'client/server',
-  //   init: initHTTP
-  // },
-  // p2p: {
-  //   name: 'p2p',
-  //   init: initP2P
-  // }
-}
-
 testForwarding()
 testMultiEntry()
 testCustomProductConfirmation()
@@ -208,7 +180,7 @@ testGuestSession()
 testRemediation()
 testManualMode()
 
-runTests(setups.websockets)
+runTests(init)
 // Object.keys(setups).forEach(name => runTests(setups[name]))
 
 // testCustomProductList()
@@ -341,7 +313,7 @@ runTests(setups.websockets)
 //       applicant.lookupObject(info)
 //         .then(obj => {
 //           verificationsTogo--
-//           t.pass('got verification for ' + obj.parsed.data.document.id)
+//           t.pass('got verification for ' + obj.object.object.document.id)
 //         })
 //     })
 
@@ -361,18 +333,12 @@ runTests(setups.websockets)
 function testForwarding () {
   test('forward message', t => {
     var setup
-    runSetup(setups.websockets)
+    runSetup(init)
       .then(_setup => {
         setup = _setup
-        var tims = setup.tims
-        return Q.all(tims.map(a => {
-          return Q.all(tims.map(b => {
-            return a === b ? Q() : a.addContactIdentity(b.identityJSON)
-          }))
-        }))
-        .then(() => setup)
+        return Q.ninvoke(testHelpers, 'meet', setup.tims)
       })
-      .then(setup => {
+      .then(() => {
         var banks = setup.banks
         var applicant = setup.applicant
         var a = banks[0]
@@ -389,25 +355,25 @@ function testForwarding () {
         })
 
         const product = 'tradle.CurrentAccount'
-        // Q.all(banks.map(bank => bank.tim.addContactIdentity(applicant.identityJSON)))
+        // Q.all(banks.map(bank => bank.tim.addContactIdentity(applicant.identity)))
         //   .done(() => {
             helpers.signNSend({
               [TYPE]: 'tradle.ProductApplication',
-              _to: b.tim.myRootHash(),
+              _to: b.tim.permalink,
               product: product
             })
           // })
 
         const send = a.tim._send
         let sent
-        a.tim._send = function (recipientHash, msg) {
+        a.tim._send = function (msg, recipient, cb) {
           sent = msg
           return send.apply(this, arguments)
         }
 
         var receiveDefer = Q.defer()
-        b.receiveMsg = function (msg) {
-          t.equal(msg.toString(), sent.toString())
+        b.receiveMsg = function (msg, from) {
+          t.same(msg, sent)
           receiveDefer.resolve()
           return Q()
         }
@@ -415,13 +381,13 @@ function testForwarding () {
         return receiveDefer.promise
       })
       .then(() => teardown(setup))
-      .done(t.end)
+      .done(() => t.end())
   })
 }
 
 function testMultiEntry () {
   test('multi entry forms', t => {
-    runSetup(setups.websockets).then(setup => {
+    runSetup(init).then(setup => {
       var banks = setup.banks
       var applicant = setup.applicant
 
@@ -450,7 +416,7 @@ function testMultiEntry () {
         t: t
       })
 
-      helpers.sendIdentity()
+      helpers.sendIdentity({ awaitUnchained: true })
         .then(() => helpers.startApplication(product))
         .then(() => helpers.sendForm({
           form: multi,
@@ -471,6 +437,7 @@ function testMultiEntry () {
 
       Q.all([
           helpers.awaitVerification(3),
+          helpers.awaitType(product + 'Confirmation')
         ])
         .then(() => teardown(setup))
         .done(function () {
@@ -483,7 +450,7 @@ function testMultiEntry () {
 
 function testCustomProductConfirmation () {
   test('custom product confirmation', t => {
-    runSetup(setups.websockets).then(setup => {
+    runSetup(init).then(setup => {
       var banks = setup.banks
       var applicant = setup.applicant
 
@@ -503,7 +470,7 @@ function testCustomProductConfirmation () {
         t: t
       })
 
-      helpers.sendIdentity()
+      helpers.sendIdentity({ awaitUnchained: true })
         // .then(() => helpers.startApplication(product))
         .then(() => {
           helpers.signNSend(utils.buildSimpleMsg(
@@ -536,7 +503,7 @@ function testCustomProductConfirmation () {
 
 function testGuestSession () {
   test('import guest session', function (t) {
-    runSetup(setups.websockets).then(setup => {
+    runSetup(init).then(setup => {
       const banks = setup.banks
       const applicant = setup.applicant
       var bank = banks[0]
@@ -570,7 +537,7 @@ function testGuestSession () {
         license,
         {
           [TYPE]: VERIFICATION,
-          [NONCE]: '' + (nonce++),
+//          [NONCE]: '' + (nonce++),
           time: 10000,
           document: {
             [TYPE]: YOUR_MONEY
@@ -579,26 +546,23 @@ function testGuestSession () {
       ]
 
       bank.storeGuestSession(sessionHash, session)
-        .then(() => helpers.sendIdentity())
+        .then(() => helpers.sendIdentity({ awaitUnchained: true }))
         .then(() => helpers.sendSessionIdentifier(sessionHash, 'tradle.FormError'))
-        .then(info => applicant.lookupObject(info))
-        .then(obj => {
-          const errors = obj.parsed.data.errors
+        .then(wrapper => {
+          const errors = wrapper.object.object.errors
           t.ok(errors.some(e => e.name === missing))
           incompleteAboutYou[missing] = missingVal
           helpers.signNSend(incompleteAboutYou)
           return helpers.awaitType('tradle.FormError')
         })
-        .then(info => applicant.lookupObject(info))
-        .then(obj => {
-          const message = obj.parsed.data.message
+        .then(wrapper => {
+          const message = wrapper.object.object.message
           t.ok(/review/.test(message))
           helpers.signNSend(yourMoney)
           return helpers.awaitType('tradle.FormError')
         })
-        .then(info => applicant.lookupObject(info))
-        .then(obj => {
-          const message = obj.parsed.data.message
+        .then(wrapper => {
+          const message = wrapper.object.object.message
           t.ok(/review/.test(message))
           helpers.signNSend(license)
           return helpers.awaitConfirmation()
@@ -610,14 +574,11 @@ function testGuestSession () {
           helpers.awaitConfirmation()
         ])
         .spread(verifications => {
-          return Q.all(verifications.map(applicant.lookupObject))
-        })
-        .then(verifications => {
           const yourMoneyV = find(verifications, v => {
-            return v.parsed.data.document.id.split('_')[0] === YOUR_MONEY
+            return v.object.object.document.id.split('_')[0] === YOUR_MONEY
           })
 
-          t.equal(yourMoneyV.parsed.data.backDated, 10000)
+          t.equal(yourMoneyV.object.object.backDated, 10000)
           return teardown(setup)
         })
         .done(function () {
@@ -629,7 +590,7 @@ function testGuestSession () {
 
 function testRemediation () {
   test('import remediation', function (t) {
-    runSetup(setups.websockets).then(setup => {
+    runSetup(init).then(setup => {
       const banks = setup.banks
       const applicant = setup.applicant
       var bank = banks[0]
@@ -660,7 +621,7 @@ function testRemediation () {
         license,
         {
           [TYPE]: VERIFICATION,
-          [NONCE]: '' + (nonce++),
+//          [NONCE]: '' + (nonce++),
           time: 10000,
           document: {
             [TYPE]: YOUR_MONEY
@@ -670,43 +631,36 @@ function testRemediation () {
 
       const verified = helpers.awaitVerification(3)
         .then(verifications => {
-          return Q.all(verifications.map(applicant.lookupObject))
-        })
-        .then(verifications => {
           const yourMoneyV = find(verifications, v => {
-            return v.parsed.data.document.id.split('_')[0] === YOUR_MONEY
+            return v.object.object.document.id.split('_')[0] === YOUR_MONEY
           })
 
-          t.equal(yourMoneyV.parsed.data.backDated, 10000)
+          t.equal(yourMoneyV.object.object.backDated, 10000)
         })
 
       bank.storeGuestSession(sessionHash, session)
-        .then(() => helpers.sendIdentity())
-        .then(() => helpers.sendSessionIdentifier(sessionHash, 'tradle.FormError'))
-        .then(info => applicant.lookupObject(info))
-        .then(obj => {
-          const message = obj.parsed.data.message
+        .then(() => helpers.sendIdentity({ awaitUnchained: true }))
+        .then(() => helpers.sendSessionIdentifier(sessionHash, types.FORM_ERROR))
+        .then(wrapper => {
+          const message = wrapper.object.object.message
           t.ok(/review/.test(message))
           helpers.signNSend(aboutYou)
-          return helpers.awaitType('tradle.FormError')
+          return helpers.awaitType(types.FORM_ERROR)
         })
-        .then(info => applicant.lookupObject(info))
-        .then(obj => {
-          const message = obj.parsed.data.message
+        .then(wrapper => {
+          const message = wrapper.object.object.message
           t.ok(/review/.test(message))
           helpers.signNSend(yourMoney)
-          return helpers.awaitType('tradle.FormError')
+          return helpers.awaitType(types.FORM_ERROR)
         })
-        .then(info => applicant.lookupObject(info))
-        .then(obj => {
-          const message = obj.parsed.data.message
+        .then(wrapper => {
+          const message = wrapper.object.object.message
           t.ok(/review/.test(message))
           helpers.signNSend(license)
-          return helpers.awaitType('tradle.SimpleMessage')
+          return helpers.awaitType(types.SIMPLE_MESSAGE)
         })
-        .then(info => applicant.lookupObject(info))
         .then(msg => {
-          t.ok(/confirm/.test(msg.parsed.data.message))
+          t.ok(/confirm/.test(msg.object.object.message))
           return verified
         })
         .then(() => teardown(setup))
@@ -719,7 +673,7 @@ function testRemediation () {
 
 function testManualMode () {
   test('manual verifications + confirmation', function (t) {
-    runSetup(setups.websockets).then(setup => {
+    runSetup(init).then(setup => {
       const banks = setup.banks
       const applicant = setup.applicant
       var bank = banks[0]
@@ -739,9 +693,9 @@ function testManualMode () {
         t: t
       })
 
-      helpers.sendIdentity()
+      helpers.sendIdentity({ awaitUnchained: true })
         .then(() => helpers.startApplication(product))
-        .then(() => helpers.sendAboutYou({ awaitVerification: false }))
+        .then(() => helpers.sendForm({ form: ABOUT_YOU, awaitVerification: false }))
         .then(() => {
           // should fail
           return bank.approveProduct({
@@ -751,14 +705,15 @@ function testManualMode () {
         })
         .then(() => t.fail('approval should not be possible without requisite forms'))
         .catch(err => t.pass('approval prevented without required forms'))
-        .then(() => helpers.sendYourMoney({ awaitVerification: false }))
-        .then(() => helpers.sendLicense({ awaitVerification: false, awaitConfirmation: false }))
+        .then(() => helpers.sendForm({ form: YOUR_MONEY, awaitVerification: false }))
+        .then(() => helpers.sendForm({ form: LICENSE, awaitVerification: false, awaitConfirmation: false }))
         // delay to make sure no auto-confirmation happens
-        .then(() => Q.Promise(resolve => setTimeout(resolve, 2000)))
+        .then(() => console.log('patience...'))
+        .then(() => Q.Promise(resolve => setTimeout(resolve, 1000)))
         .then(() => {
           // should fail
           return bank.approveProduct({
-            customerRootHash: applicant.myRootHash(),
+            customerRootHash: applicant.permalink,
             productType: product
           })
         })
@@ -774,21 +729,18 @@ function testManualMode () {
         .then(() => {
           // should succeed
           return bank.approveProduct({
-            customerRootHash: applicant.myRootHash(),
+            customerRootHash: applicant.permalink,
             productType: product
           })
         })
         .done(() => approved = true)
 
       let verificationsTogo = 3
-      applicant.on('message', info => {
-        if (info[TYPE] !== VERIFICATION) return
+      applicant.on('message', wrapper => {
+        if (wrapper.object.object[TYPE] !== VERIFICATION) return
 
-        applicant.lookupObject(info)
-          .then(obj => {
-            t.equal(--verificationsTogo >= 0, true)
-            t.pass('got verification for ' + obj.parsed.data.document.id.split('_')[0])
-          })
+        t.equal(--verificationsTogo >= 0, true)
+        t.pass('got verification for ' + wrapper.object.object.document.id.split('_')[0])
       })
 
       helpers.awaitConfirmation()
@@ -806,7 +758,12 @@ function testManualMode () {
 
 function runTests (setupFn, idx) {
   test('current account', function (t) {
-    runSetup(setupFn).then(setup => {
+    var setup
+    runSetup(setupFn).then(_setup => {
+      setup = _setup
+      return Q.ninvoke(testHelpers, 'meet', setup.banks.map(b => b.tim))
+    })
+    .then(() => {
       const banks = setup.banks
       const applicant = setup.applicant
       var bank
@@ -818,36 +775,24 @@ function runTests (setupFn, idx) {
       var helpers
 
       cleanCache()
-      changeBank(banks[0])
 
-      applicant.on('unchained', onUnchained)
-
-
+      applicant.on('readseal', onReadSeal)
       // tryUnacquainted() // TODO: get this working
       Q()
-        .then(() => helpers.sendIdentity())
-        // bank shouldn't publish you twice
-        .then(() => helpers.sendIdentityAgain())
         .then(runBank1Scenario)
+        // .then(runBank2Scenario)
         .then(function () {
-          changeBank(banks[1])
-          return runBank2Scenario()
-        })
-        .then(function () {
-          bank = banks[0]
+          changeBank(banks[0])
           console.log('exercising right to be forgotten')
           return helpers.forget()
         })
         .then(function () {
           cleanCache()
-          return runBank1Scenario()
+          return runBank1Scenario(true)
         })
         // .then(dumpDBs.bind(null, banks[0]))
         .then(() => teardown(setup))
-        .done(function () {
-          applicant.removeListener('unchained', onUnchained)
-          t.end()
-        })
+        .done(() => t.end())
 
       function changeBank (newBank) {
         bank = newBank
@@ -863,22 +808,42 @@ function runTests (setupFn, idx) {
         })
       }
 
-      function runBank1Scenario () {
-        return helpers.startApplication()
-          .then(helpers.sendAboutYou)
-          .then(helpers.sendYourMoney)
+      function runBank1Scenario (secondTime) {
+        changeBank(banks[0])
+        helpers.awaitVerification(3).then(wrappers => {
+          return wrappers.map(v => {
+            return applicant.watchSeal({
+              link: protocol.linkString(v.object.object),
+              basePubKey: bank.tim.chainPubKey
+            })
+          })
+        })
+        .done()
+
+        const sendIdentity = secondTime
+          ? helpers.sendIdentityAgain()
+          : helpers.sendIdentity({ awaitUnchained: !secondTime })
+              // bank shouldn't publish you twice
+              .then(() => helpers.sendIdentityAgain())
+
+        return sendIdentity
+          .then(() => helpers.startApplication())
+          .then(() => helpers.sendForm({ form: ABOUT_YOU, nextForm: YOUR_MONEY }))
+          .then(() => helpers.sendForm({ form: YOUR_MONEY, nextForm: LICENSE }))
           .then(helpers.sendIncompleteLicense)
-          .then(helpers.sendLicense)
+          .then(() => helpers.sendForm({ form: LICENSE }))
           .then(function () {
             return verificationsDefer.promise
           })
       }
 
       function runBank2Scenario () {
-        return helpers.startApplication()
-          .then(helpers.shareAboutYouVer)
-          .then(helpers.shareYourMoneyVer)
-          .then(helpers.shareLicenseVer)
+        changeBank(banks[1])
+        return helpers.sendIdentity({ awaitUnchained: true })
+          .then(() => helpers.startApplication())
+          .then(() => helpers.shareFormAndVerification({ form: ABOUT_YOU, nextForm: YOUR_MONEY }))
+          .then(() => helpers.shareFormAndVerification({ form: YOUR_MONEY, nextForm: LICENSE }))
+          .then(() => helpers.shareFormAndVerification({ form: LICENSE, awaitConfirmation: true }))
       }
 
       function cleanCache () {
@@ -888,17 +853,16 @@ function runTests (setupFn, idx) {
         verificationsDefer = Q.defer()
       }
 
-      function onUnchained (info) {
-        if (info[TYPE] !== VERIFICATION) return
+      function onReadSeal (wrapper) {
+        if (wrapper.object[TYPE] !== VERIFICATION) {
+          return
+        }
 
-        applicant.lookupObject(info)
-          .then(function (obj) {
-            var documentHash = obj.parsed.data.document.id.split('_')[1]
-            return applicant.lookupObjectByCurHash(documentHash)
-          })
-          .then(function (obj) {
-            var vType = obj.parsed.data[TYPE]
-            verifications[vType] = info[CUR_HASH]
+        var documentHash = wrapper.object.document.id.split('_')[1]
+        return Q.ninvoke(applicant.objects, 'get', documentHash, true)
+          .then(function (docWrapper) {
+            var vType = docWrapper.object[TYPE]
+            verifications[vType] = wrapper.link
             if (--verificationsTogo) return
 
             verificationsDefer.resolve()
@@ -959,17 +923,18 @@ function getHelpers (opts) {
     tryUnacquainted,
     sendForm,
     sendForms,
-    sendAboutYou,
-    sendYourMoney,
-    sendLicense,
+    // sendAboutYou,
+    // sendYourMoney,
+    // sendLicense,
     sendNextFormRequest,
     sendIncompleteLicense,
-    shareAboutYouVer,
-    shareYourMoneyVer,
-    shareLicenseVer,
+    // shareAboutYouVer,
+    // shareYourMoneyVer,
+    // shareLicenseVer,
     forget,
     signNSend,
     shareForm,
+    shareFormAndVerification,
     shareVerification,
     awaitForm,
     awaitVerification,
@@ -978,23 +943,25 @@ function getHelpers (opts) {
     awaitTypeUnchained
   }
 
-  function sendIdentity () {
-    if (setup.init === initP2P) {
-      // not implemented, publish manually
-      return publishIdentities(applicant)
+  function sendIdentity (opts) {
+    opts = opts || {}
+    signNSend({
+      [TYPE]: types.IDENTITY_PUBLISH_REQUEST,
+      identity: applicant.identity
+    })
+
+    if (opts.awaitUnchained) {
+      applicant.watchSeal({
+        link: protocol.linkString(applicant.identity),
+        basePubKey: bank.tim.chainPubKey
+      })
+      .done()
     }
 
-    var identityPubReq = {
-      identity: applicant.identityJSON
-    }
-
-    identityPubReq[NONCE] = '' + nonce++
-    identityPubReq[TYPE] = constants.TYPES.IDENTITY_PUBLISHING_REQUEST
-    signNSend(identityPubReq, { public: true })
     return Q.all([
-        awaitTypeUnchained('tradle.Identity', applicant),
-        awaitTypeUnchained('tradle.Identity', banks[0].tim),
-        awaitTypeUnchained('tradle.Identity', banks[1].tim),
+        opts.awaitUnchained && awaitTypeUnchained(types.IDENTITY, applicant),
+        // awaitTypeUnchained(types.IDENTITY, banks[0].tim),
+        // awaitTypeUnchained(types.IDENTITY, banks[1].tim),
         awaitType('tradle.IdentityPublished')
       ])
       .then(function () {
@@ -1003,16 +970,16 @@ function getHelpers (opts) {
   }
 
   function sendIdentityAgain () {
-    if (setup.init === initP2P) return
+    signNSend({
+      nonce: 1,
+      [TYPE]: types.IDENTITY_PUBLISH_REQUEST,
+      identity: applicant.identity
+    })
+    .done()
 
-    var identityPubReq = {
-      identity: applicant.identityJSON
-    }
-
-    identityPubReq[NONCE] = '' + nonce++
-    identityPubReq[TYPE] = constants.TYPES.IDENTITY_PUBLISHING_REQUEST
-    signNSend(identityPubReq, { public: true })
-    return awaitMessage(info => info[TYPE] === 'tradle.SimpleMessage')
+    return awaitMessage(msg => {
+        return /already/.test(msg.object.object.message)
+      })
       .then(function () {
         t.pass('customer\'s identity was not published twice')
       })
@@ -1020,7 +987,7 @@ function getHelpers (opts) {
 
   function sendSessionIdentifier (identifier, waitType) {
     var msg = {
-      [TYPE]: 'tradle.GuestSessionProof',
+      [TYPE]: types.GUEST_SESSION_PROOF,
       session: identifier
     }
 
@@ -1045,8 +1012,8 @@ function getHelpers (opts) {
 
   function tryUnacquainted () {
     var msg = {
-      [TYPE]: 'tradle.SimpleMessage',
-      [NONCE]: '' + nonce++,
+      [TYPE]: types.SIMPLE_MESSAGE,
+//      [NONCE]: '' + nonce++,
       hey: 'ho'
     }
 
@@ -1060,39 +1027,21 @@ function getHelpers (opts) {
   }
 
   function sendAboutYou (opts) {
-    opts = opts || DEFAULT_AWAIT_OPTS
-    signNSend(newFakeData(ABOUT_YOU))
-    return Q.all([
-        awaitForm(YOUR_MONEY),
-        awaitTypeUnchained(ABOUT_YOU),
-        opts.awaitVerification && awaitVerification()
-      ])
-      .then(function () {
-        t.pass('got next form')
-      })
+    sendForm(extend(opts || {}, {
+      form: ABOUT_YOU
+    }))
   }
 
   function sendYourMoney (opts) {
-    opts = opts || DEFAULT_AWAIT_OPTS
-    signNSend(newFakeData(YOUR_MONEY))
-    return Q.all([
-        awaitForm(LICENSE),
-        awaitTypeUnchained(YOUR_MONEY),
-        opts.awaitVerification && awaitVerification()
-      ])
-      .then(function () {
-        t.pass('got next form')
-      })
+    sendForm(extend(opts || {}, {
+      form: YOUR_MONEY
+    }))
   }
 
   function sendLicense (opts) {
-    opts = opts || DEFAULT_AWAIT_OPTS
-    signNSend(newFakeData(LICENSE))
-    return Q.all([
-      awaitTypeUnchained(LICENSE),
-      opts.awaitVerification && awaitVerification(),
-      opts.awaitConfirmation && awaitConfirmation()
-    ])
+    sendForm(extend(opts || {}, {
+      form: LICENSE
+    }))
   }
 
   // function sendMortgageLoanDetail (opts) {
@@ -1120,6 +1069,14 @@ function getHelpers (opts) {
 
     const form = opts.form
     signNSend(newFakeData(form))
+      .then(result => {
+        return applicant.watchSeal({
+          link: result.object.link,
+          basePubKey: bank.tim.chainPubKey
+        })
+      })
+      .done()
+
     return Q.all([
         opts.nextForm && awaitForm(opts.nextForm),
         awaitTypeUnchained(form),
@@ -1127,7 +1084,7 @@ function getHelpers (opts) {
         opts.awaitConfirmation && awaitConfirmation()
       ])
       .then(function () {
-        if (opts.nextForm) t.pass('got next form')
+        if (opts.nextForm) t.pass('got next form: ' + opts.nextForm)
       })
   }
 
@@ -1148,105 +1105,105 @@ function getHelpers (opts) {
   }
 
   function sendIncompleteLicense (opts) {
-    opts = opts || DEFAULT_AWAIT_OPTS
-    var msg = {
+    signNSend({
+      [TYPE]: LICENSE,
       licenseNumber: 'abc',
       dateOfIssue: 1414342441249
-    }
+    })
 
-    msg[NONCE] = '' + (nonce++)
-    msg[TYPE] = LICENSE
-
-    signNSend(msg)
     return awaitType('tradle.FormError')
   }
 
-  function shareAboutYouVer () {
-    shareForm(ABOUT_YOU)
-      .then(function () {
-        shareVerification(ABOUT_YOU)
-      })
+  // function shareAboutYouVer () {
+  //   shareForm(ABOUT_YOU)
+  //     .then(function () {
+  //       shareVerification(ABOUT_YOU)
+  //     })
+
+  //   return Q.all([
+  //     awaitForm(YOUR_MONEY),
+  //     awaitTypeUnchained(VERIFICATION)
+  //   ])
+  // }
+
+  function shareFormAndVerification (opts) {
+    const form = opts.form
+    const share = shareForm(form).then(() => shareVerification(form))
+    applicant.watchSeal({
+      link: verifications[form],
+      basePubKey: bank.tim.chainPubKey
+    })
+    .done()
 
     return Q.all([
-      awaitForm(YOUR_MONEY),
-      awaitTypeUnchained(VERIFICATION)
+      share,
+      awaitTypeUnchained(VERIFICATION),
+      opts.nextForm && awaitForm(opts.nextForm),
+      opts.awaitConfirmation && awaitConfirmation()
     ])
+
   }
 
-  function shareYourMoneyVer () {
-    shareForm(YOUR_MONEY)
-      .then(function () {
-        shareVerification(YOUR_MONEY)
-      })
+  // function shareYourMoneyVer () {
+  //   const share = shareForm(YOUR_MONEY).then(() => shareVerification(YOUR_MONEY))
+  //   applicant.watchSeal({
+  //     link: verifications[YOUR_MONEY],
+  //     basePubKey: bank.tim.chainPubKey
+  //   })
+  //   .done()
 
-    return Q.all([
-      awaitForm(LICENSE),
-      awaitTypeUnchained(VERIFICATION)
-    ])
-  }
+  //   return Q.all([
+  //     share,
+  //     awaitForm(LICENSE),
+  //     awaitTypeUnchained(VERIFICATION)
+  //   ])
+  // }
 
-  function shareLicenseVer () {
-    shareForm(LICENSE)
-      .then(function () {
-        shareVerification(LICENSE)
-      })
+  // function shareLicenseVer () {
+  //   shareForm(LICENSE)
+  //     .then(function () {
+  //       shareVerification(LICENSE)
+  //     })
 
-    return Q.all([
-      awaitConfirmation(),
-      awaitTypeUnchained(VERIFICATION)
-    ])
-  }
+  //   return Q.all([
+  //     awaitConfirmation(),
+  //     awaitTypeUnchained(VERIFICATION)
+  //   ])
+  // }
 
   function forget () {
     var msg = {
       reason: 'none of your business'
     }
 
-    msg[NONCE] = '' + (nonce++)
-    msg[TYPE] = 'tradle.ForgetMe'
+//    msg[NONCE] = '' + (nonce++)
+    msg[TYPE] = types.FORGET_ME
     signNSend(msg)
-    return awaitType('tradle.ForgotYou')
+    return awaitType(types.FORGOT_YOU)
+      .then(() => applicant.forget(bank.tim.permalink))
   }
 
   function signNSend (msg, opts) {
-    applicant.sign(msg)
-      .then(function (signed) {
-        // console.log(JSON.stringify(JSON.parse(signed), null, 2))
-        return applicant.send(extend({
-          msg: signed,
-          to: bankCoords,
-          deliver: true
-        }, opts || {}))
-      })
-      .done(function (entries) {
-        var info = entries[0]
-        var type = info.get(TYPE)
-        if (MODELS_BY_ID[type].subClassOf === 'tradle.Form' || CurrentAccount.forms.indexOf(type) !== -1) {
-          forms[info.get(TYPE)] = info.get(ROOT_HASH)
-        }
-      })
+    return applicant.signAndSend({
+      object: msg,
+      to: bankCoords
+    })
+    .then(result => {
+      const type = result.object.object[TYPE]
+      if (MODELS_BY_ID[type].subClassOf === 'tradle.Form' || CurrentAccount.forms.indexOf(type) !== -1) {
+        forms[type] = result.object.permalink
+      }
+
+      return result
+    })
   }
 
   function shareForm (type) {
-    var opts = {
-      chain: false,
-      deliver: true,
-      to: bankCoords
-    }
-
-    opts[CUR_HASH] = forms[type]
-    return applicant.share(opts)
+    return applicant.send({ link: forms[type], to: bankCoords })
   }
 
   function shareVerification (type) {
-    var opts = {
-      chain: false,
-      deliver: true,
-      to: bankCoords
-    }
-
-    opts[CUR_HASH] = verifications[type]
-    return applicant.share(opts)
+    return applicant.send({ link: verifications[type], to: bankCoords })
   }
 
   function awaitVerification (n) {
@@ -1277,30 +1234,30 @@ function getHelpers (opts) {
         return ret
       })
 
-    function onmessage (info) {
-      if (test(info)) {
-        t.pass('received message: ' + info[TYPE])
-        received.push(info)
+    function onmessage (msg) {
+      if (test(msg)) {
+        t.pass('received message: ' + msg.object.object[TYPE])
+        received.push(msg)
         if (--togo === 0) defer.resolve(n === 1 ? received[0] : received)
       }
     }
   }
 
   function awaitType (type, n) {
-    return awaitMessage(info => info[TYPE] === type, n)
+    return awaitMessage(msg => msg.object.object[TYPE] === type, n)
   }
 
   function awaitTypeUnchained (type, tim) {
     var defer = Q.defer()
     tim = tim || applicant
-    tim.on('unchained', unchainedHandler)
+    tim.on('readseal', unchainedHandler)
     return defer.promise
       .then(function () {
-        tim.removeListener('unchained', unchainedHandler)
+        tim.removeListener('readseal', unchainedHandler)
       })
 
-    function unchainedHandler (info) {
-      if (info[TYPE] === type) {
+    function unchainedHandler (wrapper) {
+      if (wrapper.object[TYPE] === type) {
         t.pass('unchained ' + type)
         defer.resolve()
       }
@@ -1315,17 +1272,14 @@ function getHelpers (opts) {
         applicant.removeListener('message', onmessage)
       })
 
-    function onmessage (info) {
-      if (info[TYPE] !== FORM_REQUEST) {
+    function onmessage (msg) {
+      if (msg.object.object[TYPE] !== FORM_REQUEST) {
         return
       }
 
-      applicant.lookupObject(info)
-        .done(function (obj) {
-          var form = obj.parsed.data.form
-          t.equal(form, nextFormType, 'got ' + nextFormType)
-          defer.resolve()
-        })
+      var form = msg.object.object.form
+      t.equal(form, nextFormType, 'got ' + nextFormType)
+      defer.resolve()
     }
   }
 
@@ -1349,7 +1303,7 @@ function getHelpers (opts) {
 
   //       var msg = {}
   //       msg[TYPE] = constants.TYPES.GET_HISTORY
-  //       msg[NONCE] = '' + nonce++
+//        // msg[NONCE] = '' + nonce++
   //       return applicant.send({
   //         msg: msg,
   //         to: [bankCoords],
@@ -1378,68 +1332,68 @@ function getHelpers (opts) {
   // })
 }
 
-function runSetup (setup) {
+function runSetup (init) {
   const defer = Q.defer()
   initCount++
   let result
-  return setup.init().then(function (_result) {
-    result = _result
-    const applicant = result.applicant
-    const banks = result.banks
-    // var everyone = getTims()
-    // var bankTims = banks.map(function (b) { return b.tim })
+  return init()
+  // .then(function (_result) {
+  //   result = _result
+  //   const applicant = utils.promisifyNode(result.applicant)
+  //   const banks = result.banks
+  //   // var everyone = getTims()
+  //   // var bankTims = banks.map(function (b) { return b.tim })
 
-    var tims = result.tims
-    tims.forEach(tim => tim.watchAddresses(constants.IDENTITY_PUBLISH_ADDRESS))
-    banks.forEach(function (b) {
-      b.tim.publishMyIdentity().done()
-    })
+  //   var tims = result.tims
+  //   // tims.forEach(tim => tim.watchAddresses(constants.IDENTITY_PUBLISH_ADDRESS))
+  //   // banks.forEach(function (b) {
+  //   //   b.tim.publishMyIdentity().done()
+  //   // })
 
-    var defer = Q.defer()
-    // each bank + applicant unchains each bank
-    var togo = tims.length * banks.length
+  //   var defer = Q.defer()
+  //   // each bank + applicant unchains each bank
+  //   var togo = tims.length * banks.length
 
-    tims.forEach(function (tim) {
-      tim.on('unchained', onUnchainedOne)
-    })
+  //   tims.forEach(function (tim) {
+  //     tim.on('readseal', onReadSealOne)
+  //   })
 
-    function onUnchainedOne (info) {
-      // console.log(this.myRootHash(), info[ROOT_HASH])
-      if (--togo === 0) {
-        defer.resolve()
-      }
-    }
+  //   function onReadSealOne (info) {
+  //     // console.log(this.myRootHash(), info[ROOT_HASH])
+  //     if (--togo === 0) {
+  //       defer.resolve()
+  //     }
+  //   }
 
-    return defer.promise
-      .then(() => {
-        tims.forEach(tim => {
-          tim.removeListener('unchained', onUnchainedOne)
-        })
-      })
-  })
-  .then(() => result)
+  //   return defer.promise
+  //     .then(() => {
+  //       tims.forEach(tim => {
+  //         tim.removeListener('readseal', onReadSealOne)
+  //       })
+  //     })
+  // })
+  // .then(() => result)
 }
 
 function buildNode (opts) {
   return testUtils.buildNode(extend(COMMON_OPTS, {
     pathPrefix: getPathPrefix(opts),
-    identity: opts.user && Identity.fromJSON(opts.user.pub),
+    identity: opts.user && opts.user.pub,
     keys: opts.user && opts.user.priv,
     syncInterval: 0,
-    unchainThrottle: 0,
-    chainThrottle: 0,
-    sendThrottle: 0,
-    keeper: testUtils.newKeeper(sharedKeeper)
+    // unchainThrottle: 0,
+    // chainThrottle: 0,
+    // sendThrottle: 0
   }, opts))
 }
 
 function teardown (setup) {
-  if (setup.relay) setup.relay.destroy()
-  if (setup.server) setup.server.close()
+  // if (setup.relay) setup.relay.destroy()
+  // if (setup.server) setup.server.close()
 
   const tims = getTims(setup)
-  return Q.all(tims.map(function (entity) {
-      return entity.destroy()
+  return Q.all(setup.banks.map(function (bank) {
+      return bank.destroy()
     }))
     .then(function () {
       return Q.all(tims.map(function (t) {
@@ -1448,86 +1402,9 @@ function teardown (setup) {
     })
     .then(function () {
       return Q.all(tims.map(function (tim) {
-        return tim.destroy()
+        return Q.ninvoke(tim, 'destroy')
       }))
     })
-    .then(function () {
-      getTims(setup).forEach(function (t) {
-        if (t.dht) t.dht.destroy()
-      })
-
-      if (setup.dht) setup.dht.destroy()
-    })
-}
-
-function initP2P () {
-  var bootstrapDHTPort = BASE_PORT++
-  var dht = new DHT({ bootstrap: false })
-  dht.listen(bootstrapDHTPort)
-  var dhtConf = {
-    bootstrap: ['127.0.0.1:' + bootstrapDHTPort]
-  }
-
-  var aPort = BASE_PORT++
-  var aDHT = new DHT(dhtConf)
-  aDHT.listen(aPort)
-
-  var applicantWallet = walletFor(billPriv, null, 'messaging')
-  var applicant = buildNode({
-    dht: aDHT,
-    wallet: applicantWallet,
-    blockchain: clone(applicantWallet.blockchain),
-    identity: Identity.fromJSON(billPub),
-    keys: billPriv,
-    port: aPort,
-    messenger: newMessenger({
-      keys: billPriv,
-      identityJSON: billPub,
-      port: aPort,
-      dht: aDHT
-    })
-  })
-
-  var banks = BANK_BOTS.map(function (rep, i) {
-    var port = BASE_PORT++
-    var dht = new DHT(dhtConf)
-    dht.listen(port)
-
-    var messenger = newMessenger({
-      keys: rep.priv,
-      identityJSON: rep.pub,
-      port: port,
-      dht: dht
-    })
-
-    var tim = buildNode({
-      dht: dht,
-      blockchain: clone(applicantWallet.blockchain),
-      identity: Identity.fromJSON(rep.pub),
-      keys: rep.priv,
-      port: port,
-      messenger: messenger,
-      _send: messenger.send.bind(messenger)
-    })
-
-    var bank = new Bank({
-      tim: tim,
-      name: 'Bank ' + i,
-      path: getNextBankPath(),
-      leveldown: memdown,
-      productList: testProductList,
-      manual: true
-    })
-
-    messenger.on('message', bank.receiveMsg)
-    return bank
-  })
-
-  const result = { banks, applicant, dht }
-  return Q.all(getTims(result).map(function (t) {
-    return t.ready()
-  }))
-  .then(() => result)
 }
 
 function getTims (setup) {
@@ -1538,280 +1415,109 @@ function getNextBankPath () {
   return 'storage' + pathCounter++
 }
 
-function initHTTP () {
-  // var bootstrapDHTPort = BASE_PORT++
-  // bootstrapDHT = new DHT({ bootstrap: false })
-  // bootstrapDHT.listen(bootstrapDHTPort)
-  // var dhtConf = {
-  //   bootstrap: ['127.0.0.1:' + bootstrapDHTPort]
-  // }
-
-  var aPort = BASE_PORT++
-  // var aDHT = new DHT(dhtConf)
-  // aDHT.listen(aPort)
-
-  var applicantWallet = walletFor(billPriv, null, 'messaging')
-
-  var applicant = buildNode({
-    dht: false,
-    wallet: applicantWallet,
-    blockchain: applicantWallet.blockchain,
-    messenger: new HttpClient(),
-    identity: Identity.fromJSON(billPub),
-    keys: billPriv,
-    port: aPort
-  })
-
-  applicant.once('ready', function () {
-    applicant.messenger.setRootHash(applicant.myRootHash())
-  })
-
-  var serverPort = BASE_PORT++
-  var bankApp = express()
-  var server = bankApp.listen(serverPort)
-
-  var banks = BANK_BOTS.map(function (rep, i) {
-    var port = BASE_PORT++
-    // var dht = new DHT(dhtConf)
-    // dht.listen(port)
-
-    var router = express.Router()
-    var httpServer = new HttpServer({
-      router: router
-    })
-
-    var tim = buildNode({
-      dht: false,
-      blockchain: applicantWallet.blockchain,
-      identity: Identity.fromJSON(rep.pub),
-      keys: rep.priv,
-      port: port,
-      messenger: httpServer,
-      _send: httpServer.send.bind(httpServer)
-    })
-
-    var bank = new Bank({
-      tim: tim,
-      manual: true,
-      name: 'Bank ' + i,
-      path: getNextBankPath(),
-      productList: testProductList,
-      leveldown: memdown
-    })
-
-    httpServer.receive = function () {
-      var args = [].slice.call(arguments)
-      args[2] = true // requires sync response
-      return bank.receiveMsg.apply(bank, args)
-    }
-
-    tim.once('ready', function () {
-      var rh = tim.myRootHash()
-      bankApp.use('/' + rh, router)
-      var url = 'http://127.0.0.1:' + serverPort + '/' + rh
-      // var url = 'http://localhost:' + serverPort + '/' + rh
-      applicant.messenger.addRecipient(rh, url)
-    })
-
-    return bank
-  })
-
-  const setup = { banks, applicant, server }
-  return Q.all(getTims(setup).map(function (t) {
-    return t.ready()
-  }))
-  .then(() => setup)
+function createNode (opts) {
+  return testHelpers.createNode(extend(COMMON_OPTS, opts))
 }
 
-function initWebsockets (bankOpts) {
-  var aPort = BASE_PORT++
-  var applicantWallet = walletFor(applicantKeys, null, 'messaging')
-  var relay = new WebSocketRelay({
-    port: aPort
+function init (bankOpts) {
+  var applicant = createNode({
+    // dir: JSON.stringify(applicantInfo.profile.name).replace(/[^a-zA-Z0-9]/g, ''),
+    dir: applicantKeys[0].fingerprint + initCount,
+    keys: applicantKeys,
+    identity: applicantIdentity,
+    name: 'APPLICANT'
   })
-
-  var relayURL = 'http://127.0.0.1:' + aPort
-  var applicantClient = new WebSocketClient({
-    url: relayURL,
-    otrKey: getDSAKey(applicantKeys),
-    // byRootHash: function (rootHash) {
-    //   var coords = {}
-    //   coords[ROOT_HASH] = rootHash
-    //   return applicant.lookupIdentity(coords)
-    // }
-  })
-
-  var applicant = buildNode({
-    dht: false,
-    user: applicantInfo,
-    wallet: applicantWallet,
-    blockchain: applicantWallet.blockchain,
-    messenger: applicantClient,
-    port: aPort,
-    _send: applicantClient.send.bind(applicantClient)
-  })
-
-  applicantClient.on('message', applicant.receiveMsg)
 
   var tims = [applicant]
-  var bankPromises = BANK_PERSONNEL.map(function (personnel, i) {
+  var banks = BANK_PERSONNEL.map(function (personnel, i) {
     var port = BASE_PORT++
     var employees = personnel.slice(1).map(e => {
-      return utils.pick(e, 'pub', 'profile', CUR_HASH, ROOT_HASH)
+      return utils.pick(e, 'identity', 'profile', CUR_HASH, ROOT_HASH)
     })
 
     // console.log('employees: ' + employees.map(e => e[ROOT_HASH]).join(', '))
     // console.log('bot: ' + personnel[0][ROOT_HASH])
-    var personnelNodes = personnel.map(rep => {
-      var client = new WebSocketClient({
-        url: relayURL,
-        otrKey: getDSAKey(rep.priv),
-      })
-
-      return buildNode({
-        dht: false,
-        blockchain: applicantWallet.blockchain,
-        user: rep,
-        port: port,
-        messenger: client,
-        _send: client.send.bind(client)
+    var botName = 'Bank ' + i
+    var personnelNodes = personnel.map(function (rep, j) {
+      return createNode({
+        blockchain: applicant.blockchain,
+        identity: rep.identity,
+        keys: rep.keys,
+        name: j ? rep.profile.name.formatted : botName
       })
     })
 
     var bot = personnelNodes[0]
     var bank = new Bank(extend({
-      tim: bot,
+      node: bot,
       manual: true,
-      name: 'Bank ' + i,
+      name: botName,
       path: getNextBankPath(),
       productList: testProductList,
       leveldown: memdown,
       employees: employees
     }, bankOpts || {}))
 
-    var addBank = Q.all(personnelNodes.map(node => {
-      return node.addContactIdentity(bot.identityJSON)
-    }))
+//     bot.on('message', bank.receiveMsg)
 
-    var addEmployees = Q.all(employees.map(e => {
-      return bank.tim.addContactIdentity(e.pub)
-    }))
+    // var addBank = Q.all(personnelNodes.map(node => {
+    //   return node.addContactIdentity(bot.identity)
+    // }))
 
-    bot.messenger.on('message', function (buf, senderInfo) {
-      bank.receiveMsg(buf, senderInfo).done()
-    })
+    // var addEmployees = Q.all(employees.map(e => {
+    //   return bank.tim.addContactIdentity(e.identity)
+    // }))
 
-    tims = tims.concat(personnelNodes)
-    return Q.all([
-      addBank,
-      addEmployees
-    ])
-    .then(() => bank)
+    tims = tims.concat(personnelNodes).map(utils.promisifyNode)
+    return bank
+    // return Q.all([
+    //   addBank,
+    //   addEmployees
+    // ])
+    // .then(() => bank)
+  })
+
+  tims.forEach(tim => {
+    tim._send = function (msg, recipient, cb) {
+      const myInfo = { permalink: tim.permalink }
+      if (recipient.permalink === applicant.permalink) {
+        return applicant.receive(msg, myInfo, cb)
+      }
+
+      const recipientBank = find(banks, b => b.tim.permalink === recipient.permalink)
+      if (recipientBank) return recipientBank.receiveMsg(msg, myInfo).nodeify(cb)
+
+      const fallback = find(tims, tim => tim.permalink === recipient.permalink)
+      if (fallback) return fallback.receive(msg, myInfo, cb)
+
+      throw new Error('unable to find recipient')
+    }
   })
 
   const setup = {
     applicant,
-    relay,
+    banks,
     tims
   }
 
-  return Q.all(bankPromises).then(banks => {
-    setup.banks = banks
-    return Q.all(getTims(setup).map(function (t) {
-      return t.ready()
-    }))
-  })
+//   applicant._send = function (msg, recipient, cb) {
+//     const myInfo = { link: applicant.link }
+//     const recipientBank = find(banks, b => b.tim.link === recipient.link)
+//     if (recipientBank) return recipientBank.receiveMsg(msg, myInfo).nodeify(cb)
+//     else debugger
+//   }
+
+  return Q.all(banks.map(bank => {
+    return applicant.addContact(bank.tim.identity)
+  }))
   .then(() => setup)
-}
 
-function publishIdentities (/* drivers */) {
-  var defer = Q.defer()
-  var drivers = Array.isArray(arguments[0])
-    ? arguments[0]
-    : [].concat.apply([], arguments)
-
-  // Q.all(
-  //   drivers.map(function (d) {
-  //     return Q.nfcall(collect, d.identities())
-  //   })
-  // ).done(function (results) {
-  //   var already = results.reduce(function (memo, next) {
-  //     return memo + (next.reason ? 0 : next.value.length)
-  //   })
-
-    var togo = drivers.length * drivers.length
-    drivers.forEach(function (d) {
-      global.d = d
-      d.on('unchained', onUnchained)
-      d.publishMyIdentity()
-        // .catch(function (err) {
-        //   if (!/already/.test(err.message)) throw err
-        // })
-        .done()
-    })
-  // })
-
-  return defer.promise
-
-  function onUnchained () {
-    if (--togo) return
-
-    drivers.forEach(function (d) {
-      d.removeListener('unchained', onUnchained)
-    })
-
-    defer.resolve()
-  }
-}
-
-function walletFor (keys, blockchain, purpose) {
-  var unspents = []
-  for (var i = 0; i < 20; i++) {
-    unspents.push(100000)
-  }
-
-  return createFakeWallet({
-    blockchain: blockchain,
-    unspents: unspents,
-    priv: find(keys, function (k) {
-      return k.type === 'bitcoin' &&
-        k.networkName === NETWORK_NAME &&
-        k.purpose === purpose
-    }).priv
-  })
-}
-
-function getCoords (tim) {
-  return [{
-    fingerprint: tim.identityJSON.pubkeys[0].fingerprint
-  }]
-}
-
-function getDSAKey (keys) {
-  var key = keys.filter(function (k) {
-    return k.type === 'dsa'
-  })[0]
-
-  return DSA.parsePrivate(key.priv)
-}
-
-function newMessenger (opts) {
-  typeforce({
-    identityJSON: 'Object',
-    keys: 'Array',
-    port: 'Number',
-    dht: 'Object'
-  }, opts)
-
-  return new Transport.P2P({
-    zlorp: new Zlorp({
-      available: true,
-      leveldown: memdown,
-      port: opts.port,
-      dht: opts.dht,
-      key: getDSAKey(opts.keys)
-    })
-  })
+  // testHelpers.connect(tims)
+  // return Q(setup)
+  // return Q.all([
+  //     Q.ninvoke(testHelpers, 'meet', tims)
+  //   ])
+  //   .then(() => setup)
 }
 
 function newFakeData (model) {

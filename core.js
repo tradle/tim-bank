@@ -1,6 +1,6 @@
 'use strict'
 
-require('@tradle/multiplex-utp')
+// require('@tradle/multiplex-utp')
 
 var assert = require('assert')
 var extend = require('xtend')
@@ -10,28 +10,27 @@ var map = require('map-stream')
 var find = require('array-find')
 var typeforce = require('typeforce')
 var collect = require('stream-collector')
-var tutils = require('@tradle/utils')
-var Builder = require('@tradle/chained-obj').Builder
+// var tutils = require('@tradle/utils')
 var utils = require('./lib/utils')
 var Q = require('q')
-var constants = require('@tradle/constants')
+var tradle = require('@tradle/engine')
+var constants = tradle.constants
+var tutils = tradle.utils
 var elistener = require('elistener')
-var Tim = require('tim')
 var RequestState = require('./lib/requestState')
 var getNewState = require('./lib/reducers')
 var Actions = require('./lib/actionCreators')
 var debug = require('./debug')
-var EventType = Tim.EventType
 var CUR_HASH = constants.CUR_HASH
 var ROOT_HASH = constants.ROOT_HASH
 var TYPE = constants.TYPE
 // var OWNER = constants.OWNER
 var NONCE = constants.NONCE
-var types = constants.TYPES
-var VERIFICATION = types.VERIFICATION
+// var types = constants.TYPES
+var VERIFICATION = 'tradle.Verification'
 var CUSTOMER = 'tradle.Customer'
 var noop = function () {}
-// var types = require('./lib/types')
+var types = require('./lib/types')
 
 module.exports = Bank
 elistener(Bank.prototype)
@@ -41,18 +40,18 @@ function Bank (options) {
   var self = this
 
   typeforce({
-    tim: 'Object',
+    node: 'Object',
     path: 'String',
     leveldown: 'Function',
     name: '?String',
     manual: '?Boolean'
   }, options)
 
-  tutils.bindPrototypeFunctions(this)
+  tutils.bindFunctions(this)
 
-  var tim = options.tim
-  tim.on('chained', function (info) {
-    self._debug(`wrote chain-seal for ${info[TYPE]} in tx with id ${info.txId}`)
+  var tim = utils.promisifyNode(options.node)
+  tim.on('wroteseal', function (info) {
+    self._debug(`wrote chain-seal for ${info.object[TYPE]} in tx with id ${info.txId}`)
   })
 
   Object.defineProperty(this, 'tim', {
@@ -60,23 +59,13 @@ function Bank (options) {
     writable: false
   })
 
-  this._name = options.name || tim.name()
-  this.wallet = tim.wallet
-
+  this._name = options.name || tim.name
   this.listenTo(tim, 'error', function (err) {
     self._debug('error', err)
   })
 
   if (!options.manual) {
-    this.listenTo(tim, 'message', function (info) {
-      tim.lookupObject(info)
-        .catch(function (err) {
-          self._debug('unable to retrieve object', info)
-          if (!self._destroying) throw err
-        })
-        .then(self._onMessage)
-        .done()
-    })
+    this.listenTo(tim, 'message', this._onMessage)
   }
 
   // ;['chained', 'unchained'].forEach(function (e) {
@@ -94,16 +83,18 @@ function Bank (options) {
   // })
 
   var readyDefer = Q.defer()
-  this._readyPromise = readyDefer.promise
+  this._readyPromise = readyDefer.promise.then(() => this._ready = true)
   this._locks = {}
   this._manualReleases = {}
 
-  this.listenOnce(tim, 'ready', function () {
-    self._ready = true
-    readyDefer.resolve()
-    // printIdentityStatus(tim)
-    //   .then(dumpDBs.bind(null, tim))
-  })
+  // don't have any pre-tasks at the moment
+  readyDefer.resolve()
+  // this.listenOnce(tim, 'ready', function () {
+  //   self._ready = true
+  //   readyDefer.resolve()
+  //   // printIdentityStatus(tim)
+  //   //   .then(dumpDBs.bind(null, tim))
+  // })
 
   this._db = levelup(options.path, {
     db: options.leveldown,
@@ -217,25 +208,16 @@ Bank.prototype.forgetCustomer = function (req) {
   var self = this
   var v = req.state.bankVersion
   // clear customer slate
-  req.state = getNewState(null, Actions.newCustomer(req.from[ROOT_HASH]))
+  req.state = getNewState(null, Actions.newCustomer(req.from.permalink))
   req.state.bankVersion = v // preserve version
-  this.tim.forget(req.from[ROOT_HASH])
-  this.tim.on('forgot', onForgot)
-  var defer = Q.defer()
-  return defer.promise
-
-  function onForgot(who) {
-    if (who === req.from[ROOT_HASH]) {
-      self.tim.removeListener('forgot', onForgot)
-      defer.resolve()
-    }
-  }
+  return this.tim.forget(req.from.permalink)
 }
 
 Bank.prototype._saveParsedMsg = function (req) {
-  this._setResource(req.parsed.data[TYPE], req[ROOT_HASH], {
+  const objWrapper = req.payload
+  this._setResource(objWrapper.object[TYPE], objWrapper.link, {
     txId: req.txId,
-    body: req.parsed
+    body: objWrapper.object
   })
 }
 
@@ -245,20 +227,10 @@ Bank.prototype._debug = function () {
   return debug.apply(null, args)
 }
 
-Bank.prototype.receiveMsg = function (msgBuf, senderInfo, sync) {
+Bank.prototype.receiveMsg = function (msg, senderInfo, sync) {
   var self = this
-  return this.tim.receiveMsg(msgBuf, senderInfo)
-    .then(function (entry) {
-      if (entry.get('type') !== EventType.msg.receivedValid) {
-        self._debug('invalid message:', entry.get('errors').receive)
-        throw new Error('received invalid message:' + msgBuf.toString())
-      }
-
-      return self.tim.lookupObject(entry.toJSON())
-    })
-    .then(function (msg) {
-      return self._onMessage(msg, sync)
-    })
+  return this.tim.receive(msg, senderInfo)
+    .then(received => self._onMessage(received, sync))
 }
 
 Bank.prototype.setEmployees = function (employees) {
@@ -266,40 +238,42 @@ Bank.prototype.setEmployees = function (employees) {
 }
 
 // TODO: lock on sender hash to avoid race conditions
-Bank.prototype._onMessage = function (msg, sync) {
+Bank.prototype._onMessage = function (received, sync) {
   var self = this
   if (!this._ready) {
-    return this._readyPromise.then(this._onMessage.bind(this, msg))
+    return this._readyPromise.then(() => this._onMessage(received, sync))
   }
 
-  if (!msg[TYPE]) {
+  const msgWrapper = received.message
+  const objWrapper = received.object
+  const obj = objWrapper.object
+  if (!obj[TYPE]) {
     return utils.rejectWithHttpError(400, 'message missing ' + TYPE)
   }
 
-  const from = msg.from[ROOT_HASH]
+  const from = msgWrapper.author.permalink
   let customer = from
   const employee = find(this._employees || [], e => {
     return e[ROOT_HASH] === from
   })
 
-  const fwdTo = msg.parsed.data._to
-  if (fwdTo && fwdTo !== this.tim.myRootHash() && fwdTo !== this.tim.myCurrentHash()) {
-    if (employee && msg[TYPE] === VERIFICATION) {
+  const fwdTo = obj._to
+  if (fwdTo && fwdTo !== this.tim.permalink && fwdTo !== this.tim.link) {
+    if (employee && obj[TYPE] === VERIFICATION) {
       // rewire "from"
       customer = fwdTo
     } else {
       // forward message without processing
-      return this.tim.share({
-        to: [{ [ROOT_HASH]: fwdTo }],
-        deliver: true,
-        [CUR_HASH]: msg[CUR_HASH]
+      return this.tim.send({
+        to: { permalink: fwdTo },
+        link: objWrapper.link
       })
     }
   }
 
   // TODO: move most of this out to implementation (e.g. simple.js)
 
-  var req = new RequestState(msg)
+  var req = new RequestState(msgWrapper, objWrapper)
   req.sync = sync
   req.customer = customer
 
@@ -362,7 +336,7 @@ Bank.prototype._shouldChainReceivedMessage = function (req) {
 
 Bank.prototype._chainReceivedMessage = function (req) {
   // chain message on behalf of customer
-  return this.tim.chainExisting(req)
+  return this.tim.seal({ link: req.payload.link })
 }
 
 Bank.prototype._setResource = function (type, rootHash, val) {
@@ -378,9 +352,8 @@ Bank.prototype._setResource = function (type, rootHash, val) {
 Bank.prototype._getResource = function (type, rootHash) {
   typeforce('String', type)
   typeforce('String', rootHash)
-  if (rootHash === '2ef62c944f2824cc85b9adb83d2d7fb5552251ca') debugger
   return Q.ninvoke(this._db, 'get', prefixKey(type, rootHash))
-    .then(r => tutils.rebuf(r))
+    // .then(r => tutils.rebuf(r))
 }
 
 Bank.prototype._delResource = function (type, rootHash) {
@@ -406,42 +379,34 @@ Bank.prototype.send = function (opts) {
     msg.time = Date.now()
   }
 
-  const recipient = msg.to || getSender(req.msg)
+  const recipient = req.from
   this._debug(`sending ${msg[TYPE]} to ${JSON.stringify(recipient)}`)
 
   let maybeSign
   if (!(constants.SIG in msg)) {
-    maybeSign = this.tim.sign(msg)
+    maybeSign = this.tim.sign({ object: msg })
   } else {
     maybeSign = Q(msg)
   }
 
+  let result
   return maybeSign
     .then(function (signed) {
-      var sendOpts = {
-        to: [].concat(recipient), // coerce to array
-        msg: signed,
-        deliver: true,
-        chain: opts.chain,
-        public: opts.public
-      }
-
-      if (!Bank.ALLOW_CHAINING) sendOpts.chain = false
-
-      return self.tim.send(sendOpts)
+      return self.tim.send({
+        to: recipient,
+        object: signed
+      })
     })
-    .then(function (entries) {
+    .then(function (_result) {
+      result = _result
       if (req && req.sync) {
-        entries.forEach(function (e) {
-          var getSent = utils.waitForEvent(self.tim, 'sent', e)
-          req.promise(getSent)
-        })
+        var getSent = utils.waitForEvent(self.tim, 'sent', result.message.link)
+        req.promise(getSent)
       }
 
-      var rh = entries[0].get(ROOT_HASH)
-      self._setResource(msg[TYPE], rh, msg)
-      return entries
+      return self._setResource(msg[TYPE], result.object.permalink, result.object.object)
     })
+    .then(() => result)
 }
 
 Bank.prototype.destroy = function () {
@@ -462,13 +427,9 @@ Bank.prototype.destroy = function () {
 }
 
 function getSender (msg) {
-  var from = msg.from
-  var identifier = find([ROOT_HASH, CUR_HASH, 'fingerprint'], (key) => {
-    return key in from
-  })
-
+  if (!msg) debugger
   return {
-    [identifier]: from[identifier]
+    permalink: msg.author.permalink
   }
 }
 
@@ -480,25 +441,24 @@ function unprefixKey (type, key) {
   return key.slice(type.length + 1)
 }
 
-function dumpDBs (tim) {
-  var identities = tim.identities()
-  identities.onLive(function () {
-    identities.createValueStream()
-      .on('data', function (result) {
-        // console.log('identity', result.identity.name.firstName)
-        console.log('identity', result.identity)
-      })
-  })
+// function dumpDBs (tim) {
+//   var identities = tim.identities()
+//   identities.onLive(function () {
+//     identities.createValueStream()
+//       .on('data', function (result) {
+//         // console.log('identity', result.identity.name.firstName)
+//         console.log('identity', result.identity)
+//       })
+//   })
 
-  var messages = tim.messages()
-  messages.onLive(function () {
-    messages.createValueStream()
-      .on('data', function (data) {
-        tim.lookupObject(data)
-          .then(function (msg) {
-            console.log('msg', msg[CUR_HASH])
-          })
-      })
-  })
-}
-
+//   var messages = tim.messages()
+//   messages.onLive(function () {
+//     messages.createValueStream()
+//       .on('data', function (data) {
+//         tim.lookupObject(data)
+//           .then(function (msg) {
+//             console.log('msg', msg[CUR_HASH])
+//           })
+//       })
+//   })
+// }
