@@ -394,7 +394,7 @@ Bank.prototype.send = function (opts) {
     .then(function (signed) {
       return self.tim.send({
         to: recipient,
-        object: signed
+        object: signed.object
       })
     })
     .then(function (_result) {
