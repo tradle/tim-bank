@@ -49,7 +49,7 @@ function Bank (options) {
 
   tutils.bindFunctions(this)
 
-  var tim = utils.promisifyNode(options.node)
+  var tim = tutils.promisifyNode(options.node, Q.Promise)
   tim.on('wroteseal', function (info) {
     self._debug(`wrote chain-seal for ${info.object[TYPE]} in tx with id ${info.txId}`)
   })

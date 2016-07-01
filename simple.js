@@ -238,7 +238,7 @@ SimpleBank.prototype._ensureEmployees = function (employees) {
     .then(_employees => {
       employees = _employees
       return Q.all(employees.map(e => {
-        return Q.ninvoke(this.tim.addressBook, 'lookupIdentity', e)
+        return this.tim.addressBook.lookupIdentity(e)
           .catch(() => this.tim.addContactIdentity(e.identity))
       }))
     })
@@ -248,8 +248,9 @@ SimpleBank.prototype._ensureEmployees = function (employees) {
     })
 
   function getEmployees () {
-    return Q.nfcall(collect, self.tim.byType('tradle.MyEmployeePass'))
+    return Q.nfcall(self.tim.objects, 'type', 'tradle.MyEmployeePass')
       .then(employees => {
+        console.log(employees)
         return employees.filter(e => {
           // issued by "me" (the bank bot)
           return e.author.permalink
@@ -271,7 +272,7 @@ SimpleBank.prototype._ensureEmployees = function (employees) {
 }
 
 SimpleBank.prototype.receivePrivateMsg = function (msg, senderInfo, sync) {
-  return Q.ninvoke(this.tim.addressBook, 'lookupIdentity', senderInfo)
+  return this.tim.addressBook.lookupIdentity(senderInfo)
     .then(
       them => {
         return this.bank.receiveMsg(msg, them, sync)
@@ -350,7 +351,7 @@ SimpleBank.prototype.publishCustomerIdentity = function (req) {
   var curHash = protocol.linkString(identity)
   var rootHash = identity[ROOT_HASH] || curHash
   return Q.all([
-      Q.ninvoke(tim.objects, 'get', curHash).catch(noop),
+      tim.objects.get(curHash).catch(noop),
       tim.addContactIdentity(identity)
       // tim.keeper.push && tim.keeper.push({ key: curHash, value: buf })
     ])
@@ -489,7 +490,7 @@ SimpleBank.prototype.sendVerification = function (opts) {
   }, opts)
 
   const lookup = typeof opts.verifiedItem === 'string'
-    ? Q.ninvoke(this.bank.tim.objects, 'get', opts.verifiedItem, true)
+    ? this.tim.objects.get(opts.verifiedItem, true)
     : opts.verifiedItem
 
   let verifiedItem

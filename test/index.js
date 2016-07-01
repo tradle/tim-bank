@@ -859,7 +859,7 @@ function runTests (setupFn, idx) {
         }
 
         var documentHash = wrapper.object.document.id.split('_')[1]
-        return Q.ninvoke(applicant.objects, 'get', documentHash, true)
+        return applicant.objects.get(documentHash, true)
           .then(function (docWrapper) {
             var vType = docWrapper.object[TYPE]
             verifications[vType] = wrapper.link
@@ -1402,7 +1402,7 @@ function teardown (setup) {
     })
     .then(function () {
       return Q.all(tims.map(function (tim) {
-        return Q.ninvoke(tim, 'destroy')
+        return tim.destroy()
       }))
     })
 }
@@ -1416,7 +1416,8 @@ function getNextBankPath () {
 }
 
 function createNode (opts) {
-  return testHelpers.createNode(extend(COMMON_OPTS, opts))
+  const node = testHelpers.createNode(extend(COMMON_OPTS, opts))
+  return tradleUtils.promisifyNode(node, Q.Promise)
 }
 
 function init (bankOpts) {
@@ -1432,7 +1433,10 @@ function init (bankOpts) {
   var banks = BANK_PERSONNEL.map(function (personnel, i) {
     var port = BASE_PORT++
     var employees = personnel.slice(1).map(e => {
-      return utils.pick(e, 'identity', 'profile', CUR_HASH, ROOT_HASH)
+      const props = utils.pick(e, 'identity', 'profile')
+      props[CUR_HASH] = e.link
+      props[ROOT_HASH] = e.identity[ROOT_HASH] || e.link
+      return props
     })
 
     // console.log('employees: ' + employees.map(e => e[ROOT_HASH]).join(', '))
