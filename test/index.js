@@ -76,15 +76,15 @@ var clone = require('clone')
 var find = require('array-find')
 var memdown = require('memdown')
 var DSA = require('@tradle/otr').DSA
-var protocol = require('@tradle/protocol')
-var constants = protocol.constants
-var TYPE = constants.TYPE
-var CUR_HASH = constants.CUR_HASH
-var ROOT_HASH = constants.ROOT_HASH
 var testUtils = require('./utils')
 var getCoords = testUtils.getCoords
 var testHelpers = require('@tradle/engine/test/helpers')
 var tradle = require('@tradle/engine')
+var protocol = tradle.protocol
+var constants = tradle.constants
+var TYPE = constants.TYPE
+var CUR_HASH = constants.CUR_HASH
+var ROOT_HASH = constants.ROOT_HASH
 var tradleUtils = tradle.utils
 tradle.sender.DEFAULT_BACKOFF_OPTS = tradle.sealer.DEFAULT_BACKOFF_OPTS = {
   initialDelay: 100,
