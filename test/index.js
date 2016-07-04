@@ -859,7 +859,7 @@ function runTests (setupFn, idx) {
         }
 
         var documentHash = wrapper.object.document.id.split('_')[1]
-        return applicant.objects.get(documentHash, true)
+        return applicant.objects.get(documentHash)
           .then(function (docWrapper) {
             var vType = docWrapper.object[TYPE]
             verifications[vType] = wrapper.link

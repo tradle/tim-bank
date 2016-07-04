@@ -489,7 +489,7 @@ SimpleBank.prototype.sendVerification = function (opts) {
   }, opts)
 
   const lookup = typeof opts.verifiedItem === 'string'
-    ? this.tim.objects.get(opts.verifiedItem, true)
+    ? this.tim.objects.get(opts.verifiedItem)
     : opts.verifiedItem
 
   let verifiedItem
