@@ -380,7 +380,7 @@ Bank.prototype.send = function (opts) {
   }
 
   const recipient = req.from
-  this._debug(`sending ${msg[TYPE]} to ${JSON.stringify(recipient)}`)
+  this._debug(`sending ${msg[TYPE]} to ${recipient.link}`)
 
   let maybeSign
   if (!(constants.SIG in msg)) {

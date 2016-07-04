@@ -248,9 +248,8 @@ SimpleBank.prototype._ensureEmployees = function (employees) {
     })
 
   function getEmployees () {
-    return Q.nfcall(self.tim.objects, 'type', 'tradle.MyEmployeePass')
+    return Q.nfcall(collect, self.tim.objects.type('tradle.MyEmployeePass'))
       .then(employees => {
-        console.log(employees)
         return employees.filter(e => {
           // issued by "me" (the bank bot)
           return e.author.permalink
@@ -322,7 +321,7 @@ SimpleBank.prototype.sendProductList = function (req) {
   for (var p in formModels)
     list.push(formModels[p])
 
-  let name = req.from.identity.name()
+  let name // = req.from.identity.name()
   let greeting = name
     ? `Hello ${name}!`
     : 'Hello!'
@@ -334,7 +333,7 @@ SimpleBank.prototype.sendProductList = function (req) {
       welcome: true,
       // message: '[Hello! It very nice to meet you](Please choose the product)',
       message: `[${greeting}](Click for a list of products)`,
-      list: JSON.stringify(list)
+      list: list
     }
   })
 }
