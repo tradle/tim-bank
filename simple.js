@@ -252,13 +252,12 @@ SimpleBank.prototype._ensureEmployees = function (employees) {
       .then(employees => {
         return employees.filter(e => {
           // issued by "me" (the bank bot)
-          return e.author.permalink
+          return e.author === self.tim.permalink
         })
         .map(e => {
-          const pass = e.payload
+          const pass = e.object
           return {
-            [CUR_HASH]: e.to[CUR_HASH],
-            [ROOT_HASH]: e.to[ROOT_HASH],
+            [ROOT_HASH]: e.object.customer,
             pub: e.to.identity,
             profile: {
               name: utils.pick(pass, 'firstName', 'lastName')
@@ -758,7 +757,7 @@ SimpleBank.prototype.approveProduct = function (opts) {
       })
     })
     .then(() => this.bank._setCustomerState(req))
-    .finally(() => req.end())
+    .finally(() => req && req.end())
     .finally(() => this.bank._unlock(opts.customerRootHash))
 }
 
@@ -846,7 +845,10 @@ SimpleBank.prototype._newProductConfirmation = function (state, productType) {
     return confirmation
   }
 
-  let confirmation = {}
+  let confirmation = {
+    customer: state.permalink
+  }
+
   let confirmationType
   switch (productType) {
     case 'tradle.LifeInsurance':
@@ -998,6 +1000,10 @@ SimpleBank.prototype._getRelevantPending = function (pending, reqState) {
 //       }))
 //     })
 // }
+
+SimpleBank.prototype.employees = function () {
+  return (this._employees || []).slice()
+}
 
 SimpleBank.prototype.getEmployee = function (req) {
   var bank = this.bank
