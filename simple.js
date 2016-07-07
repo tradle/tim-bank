@@ -884,6 +884,10 @@ SimpleBank.prototype._newProductConfirmation = function (state, productType) {
     if (guessedMyProductModel && guessedMyProductModel.subClassOf === 'tradle.MyProduct') {
       confirmation[TYPE] = confirmationType = guessedMyProductModel.id
       copyProperties(confirmation, confirmationType)
+      mutableExtend(confirmation, {
+        [TYPE]: confirmationType,
+        myProductId: utils.randomDecimalString(10),
+      })
       return confirmation
     }
 
