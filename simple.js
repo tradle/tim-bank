@@ -250,7 +250,7 @@ SimpleBank.prototype._ensureEmployees = function (employees) {
         })
 
         return Q.all(employees.map(e => {
-          return self.tim.addressBook.byPermalink(e.object.customer)  
+          return self.tim.addressBook.byPermalink(e.object.customer)
         }))
       })
       .then(identities => {
@@ -851,56 +851,56 @@ SimpleBank.prototype._newProductConfirmation = function (state, productType) {
   }
 
   let confirmationType
-  switch (productType) {
-    case 'tradle.LifeInsurance':
-      confirmationType = 'tradle.MyLifeInsurance'
+  // switch (productType) {
+  //   case 'tradle.LifeInsurance':
+  //     confirmationType = 'tradle.MyLifeInsurance'
+  //     copyProperties(confirmation, confirmationType)
+  //     mutableExtend(confirmation, {
+  //       [TYPE]: confirmationType,
+  //       policyNumber: utils.randomDecimalString(10), // 10 chars long
+  //     })
+
+  //     return confirmation
+  //   case 'tradle.Mortgage':
+  //   case 'tradle.MortgageProduct':
+  //     confirmationType = 'tradle.MyMortgage'
+  //     copyProperties(confirmation, confirmationType)
+  //     mutableExtend(confirmation, {
+  //       [TYPE]: confirmationType,
+  //       mortgageNumber: utils.randomDecimalString(10),
+  //     })
+
+  //     return confirmation
+  //   case 'tradle.EmployeeOnboarding':
+  //     confirmationType = 'tradle.MyEmployeePass'
+  //     copyProperties(confirmation, confirmationType)
+  //     mutableExtend(confirmation, {
+  //       [TYPE]: confirmationType,
+  //       employeeID: utils.randomDecimalString(10),
+  //     })
+  //     return confirmation
+  //   default:
+    const guessedMyProductModel = this._models[productType.replace('.', '.My')]
+    if (guessedMyProductModel && guessedMyProductModel.subClassOf === 'tradle.MyProduct') {
+      confirmation[TYPE] = confirmationType = guessedMyProductModel.id
       copyProperties(confirmation, confirmationType)
-      mutableExtend(confirmation, {
-        [TYPE]: confirmationType,
-        policyNumber: utils.randomDecimalString(10), // 10 chars long
+      return confirmation
+    }
+
+    confirmationType = productType + 'Confirmation'
+    const formIds = this._getMyForms(productType, state)
+      .map(f => {
+        return f[TYPE] + '_' + f[CUR_HASH]
       })
 
-      return confirmation
-    case 'tradle.Mortgage':
-    case 'tradle.MortgageProduct':
-      confirmationType = 'tradle.MyMortgage'
-      copyProperties(confirmation, confirmationType)
-      mutableExtend(confirmation, {
-        [TYPE]: confirmationType,
-        mortgageNumber: utils.randomDecimalString(10),
-      })
-
-      return confirmation
-    case 'tradle.EmployeeOnboarding':
-      confirmationType = 'tradle.MyEmployeePass'
-      copyProperties(confirmation, confirmationType)
-      mutableExtend(confirmation, {
-        [TYPE]: confirmationType,
-        employeeID: utils.randomDecimalString(10),
-      })
-      return confirmation
-    default:
-      const guessedMyProductModel = this._models[productType.replace('.', '.My')]
-      if (guessedMyProductModel && guessedMyProductModel.subClassOf === 'tradle.MyProduct') {
-        confirmation[TYPE] = confirmationType = guessedMyProductModel.id
-        copyProperties(confirmation, confirmationType)
-        return confirmation
-      }
-
-      confirmationType = productType + 'Confirmation'
-      const formIds = this._getMyForms(productType, state)
-        .map(f => {
-          return f[TYPE] + '_' + f[CUR_HASH]
-        })
-
-      return {
-        [TYPE]: confirmationType,
-        // message: imported
-        //   ? `Imported product: ${productModel.title}`
-        message: `Congratulations! You were approved for: ${productModel.title}`,
-        forms: formIds
-      }
-  }
+    return {
+      [TYPE]: confirmationType,
+      // message: imported
+      //   ? `Imported product: ${productModel.title}`
+      message: `Congratulations! You were approved for: ${productModel.title}`,
+      forms: formIds
+    }
+  // }
 
 }
 
