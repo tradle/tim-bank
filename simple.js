@@ -235,30 +235,31 @@ SimpleBank.prototype._receiveMsg = function (msg, senderInfo, sync) {
 SimpleBank.prototype._ensureEmployees = function (employees) {
   var self = this
   return (employees ? Q(employees) : getEmployees())
-    .then(_employees => {
-      employees = _employees
-      return Q.all(employees.map(e => {
-        return this.tim.addressBook.lookupIdentity(e)
-          .catch(() => this.tim.addContactIdentity(e.identity))
-      }))
-    })
-    .then(() => {
+    .then(employees => {
       this._employees = employees
       this.bank.setEmployees(employees)
     })
 
   function getEmployees () {
+    let employees
     return Q.nfcall(collect, self.tim.objects.type('tradle.MyEmployeePass'))
-      .then(employees => {
-        return employees.filter(e => {
+      .then(_employees => {
+        employees = _employees.filter(e => {
           // issued by "me" (the bank bot)
           return e.author === self.tim.permalink
         })
-        .map(e => {
+
+        return Q.all(employees.map(e => {
+          return self.tim.addressBook.byPermalink(e.object.customer)  
+        }))
+      })
+      .then(identities => {
+        return identities.map(function (identityInfo, i) {
+          const e = employees[i]
           const pass = e.object
           return {
             [ROOT_HASH]: e.object.customer,
-            pub: e.to.identity,
+            pub: identityInfo.object,
             profile: {
               name: utils.pick(pass, 'firstName', 'lastName')
             },
