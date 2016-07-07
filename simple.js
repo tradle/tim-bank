@@ -242,7 +242,7 @@ SimpleBank.prototype._ensureEmployees = function (employees) {
 
   function getEmployees () {
     let employees
-    return Q.nfcall(collect, self.tim.objects.type('tradle.MyEmployeePass'))
+    return Q.nfcall(collect, self.tim.objects.type('tradle.MyEmployeeOnboarding'))
       .then(_employees => {
         employees = _employees.filter(e => {
           // issued by "me" (the bank bot)
