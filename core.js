@@ -257,15 +257,16 @@ Bank.prototype._onMessage = function (received, sync) {
     return e[ROOT_HASH] === from
   })
 
-  const fwdTo = obj._to
+  const fwdTo = msgWrapper.object.forward
   if (fwdTo && fwdTo !== this.tim.permalink && fwdTo !== this.tim.link) {
     if (employee && obj[TYPE] === VERIFICATION) {
       // rewire "from"
       customer = fwdTo
     } else {
-      // forward message without processing
+      // forward without processing
       return this.tim.send({
         to: { permalink: fwdTo },
+        // Q: forward object? or entire message
         link: objWrapper.link
       })
     }

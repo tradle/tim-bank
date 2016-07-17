@@ -175,7 +175,7 @@ test.skip('models', function (t) {
 
 testForwarding()
 testMultiEntry()
-testCustomProductConfirmation()
+// testCustomProductConfirmation()
 testGuestSession()
 testRemediation()
 testManualMode()
@@ -359,8 +359,11 @@ function testForwarding () {
         //   .done(() => {
             helpers.signNSend({
               [TYPE]: 'tradle.ProductApplication',
-              _to: b.tim.permalink,
               product: product
+            }, {
+              other: {
+                forward: b.tim.permalink,
+              }
             })
           // })
 
@@ -1186,7 +1189,8 @@ function getHelpers (opts) {
   function signNSend (msg, opts) {
     return applicant.signAndSend({
       object: msg,
-      to: bankCoords
+      to: bankCoords,
+      other: opts && opts.other
     })
     .then(result => {
       const type = result.object.object[TYPE]
