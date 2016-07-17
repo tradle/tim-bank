@@ -183,7 +183,7 @@ module.exports = SimpleBank
 util.inherits(SimpleBank, EventEmitter)
 
 SimpleBank.prototype.receiveMsg = function (msg, senderInfo, sync) {
-  if (Buffer.isBuffer(msg)) msg = protocol.unserializeMessage(msg)
+  if (Buffer.isBuffer(msg)) msg = tradleUtils.unserializeMessage(msg)
   return this._ready.then(() => {
     return this._receiveMsg(msg, senderInfo, sync)
   })
@@ -266,6 +266,10 @@ SimpleBank.prototype._ensureEmployees = function (employees) {
             // txId: e.to.txId
           }
         })
+      })
+      .catch(err => {
+        debugger
+        throw err
       })
   }
 }
@@ -1119,7 +1123,8 @@ SimpleBank.prototype.importSession = function (req) {
       if (applications.length) {
         // TODO: queue up all the products
         req.productType = applications[0]
-        let instructionalMsg = req.productType === REMEDIATION
+        const productModel = this._models[req.productType]
+        const instructionalMsg = req.productType === REMEDIATION
           ? 'Please check and correct the following data'
           : `Let's get this ${this._models[req.productType].title} Application on the road!`
 

@@ -9,7 +9,7 @@
   "author": "Mark Vayngrib <mark.vayngrib@lablz.com> (http://github.com/mvayngrib)",
   "license": "GPLv3",
   "dependencies": {
-    "@tradle/engine": "^1.0.1",
+    "@tradle/engine": "^1.2.0",
     "array-find": "^1.0.0",
     "clone": "^1.0.2",
     "compression": "^1.6.0",
