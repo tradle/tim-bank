@@ -1121,7 +1121,7 @@ SimpleBank.prototype.importSession = function (req) {
         req.productType = applications[0]
         let instructionalMsg = req.productType === REMEDIATION
           ? 'Please check and correct the following data'
-          : `Let's get this ${productModel.title} Application on the road!`
+          : `Let's get this ${this._models[req.productType].title} Application on the road!`
 
         return this.bank.send({
           req: req,
