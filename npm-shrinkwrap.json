@@ -3,7 +3,7 @@
   "version": "1.17.0",
   "dependencies": {
     "@tradle/engine": {
-      "version": "1.2.0",
+      "version": "2.0.0",
       "from": "@tradle/engine@latest",
       "dependencies": {
         "@tradle/bitcoinjs-lib": {
@@ -98,7 +98,7 @@
                 },
                 "readable-stream": {
                   "version": "2.1.4",
-                  "from": "readable-stream@>=2.0.5 <3.0.0",
+                  "from": "readable-stream@>=2.1.0 <3.0.0",
                   "resolved": "https://registry.npmjs.org/readable-stream/-/readable-stream-2.1.4.tgz",
                   "dependencies": {
                     "buffer-shims": {
@@ -514,24 +514,6 @@
           "version": "1.1.0",
           "from": "lexicographic-integer@>=1.1.0 <2.0.0",
           "resolved": "https://registry.npmjs.org/lexicographic-integer/-/lexicographic-integer-1.1.0.tgz"
-        },
-        "nkey-bitcoin": {
-          "version": "1.0.0",
-          "from": "nkey-bitcoin@>=1.0.0 <2.0.0"
-        },
-        "nkey-dsa": {
-          "version": "1.0.0",
-          "from": "nkey-dsa@>=1.0.0 <2.0.0"
-        },
-        "nkey-ec": {
-          "version": "1.0.0",
-          "from": "nkey-ec@>=1.0.0 <2.0.0",
-          "dependencies": {
-            "nkey-secp256k1": {
-              "version": "1.0.0",
-              "from": "nkey-secp256k1@>=1.0.0 <2.0.0"
-            }
-          }
         },
         "protocol-buffers": {
           "version": "3.1.6",
@@ -955,10 +937,6 @@
           "version": "1.1.0",
           "from": "level-option-wrap@1.1.0",
           "resolved": "https://registry.npmjs.org/level-option-wrap/-/level-option-wrap-1.1.0.tgz"
-        },
-        "nkey": {
-          "version": "1.0.0",
-          "from": "nkey@1.0.0"
         }
       }
     },
