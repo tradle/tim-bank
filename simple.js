@@ -1119,19 +1119,18 @@ SimpleBank.prototype.importSession = function (req) {
       if (applications.length) {
         // TODO: queue up all the products
         req.productType = applications[0]
-        let sendMsg
-        if (req.productType === REMEDIATION) {
-          sendMsg = this.bank.send({
-            req: req,
-            msg: {
-              [TYPE]: SIMPLE_MESSAGE,
-              message: 'Please check and correct the following data'
-            }
-          })
-        }
+        let instructionalMsg = req.productType === REMEDIATION
+          ? 'Please check and correct the following data'
+          : `Let's get this ${productModel.title} Application on the road!`
 
-        return (sendMsg || Q())
-          .then(() => this.handleNewApplication(req))
+        return this.bank.send({
+          req: req,
+          msg: {
+            [TYPE]: SIMPLE_MESSAGE,
+            message: instructionalMsg
+          }
+        })
+        .then(() => this.handleNewApplication(req))
       }
 
       // else if (forms.length) {
