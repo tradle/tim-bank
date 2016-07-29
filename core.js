@@ -258,17 +258,27 @@ Bank.prototype._onMessage = function (received, sync) {
   })
 
   const fwdTo = msgWrapper.object.forward
-  if (fwdTo && fwdTo !== this.tim.permalink && fwdTo !== this.tim.link) {
-    if (employee && obj[TYPE] === VERIFICATION) {
-      // rewire "from"
-      customer = fwdTo
-    } else {
-      // forward without processing
-      return this.tim.send({
+  if (fwdTo) {
+    if (!employee) {
+      return utils.rejectWithHttpError(403, 'this bot only forwards message from employees')
+    }
+
+    if (fwdTo !== this.tim.permalink && fwdTo !== this.tim.link) {
+      // re-sign the object
+      // the customer doesn't need to know the identity of the employee
+      this.tim.signAndSend({
         to: { permalink: fwdTo },
-        // Q: forward object? or entire message
-        link: objWrapper.link
+        object: tutils.omit(obj, SIG)
       })
+
+      if (obj[TYPE] === VERIFICATION) {
+        // rewire "from"
+        // why?
+        customer = fwdTo
+      } else {
+        // forward without processing
+        return
+      }
     }
   }
 

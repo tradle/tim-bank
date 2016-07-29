@@ -1,4 +1,4 @@
-'use strict'
+(function (exports, require, module, __filename, __dirname) { 'use strict'
 
 const util = require('util')
 const EventEmitter = require('events').EventEmitter
@@ -93,9 +93,24 @@ function SimpleBank (opts) {
 
   bank.use((req, res) => {
     // assign relationship manager if none is assigned
+    const from = req.payload.author.permalink
+    const isEmployee = this._employees.some(e => e[ROOT_HASH] === from)
+    if (isEmployee) return
+
     if (req.state && !req.state.relationshipManager && this._employees.length) {
       // for now, just assign first employee
       req.state = getNextState(req.state, Actions.assignRelationshipManager(this._employees[0]))
+      this.tim.signAndSend({
+        to: { permalink: req.state.relationshipManager },
+        object: {
+          [TYPE]: 'tradle.SelfIntroduction',
+          name: 'Customer ' + utils.randomDecimalString(6),
+          message: 'Your new customer',
+          // [TYPE]: 'tradle.Introduction',
+          // relationship: 'customer',
+          identity: req.from.object
+        }
+      })
     }
 
     if (this._models.docs.indexOf(req.type) !== -1) {
@@ -121,50 +136,50 @@ function SimpleBank (opts) {
     }
   })
 
-  bank.use(SIMPLE_MESSAGE, (req) => {
-    var msg = req.payload.object.message
-    if (!msg) return
+  bank.use(req => {
+    if (!this._employees.length) return
 
-    var parsed = utils.parseSimpleMsg(msg)
-    if (parsed.type) {
-      if (this._productList.indexOf(parsed.type) === -1) {
-        return this.replyNotFound(req, parsed.type)
-      } else {
-        req.productType = parsed.type
-        return this.handleNewApplication(req)
-      }
-    }
-    else {
-      return bank.send({
-        req: req,
-        msg: {
-          _t: SIMPLE_MESSAGE,
-          welcome: true,
-          // message: '[Hello! It very nice to meet you](Please choose the product)',
-          message: 'Switching to representative mode is not yet implemented.',
-        }
+    const from = req.payload.author.permalink
+    const isEmployee = this._employees.some(e => e[ROOT_HASH] === from)
+    if (isEmployee) return
+
+    const relationshipManager = req.state.relationshipManager
+    if (relationshipManager) {
+      return this.tim.send({
+        to: { permalink: relationshipManager },
+        link: req.payload.link
       })
-      // return bank.send(req, {
-      //   _t: types.REQUEST_FOR_REPRESENTATIVE,
-      //   welcome: true,
-      //   message: 'Switching to representative mode is not yet implemented'
-      // })
     }
   })
 
-  // bank.use(req => {
-  //   if (!this._employees.length) return
+  // bank.use(SIMPLE_MESSAGE, (req) => {
+  //   var msg = req.payload.object.message
+  //   if (!msg) return
 
-  //   const from = req.payload.author.permalink
-  //   const isEmployee = this._employees.some(e => e.permalink === from)
-  //   if (isEmployee) return
-
-  //   const relationshipManager = req.state.relationshipManager
-  //   if (relationshipManager) {
-  //     return this.tim.send({
-  //       to: { permalink: relationshipManager },
-  //       link: req.payload.link
+  //   var parsed = utils.parseSimpleMsg(msg)
+  //   if (parsed.type) {
+  //     if (this._productList.indexOf(parsed.type) === -1) {
+  //       return this.replyNotFound(req, parsed.type)
+  //     } else {
+  //       req.productType = parsed.type
+  //       return this.handleNewApplication(req)
+  //     }
+  //   }
+  //   else {
+  //     return bank.send({
+  //       req: req,
+  //       msg: {
+  //         _t: SIMPLE_MESSAGE,
+  //         welcome: true,
+  //         // message: '[Hello! It very nice to meet you](Please choose the product)',
+  //         message: 'Switching to representative mode is not yet implemented.',
+  //       }
   //     })
+  //     // return bank.send(req, {
+  //     //   _t: types.REQUEST_FOR_REPRESENTATIVE,
+  //     //   welcome: true,
+  //     //   message: 'Switching to representative mode is not yet implemented'
+  //     // })
   //   }
   // })
 
@@ -1194,3 +1209,5 @@ function ensureFormState (forms, curHash) {
 function newApplicationState (type) {
   { type }
 }
+
+});

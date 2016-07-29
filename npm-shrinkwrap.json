@@ -3,8 +3,9 @@
   "version": "1.17.0",
   "dependencies": {
     "@tradle/engine": {
-      "version": "2.0.0",
+      "version": "2.1.0",
       "from": "@tradle/engine@latest",
+      "resolved": "https://registry.npmjs.org/@tradle/engine/-/engine-2.1.0.tgz",
       "dependencies": {
         "@tradle/bitcoinjs-lib": {
           "version": "1.6.0",
@@ -12,9 +13,9 @@
           "resolved": "https://registry.npmjs.org/@tradle/bitcoinjs-lib/-/bitcoinjs-lib-1.6.0.tgz",
           "dependencies": {
             "bigi": {
-              "version": "1.4.1",
+              "version": "1.4.2",
               "from": "bigi@>=1.4.0 <2.0.0",
-              "resolved": "https://registry.npmjs.org/bigi/-/bigi-1.4.1.tgz"
+              "resolved": "https://registry.npmjs.org/bigi/-/bigi-1.4.2.tgz"
             },
             "ecurve": {
               "version": "1.0.3",
@@ -31,6 +32,7 @@
         "@tradle/protocol": {
           "version": "2.0.0",
           "from": "@tradle/protocol@>=2.0.0 <3.0.0",
+          "resolved": "https://registry.npmjs.org/@tradle/protocol/-/protocol-2.0.0.tgz",
           "dependencies": {
             "merkle-proofs": {
               "version": "1.0.3",
@@ -39,13 +41,13 @@
               "dependencies": {
                 "flat-tree": {
                   "version": "1.4.0",
-                  "from": "flat-tree@>=1.3.0 <2.0.0",
+                  "from": "flat-tree@>=1.4.0 <2.0.0",
                   "resolved": "https://registry.npmjs.org/flat-tree/-/flat-tree-1.4.0.tgz"
                 },
                 "merkle-tree-stream": {
                   "version": "3.0.3",
-                  "from": "git+https://github.com/mvayngrib/merkle-tree-stream.git#finalize",
-                  "resolved": "git+https://github.com/mvayngrib/merkle-tree-stream.git#ef1abd6b566a410f8cdc7190f0966b97f403e290"
+                  "from": "mvayngrib/merkle-tree-stream#finalize",
+                  "resolved": "git://github.com/mvayngrib/merkle-tree-stream.git#ef1abd6b566a410f8cdc7190f0966b97f403e290"
                 },
                 "readable-stream": {
                   "version": "2.1.4",
@@ -93,7 +95,7 @@
               "dependencies": {
                 "flat-tree": {
                   "version": "1.4.0",
-                  "from": "flat-tree@>=1.3.0 <2.0.0",
+                  "from": "flat-tree@>=1.4.0 <2.0.0",
                   "resolved": "https://registry.npmjs.org/flat-tree/-/flat-tree-1.4.0.tgz"
                 },
                 "readable-stream": {
@@ -148,14 +150,14 @@
           }
         },
         "async": {
-          "version": "2.0.0",
+          "version": "2.0.1",
           "from": "async@>=2.0.0-rc.4 <3.0.0",
-          "resolved": "https://registry.npmjs.org/async/-/async-2.0.0.tgz",
+          "resolved": "https://registry.npmjs.org/async/-/async-2.0.1.tgz",
           "dependencies": {
             "lodash": {
-              "version": "4.13.1",
+              "version": "4.14.1",
               "from": "lodash@>=4.8.0 <5.0.0",
-              "resolved": "https://registry.npmjs.org/lodash/-/lodash-4.13.1.tgz"
+              "resolved": "https://registry.npmjs.org/lodash/-/lodash-4.14.1.tgz"
             }
           }
         },
@@ -243,8 +245,8 @@
           "dependencies": {
             "level-change-processor": {
               "version": "1.0.0",
-              "from": "git+https://github.com/mvayngrib/level-change-processor.git",
-              "resolved": "git+https://github.com/mvayngrib/level-change-processor.git#75caab07e9f36aae12d59f9f9887fb95b953fa5a",
+              "from": "mvayngrib/level-change-processor",
+              "resolved": "git://github.com/mvayngrib/level-change-processor.git#75caab07e9f36aae12d59f9f9887fb95b953fa5a",
               "dependencies": {
                 "readable-stream": {
                   "version": "1.1.14",
@@ -1696,15 +1698,15 @@
                       "from": "https://registry.npmjs.org/lodash.padstart/-/lodash.padstart-4.5.0.tgz",
                       "resolved": "https://registry.npmjs.org/lodash.padstart/-/lodash.padstart-4.5.0.tgz"
                     },
-                    "lodash._baseslice": {
-                      "version": "4.0.0",
-                      "from": "https://registry.npmjs.org/lodash._baseslice/-/lodash._baseslice-4.0.0.tgz",
-                      "resolved": "https://registry.npmjs.org/lodash._baseslice/-/lodash._baseslice-4.0.0.tgz"
-                    },
                     "lodash._basetostring": {
                       "version": "4.12.0",
                       "from": "https://registry.npmjs.org/lodash._basetostring/-/lodash._basetostring-4.12.0.tgz",
                       "resolved": "https://registry.npmjs.org/lodash._basetostring/-/lodash._basetostring-4.12.0.tgz"
+                    },
+                    "lodash._baseslice": {
+                      "version": "4.0.0",
+                      "from": "https://registry.npmjs.org/lodash._baseslice/-/lodash._baseslice-4.0.0.tgz",
+                      "resolved": "https://registry.npmjs.org/lodash._baseslice/-/lodash._baseslice-4.0.0.tgz"
                     },
                     "lodash.tostring": {
                       "version": "4.1.3",
