@@ -208,6 +208,10 @@ SimpleBank.prototype._receiveMsg = function (msg, senderInfo, sync) {
   var bank = this.bank
   const obj = msg.object
   const type = obj[TYPE]
+  if (type === 'tradle.SelfIntroduction') {
+    return this.tim.addContactIdentity(obj.identity)
+  }
+
   if (type !== IDENTITY_PUBLISH_REQUEST) {
     return this.receivePrivateMsg(msg, senderInfo, sync)
   }
