@@ -1,4 +1,4 @@
-(function (exports, require, module, __filename, __dirname) { 'use strict'
+'use strict'
 
 const util = require('util')
 const EventEmitter = require('events').EventEmitter
@@ -1213,5 +1213,3 @@ function ensureFormState (forms, curHash) {
 function newApplicationState (type) {
   { type }
 }
-
-});
