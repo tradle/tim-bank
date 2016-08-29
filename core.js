@@ -23,6 +23,7 @@ var Actions = require('./lib/actionCreators')
 var debug = require('./debug')
 var CUR_HASH = constants.CUR_HASH
 var ROOT_HASH = constants.ROOT_HASH
+var SIG = constants.SIG
 var TYPE = constants.TYPE
 // var OWNER = constants.OWNER
 var NONCE = constants.NONCE
@@ -208,7 +209,8 @@ Bank.prototype.forgetCustomer = function (req) {
   var self = this
   var v = req.state.bankVersion
   // clear customer slate
-  req.state = getNewState(null, Actions.newCustomer(req.from.permalink))
+  var info = Actions.newCustomer(req.state)
+  req.state = getNewState(null, info)
   req.state.bankVersion = v // preserve version
   return this.tim.forget(req.from.permalink)
 }
@@ -237,7 +239,6 @@ Bank.prototype.setEmployees = function (employees) {
   this._employees = employees
 }
 
-// TODO: lock on sender hash to avoid race conditions
 Bank.prototype._onMessage = function (received, sync) {
   var self = this
   if (!this._ready) {
@@ -257,7 +258,7 @@ Bank.prototype._onMessage = function (received, sync) {
     return e[ROOT_HASH] === from
   })
 
-  const fwdTo = msgWrapper.object.forward
+  const fwdTo = !Bank.NO_FORWARDING && msgWrapper.object.forward
   if (fwdTo) {
     if (!employee) {
       return utils.rejectWithHttpError(403, 'this bot only forwards message from employees')
@@ -296,7 +297,7 @@ Bank.prototype._onMessage = function (received, sync) {
     .catch(function (err) {
       if (!err.notFound) throw err
 
-      req.state = getNewState(null, Actions.newCustomer(customer))
+      req.state = getNewState(null, Actions.newCustomer({ permalink: customer }))
       return self._setCustomerState(req)
       // return newCustomerState(req)
     })
@@ -329,6 +330,30 @@ Bank.prototype._onMessage = function (received, sync) {
       this._unlock(customer)
     })
 }
+
+// Bank.prototype.createOrUpdateCustomer = function (customer) {
+//   if (typeof customer === 'string') {
+//     customer = { permalink: customer }
+//   }
+
+//   let getNewState
+//   const clink = customer.permalink
+//   return this._lock(clink, 'update or create customer')
+//     .then(() => this._getCustomerState(clink))
+//     .then(state => {
+//       return getNewState(state, Actions.updateCustomer(customer))
+//     }, err => {
+//       if (!err.notFound) throw err
+
+//       return getNewState(null, Actions.newCustomer(customer))
+//     })
+//     .then(state => {
+//       newState = state
+//       this._setCustomerState({ customer: clink, state })
+//     })
+//     .finally(this._unlock(clink))
+//     .then(() => newState)
+// }
 
 Bank.prototype.shouldChainReceivedMessage = function (req) {
   // override this method

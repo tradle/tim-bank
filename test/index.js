@@ -47,6 +47,7 @@ var MORTGAGE_LOAN_DETAIL = 'tradle.MortgageLoanDetail'
 var ABOUT_YOU = 'tradle.AboutYou'
 var YOUR_MONEY = 'tradle.YourMoney'
 var VERIFICATION = 'tradle.Verification'
+var PRODUCT_APPLICATION = 'tradle.ProductApplication'
 // var DEFAULT_AWAIT_OPTS = {
 //   awaitVerification: true,
 //   awaitConfirmation: true
@@ -174,6 +175,11 @@ test.skip('models', function (t) {
 })
 
 testForwarding()
+test('disable forwarding', function (t) {
+  require('../core').NO_FORWARDING = true
+  t.end()
+})
+
 testMultiEntry()
 // testCustomProductConfirmation()
 testGuestSession()
@@ -331,14 +337,14 @@ runTests(init)
 // }
 
 function testForwarding () {
-  test('forward message', t => {
+  test('forward messages through bot', t => {
     var setup
     runSetup(init)
       .then(_setup => {
         setup = _setup
         return Q.ninvoke(testHelpers, 'meet', setup.tims)
       })
-      .then(() => {
+      .then(() => new Promise(resolve => {
         var banks = setup.banks
         var applicant = setup.applicant
         var a = banks[0]
@@ -354,35 +360,81 @@ function testForwarding () {
           t: t
         })
 
-        const product = 'tradle.CurrentAccount'
+        var msgFromApplicant = 'hey hey'
+        var msgFromEmployee = 'hey ho!'
+        var aPermalink = a.tim.identityInfo.permalink
+        a._employeeNodes.forEach(node => {
+          node.on('message', msg => {
+            t.equal(msg.author, aPermalink)
+            if (msg.object.object[TYPE] === 'tradle.Introduction') {
+              node.addContactIdentity(msg.object.object.identity).done()
+            } else {
+              t.equal(msg.objectinfo.author, applicant.identityInfo.permalink)
+              t.equal(msg.object.object.message, msgFromApplicant)
+
+              node.signAndSend({
+                to: a.tim._recipientOpts,
+                object: {
+                  [TYPE]: types.SIMPLE_MESSAGE,
+                  message: msgFromEmployee
+                },
+                other: {
+                  forward: applicant.permalink,
+                }
+              })
+              .done()
+            }
+          })
+        })
+
+        applicant.on('message', function (msg) {
+          t.equal(msg.author, aPermalink)
+          t.equal(msg.objectinfo.author, aPermalink)
+          t.equal(msg.object.object.message, msgFromEmployee)
+          resolve()
+        })
+
+        applicant.signAndSend({
+          to: a.tim._recipientOpts,
+          object: {
+            [TYPE]: types.SIMPLE_MESSAGE,
+            message: msgFromApplicant
+          }
+        })
+        // helpers.startApplication('tradle.CurrentAccount').done()
+
+        // const product = 'tradle.CurrentAccount'
         // Q.all(banks.map(bank => bank.tim.addContactIdentity(applicant.identity)))
         //   .done(() => {
-            helpers.signNSend({
-              [TYPE]: 'tradle.ProductApplication',
-              product: product
-            }, {
-              other: {
-                forward: b.tim.permalink,
-              }
-            })
+            // a._employeeNodes[0].signAndSend({
+            //   to: a.tim._recipientOpts,
+            //   object: {
+            //     [TYPE]: 'tradle.FormRequest',
+            //     product: product,
+            //     form: 'tradle.PersonalInfo'
+            //   },
+            //   other: {
+            //     forward: applicant.permalink,
+            //   }
+            // })
           // })
 
-        const send = a.tim._send
-        let sent
-        a.tim._send = function (msg, recipient, cb) {
-          sent = msg
-          return send.apply(this, arguments)
-        }
+        // const send = a.tim._send
+        // let sent
+        // a.tim._send = function (msg, recipient, cb) {
+        //   sent = msg
+        //   return send.apply(this, arguments)
+        // }
 
-        var receiveDefer = Q.defer()
-        b.receiveMsg = function (msg, from) {
-          t.same(msg, sent)
-          receiveDefer.resolve()
-          return Q()
-        }
+        // var receiveDefer = Q.defer()
+        // applicant.receiveMsg = function (msg, from) {
+        //   t.same(msg, sent)
+        //   receiveDefer.resolve()
+        //   return Q()
+        // }
 
-        return receiveDefer.promise
-      })
+        // return receiveDefer.promise
+      }))
       .then(() => teardown(setup))
       .done(() => t.end())
   })
@@ -1001,12 +1053,16 @@ function getHelpers (opts) {
   function startApplication (productType) {
     productType = productType || 'tradle.CurrentAccount'
     var model = MODELS_BY_ID[productType]
-    var msg = utils.buildSimpleMsg(
-      'application for',
-      productType
-    )
+    // var msg = utils.buildSimpleMsg(
+    //   'application for',
+    //   productType
+    // )
 
-    signNSend(msg)
+    signNSend({
+      [TYPE]: PRODUCT_APPLICATION,
+      product: productType
+    })
+
     return awaitForm(model.forms[0])
       .then(function () {
         t.pass('got next form')
@@ -1436,13 +1492,6 @@ function init (bankOpts) {
   var tims = [applicant]
   var banks = BANK_PERSONNEL.map(function (personnel, i) {
     var port = BASE_PORT++
-    var employees = personnel.slice(1).map(e => {
-      const props = utils.pick(e, 'identity', 'profile')
-      props[CUR_HASH] = e.link
-      props[ROOT_HASH] = e.identity[ROOT_HASH] || e.link
-      return props
-    })
-
     // console.log('employees: ' + employees.map(e => e[ROOT_HASH]).join(', '))
     // console.log('bot: ' + personnel[0][ROOT_HASH])
     var botName = 'Bank ' + i
@@ -1456,6 +1505,13 @@ function init (bankOpts) {
     })
 
     var bot = personnelNodes[0]
+    var employees = personnel.slice(1).map(e => {
+      const props = utils.pick(e, 'identity', 'profile')
+      props[CUR_HASH] = e.link
+      props[ROOT_HASH] = e.identity[ROOT_HASH] || e.link
+      return props
+    })
+
     var bank = new Bank(extend({
       node: bot,
       manual: true,
@@ -1465,6 +1521,8 @@ function init (bankOpts) {
       leveldown: memdown,
       employees: employees
     }, bankOpts || {}))
+
+    bank._employeeNodes = personnelNodes.slice(1)
 
 //     bot.on('message', bank.receiveMsg)
 

@@ -97,13 +97,13 @@ function SimpleBank (opts) {
     const isEmployee = this._employees.some(e => e[ROOT_HASH] === from)
     if (isEmployee) return
 
-    if (req.state && !req.state.relationshipManager && this._employees.length) {
+    if (!Bank.NO_FORWARDING && req.state && !req.state.relationshipManager && this._employees.length) {
       // for now, just assign first employee
       req.state = getNextState(req.state, Actions.assignRelationshipManager(this._employees[0]))
-      this.tim.signAndSend({
+      return this.tim.signAndSend({
         to: { permalink: req.state.relationshipManager },
         object: {
-          [TYPE]: 'tradle.SelfIntroduction',
+          [TYPE]: 'tradle.Introduction',
           name: 'Customer ' + utils.randomDecimalString(6),
           message: 'Your new customer',
           // [TYPE]: 'tradle.Introduction',
@@ -112,7 +112,9 @@ function SimpleBank (opts) {
         }
       })
     }
+  })
 
+  bank.use((req, res) => {
     if (this._models.docs.indexOf(req.type) !== -1) {
       return this.handleDocument(req)
     }
@@ -137,7 +139,7 @@ function SimpleBank (opts) {
   })
 
   bank.use(req => {
-    if (!this._employees.length) return
+    if (Bank.NO_FORWARDING || !this._employees.length) return
 
     const from = req.payload.author.permalink
     const isEmployee = this._employees.some(e => e[ROOT_HASH] === from)
@@ -208,6 +210,7 @@ SimpleBank.prototype._receiveMsg = function (msg, senderInfo, sync) {
   var bank = this.bank
   const obj = msg.object
   const type = obj[TYPE]
+  this._debug(`receiving ${type}`)
   if (type === 'tradle.SelfIntroduction') {
     return this.tim.addContactIdentity(obj.identity)
   }
@@ -243,7 +246,7 @@ SimpleBank.prototype._receiveMsg = function (msg, senderInfo, sync) {
     return utils.rejectWithHttpError(400, 'invalid identity')
   }
 
-  const from = senderInfo.permalink || senderInfo.fingerprint
+  const from = senderInfo.permalink || senderInfo.fingerprint || senderInfo.pubKey
   return this.bank._lock(from, 'publish identity')
     .then(() => this.publishCustomerIdentity(req))
 //     .then(() => this.sendProductList(req))
