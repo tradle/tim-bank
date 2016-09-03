@@ -946,9 +946,11 @@ SimpleBank.prototype.requestForm = function (opts) {
   const productModel = opts.productModel
   const multiEntryForms = opts.productModel.multiEntryForms || []
   const isMultiEntry = multiEntryForms.indexOf(opts.form) !== -1
-  const prompt = this._models[form].subClassOf === 'tradle.MyProduct' ? 'Please share the following information' :
+  const formModel = this._models[form]
+  const prompt = formModel.subClassOf === 'tradle.MyProduct'
+    ? 'Please share the following information' : formModel.properties.photos ?
     // isMultiEntry ? 'Please fill out this form and attach a snapshot of the original document' :
-    'Please fill out this form and attach a snapshot of the original document'
+    'Please fill out this form and attach a snapshot of the original document' : 'Please fill out this form'
 
   const msg = {
     [TYPE]: 'tradle.FormRequest',
