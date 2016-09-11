@@ -34,6 +34,8 @@ const CUR_HASH = constants.CUR_HASH
 const SIG = constants.SIG
 const SIGNEE = constants.SIGNEE
 const TYPE = constants.TYPE
+const PREVLINK = constants.PREVLINK
+const PERMALINK = constants.PERMALINK
 const types = require('./lib/types')
 const GUEST_SESSION_PROOF = types.GUEST_SESSION_PROOF
 const FORGET_ME = types.FORGET_ME
@@ -147,7 +149,7 @@ function SimpleBank (opts) {
 
     const relationshipManager = req.state.relationshipManager
     if (relationshipManager) {
-      return this.tim.send({
+      this.tim.send({
         to: { permalink: relationshipManager },
         link: req.payload.link
       })
@@ -355,7 +357,7 @@ SimpleBank.prototype.sendProductList = function (req) {
   return bank.send({
     req: req,
     msg: {
-      _t: types.PRODUCT_LIST,
+      [TYPE]: types.PRODUCT_LIST,
       welcome: true,
       // message: '[Hello! It very nice to meet you](Please choose the product)',
       message: `[${greeting}](Click for a list of products)`,
@@ -394,6 +396,7 @@ SimpleBank.prototype.publishCustomerIdentity = function (req) {
         return publish()
       }
     })
+    // .then(() => this.sendProductList(req))
     .then(function () {
       return req
     })
@@ -490,7 +493,6 @@ SimpleBank.prototype._sendVerification = function (opts) {
   const req = opts.req
   const verifiedItem = opts.verifiedItem
   if (!utils.findFormState(req.state.forms, verifiedItem.link)) {
-    debugger
     return utils.rejectWithHttpError(400, new Error('form not found'))
   }
 
@@ -605,7 +607,9 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
   }
 
   if (!productType) {
-    return utils.rejectWithHttpError(400, 'unable to determine product requested')
+    this._debug('unable to determine product requested')
+    return Q()
+    // return utils.rejectWithHttpError(400, 'unable to determine product requested')
   }
 
   const application = utils.find(pendingApps, app => app.type === productType)
@@ -737,40 +741,11 @@ SimpleBank.prototype._getMyForms = function (product, state) {
   })
 }
 
-SimpleBank.prototype._simulateReq = function (customerHash) {
+SimpleBank.prototype._simulateReq = function (opts) {
   let req
+  const customerHash = opts.customer
   return this.bank._getCustomerState(customerHash)
     .then(state => {
-      req = new RequestState({
-        state: state,
-        from: {
-          [ROOT_HASH]: customerHash
-        }
-      })
-
-      return this.bank._lock(customerHash)
-    })
-    .then(() => req)
-}
-
-SimpleBank.prototype.approveProduct = function (opts) {
-  typeforce({
-    customerRootHash: 'String',
-    productType: 'String'
-  }, opts)
-
-  let req
-  // return this._simulateReq(opts.customerRootHash)
-  const customerHash = opts.customerRootHash
-  const productType = opts.productType
-  return this.bank._lock(customerHash, 'approve product')
-    .then(() => this.bank._getCustomerState(customerHash))
-    .then(state => {
-      const existing = state.products[productType]
-      if (existing && existing.length) {
-        throw new Error('customer already has this product')
-      }
-
       req = new RequestState({
         state: state,
         author: {
@@ -778,14 +753,50 @@ SimpleBank.prototype.approveProduct = function (opts) {
         }
       })
 
-      return this._approveProduct({
-        req: req,
-        productType: productType
-      })
+      return this.bank._lock(customerHash)
     })
-    .then(() => this.bank._setCustomerState(req))
-    .finally(() => req && req.end())
-    .finally(() => this.bank._unlock(opts.customerRootHash))
+    .then(() => extend(opts, { req }))
+}
+
+SimpleBank.prototype._endRequest = function (opts) {
+  return (opts.req ? opts.req.end() : Q())
+    .finally(() => this.bank._unlock(opts.customer))
+}
+
+SimpleBank.prototype.approveProduct = function (opts) {
+  typeforce({
+    customer: 'String',
+    productType: 'String'
+  }, opts)
+
+  let req
+  // return this._simulateReq(opts.customer)
+
+  return this._simulateReq(opts)
+    .then(updatedOpts => {
+      opts = updatedOpts
+      return this._approveProduct(opts)
+    })
+    .then(() => this.bank._setCustomerState(opts.req))
+    .finally(() => this._endRequest(opts))
+}
+
+SimpleBank.prototype.revokeProduct = function (opts) {
+  typeforce({
+    customer: typeforce.String,
+    product: typeforce.String
+  }, opts)
+
+  // return this._simulateReq(opts.customer)
+  const customerHash = opts.customer
+  const productPermalink = opts.product
+  return this._simulateReq(opts)
+    .then(updatedOpts => {
+      opts = updatedOpts
+      return this._revokeProduct(opts)
+    })
+    .then(() => this.bank._setCustomerState(opts.req))
+    .finally(() => this._endRequest(opts))
 }
 
 SimpleBank.prototype.models = function () {
@@ -796,11 +807,44 @@ SimpleBank.prototype.getCustomerState = function (customerHash) {
   return this.bank._getCustomerState(customerHash)
 }
 
+SimpleBank.prototype._revokeProduct = function (opts) {
+  // TODO: minimize code repeat with sendNextFormOrApprove
+  const req = opts.req
+  const newState = getNextState(req.state, Actions.revokeProduct(opts.product))
+  if (newState === req.state) {
+    // state didn't change
+    throw new Error('product not found')
+  }
+
+  return this.tim.objects.get(opts.product)
+    .then(wrapper => {
+      // revoke product and send
+      const product = wrapper.object
+      delete product.message
+      delete product[SIG]
+      product.revoked = true
+      product[PREVLINK] = wrapper.link
+      product[PERMALINK] = wrapper.permalink
+      return this.bank.send({
+        req: req,
+        msg: product
+      })
+    })
+}
+
 SimpleBank.prototype._approveProduct = function (opts) {
   // TODO: minimize code repeat with sendNextFormOrApprove
   const req = opts.req
-  let state = req.state
   const productType = opts.productType
+  let state = req.state
+  const existing = (state.products[productType] || []).filter(product => {
+    return !product.revoked
+  })
+
+  if (existing.length) {
+    throw new Error('customer already has this product')
+  }
+
   const productModel = this._models[productType]
   const missingForms = utils.getMissingForms(state, productModel)
   if (missingForms.length) {
@@ -837,11 +881,19 @@ SimpleBank.prototype._approveProduct = function (opts) {
     const pOfType = state.products[productType]
     req.state = state = getNextState(state, Actions.approvedProduct({
       product: utils.last(pOfType),
-      rootHash: result.object.link
+      permalink: result.object.permalink
     }))
 
     return result
   })
+}
+
+SimpleBank.prototype._newProductRevocation = function (opts) {
+  return {
+    [TYPE]: 'tradle.ProductRevocation',
+    product: opts.product,
+    customer: opts.customer
+  }
 }
 
 SimpleBank.prototype._newProductConfirmation = function (state, productType) {
@@ -1071,7 +1123,6 @@ SimpleBank.prototype.getEmployee = function (req) {
 SimpleBank.prototype.handleVerification = function (req) {
   // dangerous if verification is malformed
   if (!utils.findFormState(req.state.forms, req.payload.object.document.id.split('_')[1])) {
-    debugger
     return utils.rejectWithHttpError(400, new Error('form not found'))
   }
 

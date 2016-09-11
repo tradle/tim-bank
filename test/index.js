@@ -247,7 +247,7 @@ runTests(init)
 //         t.equal(confirmed, false)
 //         approved = true
 //         return bank.approveProduct({
-//           customerRootHash: applicant.myRootHash(),
+//           customer: applicant.myRootHash(),
 //           productType: product
 //         })
 //       })
@@ -306,7 +306,7 @@ runTests(init)
 //         t.equal(confirmed, false)
 //         // should trigger verifications
 //         return bank.approveProduct({
-//           customerRootHash: applicant.myRootHash(),
+//           customer: applicant.myRootHash(),
 //           productType: product
 //         })
 //       })
@@ -754,7 +754,7 @@ function testManualMode () {
         .then(() => {
           // should fail
           return bank.approveProduct({
-            customerRootHash: applicant.myRootHash(),
+            customer: applicant.permalink,
             productType: product
           })
         })
@@ -768,7 +768,7 @@ function testManualMode () {
         .then(() => {
           // should fail
           return bank.approveProduct({
-            customerRootHash: applicant.permalink,
+            customer: applicant.permalink,
             productType: product
           })
         })
@@ -784,7 +784,7 @@ function testManualMode () {
         .then(() => {
           // should succeed
           return bank.approveProduct({
-            customerRootHash: applicant.permalink,
+            customer: applicant.permalink,
             productType: product
           })
         })
@@ -799,11 +799,18 @@ function testManualMode () {
       })
 
       helpers.awaitConfirmation()
-        .then(() => {
+        .then(wrapper => {
           t.equal(approved, true)
           t.equal(verificationsTogo, 0)
-          return teardown(setup)
+          bank.revokeProduct({
+            customer: applicant.permalink,
+            product: wrapper.objectinfo.permalink
+          })
+          .done()
+
+          return helpers.awaitRevocation(wrapper.objectinfo.permalink)
         })
+        .then(() => teardown(setup))
         .done(function () {
           t.end()
         })
@@ -995,6 +1002,7 @@ function getHelpers (opts) {
     awaitVerification,
     awaitType,
     awaitConfirmation,
+    awaitRevocation,
     awaitTypeUnchained
   }
 
@@ -1277,8 +1285,20 @@ function getHelpers (opts) {
 
   function awaitConfirmation () {
     return awaitType('tradle.CurrentAccountConfirmation')
-      .then(function () {
+      .then(wrapper => {
         t.pass('customer got account')
+        return wrapper
+      })
+  }
+
+  function awaitRevocation (productPermalink) {
+    return awaitMessage(msg => {
+        return msg.objectinfo.permalink === productPermalink
+          && msg.object.object.revoked === true
+      })
+      .then(wrapper => {
+        t.pass('customer account was revoked')
+        return wrapper
       })
   }
 
@@ -1319,7 +1339,7 @@ function getHelpers (opts) {
     function unchainedHandler (wrapper) {
       if (wrapper.object[TYPE] === type) {
         t.pass('unchained ' + type)
-        defer.resolve()
+        defer.resolve(wrapper)
       }
     }
   }
