@@ -267,13 +267,9 @@ SimpleBank.prototype._ensureEmployees = function (employees) {
 
   function getEmployees () {
     let employees
-    return Q.nfcall(collect, self.tim.objects.type('tradle.MyEmployeeOnboarding'))
+    return self.getMyEmployees()
       .then(_employees => {
-        employees = _employees.filter(e => {
-          // issued by "me" (the bank bot)
-          return e.author === self.tim.permalink
-        })
-
+        employees = _employees
         return Q.all(employees.map(e => {
           return self.tim.addressBook.byPermalink(e.object.customer)
         }))
@@ -297,6 +293,17 @@ SimpleBank.prototype._ensureEmployees = function (employees) {
         throw err
       })
   }
+}
+
+SimpleBank.prototype.getMyEmployees = function () {
+  const self = this
+  return Q.nfcall(collect, this.tim.objects.type('tradle.MyEmployeeOnboarding'))
+    .then(employees => {
+      return employees.filter(e => {
+      // issued by "me" (the bank bot)
+        return e.author === self.tim.permalink && !e.object.revoked
+      })
+    })
 }
 
 SimpleBank.prototype.receivePrivateMsg = function (msg, senderInfo, sync) {
