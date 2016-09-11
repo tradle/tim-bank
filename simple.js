@@ -782,6 +782,15 @@ SimpleBank.prototype.approveProduct = function (opts) {
     .finally(() => this._endRequest(opts))
 }
 
+SimpleBank.prototype.getProducts = function (opts) {
+  typeforce({
+    customer: typeforce.String,
+  }, opts)
+
+  return this.getCustomerState(opts.customer)
+    .then(state => state.products)
+}
+
 SimpleBank.prototype.revokeProduct = function (opts) {
   typeforce({
     customer: typeforce.String,
@@ -817,6 +826,7 @@ SimpleBank.prototype._revokeProduct = function (opts) {
     throw new Error('product not found')
   }
 
+  req.state = newState
   return this.tim.objects.get(opts.product)
     .then(wrapper => {
       // revoke product and send
