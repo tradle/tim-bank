@@ -101,7 +101,8 @@ function SimpleBank (opts) {
 
     if (!Bank.NO_FORWARDING && req.state && !req.state.relationshipManager && this._employees.length) {
       // for now, just assign first employee
-      req.state = getNextState(req.state, Actions.assignRelationshipManager(this._employees[0]))
+      const idx = Math.floor(Math.random() * this._employees.length)
+      req.state = getNextState(req.state, Actions.assignRelationshipManager(this._employees[idx]))
       return this.tim.signAndSend({
         to: { permalink: req.state.relationshipManager },
         object: {
