@@ -9,7 +9,7 @@
   "author": "Mark Vayngrib <mark.vayngrib@lablz.com> (http://github.com/mvayngrib)",
   "license": "GPLv3",
   "dependencies": {
-    "@tradle/engine": "^2.2.0",
+    "@tradle/engine": "^3.0.0",
     "array-find": "^1.0.0",
     "clone": "^1.0.2",
     "compression": "^1.6.0",
@@ -42,11 +42,10 @@
     "cli-table": "^0.3.1",
     "memdown": "^1.1.0",
     "nkey-bitcoin": "^1.0.0",
+    "nkey-curve25519": "^1.0.1",
     "nkey-dsa": "^1.0.0",
-    "nkey-ec": "^1.0.0",
+    "nkey-ecdsa": "^1.0.1",
     "random-name": "^0.1.1",
-    "socket.io": "^1.4.4",
-    "tape": "^4.2.2",
-    "zlorp": "^2.0.1"
+    "tape": "^4.2.2"
   }
 }
