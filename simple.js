@@ -103,7 +103,8 @@ function SimpleBank (opts) {
       // for now, just assign first employee
       const idx = Math.floor(Math.random() * this._employees.length)
       req.state = getNextState(req.state, Actions.assignRelationshipManager(this._employees[idx]))
-      return this.tim.signAndSend({
+      // no need to wait for this to finish
+      this.tim.signAndSend({
         to: { permalink: req.state.relationshipManager },
         object: {
           [TYPE]: 'tradle.Introduction',
