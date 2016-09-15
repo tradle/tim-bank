@@ -99,7 +99,11 @@ function SimpleBank (opts) {
     const isEmployee = this._employees.some(e => e[ROOT_HASH] === from)
     if (isEmployee) return
 
-    if (!Bank.NO_FORWARDING && req.state && !req.state.relationshipManager && this._employees.length) {
+    let currentRM = req.state.relationshipManager
+    const rmIsStillEmployed = this._employees.some(e => e[ROOT_HASH] === currentRM)
+    if (!rmIsStillEmployed) currentRM = null
+
+    if (!Bank.NO_FORWARDING && req.state && !currentRM && this._employees.length) {
       // for now, just assign first employee
       const idx = Math.floor(Math.random() * this._employees.length)
       req.state = getNextState(req.state, Actions.assignRelationshipManager(this._employees[idx]))
@@ -258,13 +262,15 @@ SimpleBank.prototype._receiveMsg = function (msg, senderInfo, sync) {
     .finally(() => this.bank._unlock(from))
 }
 
+SimpleBank.prototype._setEmployees = function (employees) {
+  this._employees = employees
+  this.bank.setEmployees(employees)
+}
+
 SimpleBank.prototype._ensureEmployees = function (employees) {
   var self = this
   return (employees ? Q(employees) : getEmployees())
-    .then(employees => {
-      this._employees = employees
-      this.bank.setEmployees(employees)
-    })
+    .then(this._setEmployees)
 
   function getEmployees () {
     let employees
@@ -502,7 +508,7 @@ SimpleBank.prototype._sendVerification = function (opts) {
   const req = opts.req
   const verifiedItem = opts.verifiedItem
   if (!utils.findFormState(req.state.forms, verifiedItem.link)) {
-    return utils.rejectWithHttpError(400, new Error('form not found'))
+    return utils.rejectWithHttpError(400, new Error('form not found, refusing to send verification'))
   }
 
   let action = Actions.createVerification(verifiedItem, this.tim.identity)
@@ -835,6 +841,7 @@ SimpleBank.prototype._revokeProduct = function (opts) {
   }
 
   req.state = newState
+  let isEmployeePass
   return this.tim.objects.get(opts.product)
     .then(wrapper => {
       // revoke product and send
@@ -844,10 +851,18 @@ SimpleBank.prototype._revokeProduct = function (opts) {
       product.revoked = true
       product[PREVLINK] = wrapper.link
       product[PERMALINK] = wrapper.permalink
+      isEmployeePass = product[TYPE] === 'tradle.MyEmployeeOnboarding'
       return this.bank.send({
         req: req,
         msg: product
       })
+    })
+    .then(result => {
+      if (isEmployeePass) {
+        this._ensureEmployees()
+      }
+
+      return result
     })
 }
 
@@ -897,6 +912,10 @@ SimpleBank.prototype._approveProduct = function (opts) {
     msg: confirmation
   })
   .then(result => {
+    if (productType === 'tradle.EmployeeOnboarding') {
+      this._ensureEmployees()
+    }
+
     const pOfType = state.products[productType]
     req.state = state = getNextState(state, Actions.approvedProduct({
       product: utils.last(pOfType),
