@@ -48,6 +48,7 @@ const GUEST_SESSION = 'guestsession'
 const REMEDIATION = types.REMEDIATION
 const PRODUCT_APPLICATION = types.PRODUCT_APPLICATION
 const IDENTITY_PUBLISH_REQUEST = types.IDENTITY_PUBLISH_REQUEST
+const SELF_INTRODUCTION = 'tradle.SelfIntroduction'
 const REMEDIATION_MODEL = {
   [TYPE]: 'tradle.Model',
   id: REMEDIATION,
@@ -209,57 +210,65 @@ util.inherits(SimpleBank, EventEmitter)
 
 SimpleBank.prototype.receiveMsg = function (msg, senderInfo, sync) {
   if (Buffer.isBuffer(msg)) msg = tradleUtils.unserializeMessage(msg)
+
+  const obj = msg.object
+  const type = obj[TYPE]
+  const from = senderInfo.permalink || senderInfo.fingerprint || senderInfo.pubKey
   return this._ready.then(() => {
-    return this._receiveMsg(msg, senderInfo, sync)
+    if (type === SELF_INTRODUCTION) {
+      return this._wrapInLock(from, () => this._receiveSelfIntroduction(msg, senderInfo, sync))
+    }
+
+    if (type === IDENTITY_PUBLISH_REQUEST) {
+      return this._wrapInLock(from, () => this._receiveIdentityPublishRequest(msg, senderInfo, sync))
+    }
+
+    return this.receivePrivateMsg(msg, senderInfo, sync)
   })
 }
 
-SimpleBank.prototype._receiveMsg = function (msg, senderInfo, sync) {
-  var bank = this.bank
-  const obj = msg.object
-  const type = obj[TYPE]
-  this._debug(`receiving ${type}`)
-  if (type === 'tradle.SelfIntroduction') {
-    return this.tim.addContactIdentity(obj.identity)
-  }
+SimpleBank.prototype._wrapInLock = function (locker, fn) {
+  return this.bank._lock(locker)
+    .then(() => fn())
+    .finally(() => this.bank._unlock(locker))
+}
 
-  if (type !== IDENTITY_PUBLISH_REQUEST) {
-    return this.receivePrivateMsg(msg, senderInfo, sync)
-  }
-
-  // if it's an identity, store it
-  // if (msg[TYPE] !== IDENTITY_PUBLISH_REQUEST) {
-  //   var errMsg = utils.format('rejecting cleartext {0}, only {1} are accepted in cleartext',
-  //       msg[TYPE],
-  //       IDENTITY_PUBLISH_REQUEST)
-
-  //   this._debug(errMsg)
-  //   return utils.rejectWithHttpError(400, errMsg)
-  // }
-
-  // if (msg[ROOT_HASH] && senderInfo[ROOT_HASH] && msg[ROOT_HASH] !== senderInfo[ROOT_HASH]) {
-  //   return utils.rejectWithHttpError(401, 'sender doesn\'t match identity embedded in message')
-  // }
-
+SimpleBank.prototype._receiveSelfIntroduction = function (msg, senderInfo, sync) {
   // fake chainedObj format
-  var req = new RequestState({
+  const req = new RequestState({
     author: senderInfo,
     sync: sync,
     object: msg
   })
 
   try {
-    req.from.identity = obj.identity
+    req.from.identity = msg.object.identity
   } catch (err) {
     return utils.rejectWithHttpError(400, 'invalid identity')
   }
 
-  const from = senderInfo.permalink || senderInfo.fingerprint || senderInfo.pubKey
-  return this.bank._lock(from, 'publish identity')
-    .then(() => this.publishCustomerIdentity(req))
-//     .then(() => this.sendProductList(req))
+  return this.tim.addContactIdentity(msg.object.identity)
+    .then(() => this.sendProductList(req))
     .finally(() => req.end())
-    .finally(() => this.bank._unlock(from))
+}
+
+SimpleBank.prototype._receiveIdentityPublishRequest = function (msg, senderInfo, sync) {
+  // fake chainedObj format
+  const req = new RequestState({
+    author: senderInfo,
+    sync: sync,
+    object: msg
+  })
+
+  try {
+    req.from.identity = msg.object.identity
+  } catch (err) {
+    return utils.rejectWithHttpError(400, 'invalid identity')
+  }
+
+  return this.publishCustomerIdentity(req)
+    .then(() => this.sendProductList(req))
+    .finally(() => req.end())
 }
 
 SimpleBank.prototype._setEmployees = function (employees) {
