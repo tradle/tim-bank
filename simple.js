@@ -94,34 +94,7 @@ function SimpleBank (opts) {
       this._models.docs.indexOf(msg[TYPE]) !== -1
   }
 
-  bank.use((req, res) => {
-    // assign relationship manager if none is assigned
-    const from = req.payload.author.permalink
-    const isEmployee = this._employees.some(e => e[ROOT_HASH] === from)
-    if (isEmployee) return
-
-    let currentRM = req.state.relationshipManager
-    const rmIsStillEmployed = this._employees.some(e => e[ROOT_HASH] === currentRM)
-    if (!rmIsStillEmployed) currentRM = null
-
-    if (!Bank.NO_FORWARDING && req.state && !currentRM && this._employees.length) {
-      // for now, just assign first employee
-      const idx = Math.floor(Math.random() * this._employees.length)
-      req.state = getNextState(req.state, Actions.assignRelationshipManager(this._employees[idx]))
-      // no need to wait for this to finish
-      this.tim.signAndSend({
-        to: { permalink: req.state.relationshipManager },
-        object: {
-          [TYPE]: 'tradle.Introduction',
-          name: 'Customer ' + utils.randomDecimalString(6),
-          message: 'Your new customer',
-          // [TYPE]: 'tradle.Introduction',
-          // relationship: 'customer',
-          identity: req.from.object
-        }
-      })
-    }
-  })
+  bank.use(req => this._assignRelationshipManager(req))
 
   bank.use((req, res) => {
     if (this._models.docs.indexOf(req.type) !== -1) {
@@ -225,6 +198,35 @@ SimpleBank.prototype.receiveMsg = function (msg, senderInfo, sync) {
 
     return this.receivePrivateMsg(msg, senderInfo, sync)
   })
+}
+
+SimpleBank.prototype._assignRelationshipManager = function (req) {
+  // assign relationship manager if none is assigned
+  const from = req.payload.author.permalink
+  const isEmployee = this._employees.some(e => e[ROOT_HASH] === from)
+  if (isEmployee) return
+
+  let currentRM = req.state.relationshipManager
+  const rmIsStillEmployed = this._employees.some(e => e[ROOT_HASH] === currentRM)
+  if (!rmIsStillEmployed) currentRM = null
+
+  if (!Bank.NO_FORWARDING && req.state && !currentRM && this._employees.length) {
+    // for now, just assign first employee
+    const idx = Math.floor(Math.random() * this._employees.length)
+    req.state = getNextState(req.state, Actions.assignRelationshipManager(this._employees[idx]))
+    // no need to wait for this to finish
+    this.tim.signAndSend({
+      to: { permalink: req.state.relationshipManager },
+      object: {
+        [TYPE]: 'tradle.Introduction',
+        name: 'Customer ' + utils.randomDecimalString(6),
+        message: 'Your new customer',
+        // [TYPE]: 'tradle.Introduction',
+        // relationship: 'customer',
+        identity: req.from.object
+      }
+    })
+  }
 }
 
 SimpleBank.prototype._wrapInLock = function (locker, fn) {
