@@ -94,7 +94,7 @@ function SimpleBank (opts) {
       this._models.docs.indexOf(msg[TYPE]) !== -1
   }
 
-  bank.use(req => this._assignRelationshipManager(req))
+  bank.use(this._assignRelationshipManager)
 
   bank.use((req, res) => {
     if (this._models.docs.indexOf(req.type) !== -1) {
@@ -102,6 +102,8 @@ function SimpleBank (opts) {
     }
   })
 
+  bank.use(IDENTITY_PUBLISH_REQUEST, this.publishCustomerIdentity)
+  bank.use(SELF_INTRODUCTION, this.sendProductList)
   bank.use(NEXT_FORM_REQUEST, this.onNextFormRequest)
   // bank.use('tradle.GetMessage', this.lookupAndSend)
   // bank.use('tradle.GetHistory', this.sendHistory)
@@ -182,22 +184,24 @@ module.exports = SimpleBank
 util.inherits(SimpleBank, EventEmitter)
 
 SimpleBank.prototype.receiveMsg = function (msg, senderInfo, sync) {
+  const self = this
   if (Buffer.isBuffer(msg)) msg = tradleUtils.unserializeMessage(msg)
 
   const obj = msg.object
   const type = obj[TYPE]
   const from = senderInfo.permalink || senderInfo.fingerprint || senderInfo.pubKey
   return this._ready.then(() => {
-    if (type === SELF_INTRODUCTION) {
-      return this._wrapInLock(from, () => this._receiveSelfIntroduction(msg, senderInfo, sync))
+    if (type === SELF_INTRODUCTION || type === IDENTITY_PUBLISH_REQUEST) {
+      return this._wrapInLock(from, () => this.tim.addContactIdentity(obj.identity))
+        .then(receivePrivate)
+    } else {
+      return receivePrivate()
     }
-
-    if (type === IDENTITY_PUBLISH_REQUEST) {
-      return this._wrapInLock(from, () => this._receiveIdentityPublishRequest(msg, senderInfo, sync))
-    }
-
-    return this.receivePrivateMsg(msg, senderInfo, sync)
   })
+
+  function receivePrivate () {
+    return self.receivePrivateMsg(msg, senderInfo, sync)
+  }
 }
 
 SimpleBank.prototype._assignRelationshipManager = function (req) {
@@ -233,44 +237,6 @@ SimpleBank.prototype._wrapInLock = function (locker, fn) {
   return this.bank._lock(locker)
     .then(() => fn())
     .finally(() => this.bank._unlock(locker))
-}
-
-SimpleBank.prototype._receiveSelfIntroduction = function (msg, senderInfo, sync) {
-  // fake chainedObj format
-  const req = new RequestState({
-    author: senderInfo,
-    sync: sync,
-    object: msg
-  })
-
-  try {
-    req.from.identity = msg.object.identity
-  } catch (err) {
-    return utils.rejectWithHttpError(400, 'invalid identity')
-  }
-
-  return this.tim.addContactIdentity(msg.object.identity)
-    .then(() => this.sendProductList(req))
-    .finally(() => req.end())
-}
-
-SimpleBank.prototype._receiveIdentityPublishRequest = function (msg, senderInfo, sync) {
-  // fake chainedObj format
-  const req = new RequestState({
-    author: senderInfo,
-    sync: sync,
-    object: msg
-  })
-
-  try {
-    req.from.identity = msg.object.identity
-  } catch (err) {
-    return utils.rejectWithHttpError(400, 'invalid identity')
-  }
-
-  return this.publishCustomerIdentity(req)
-    .then(() => this.sendProductList(req))
-    .finally(() => req.end())
 }
 
 SimpleBank.prototype._setEmployees = function (employees) {
@@ -403,12 +369,9 @@ SimpleBank.prototype.publishCustomerIdentity = function (req) {
   var wasAlreadyPublished
   var curHash = protocol.linkString(identity)
   var rootHash = identity[ROOT_HASH] || curHash
-  return Q.all([
-      tim.objects.get(curHash).catch(noop),
-      tim.addContactIdentity(identity)
-      // tim.keeper.push && tim.keeper.push({ key: curHash, value: buf })
-    ])
-    .spread(function (obj) {
+  tim.objects.get(curHash)
+    .catch(noop)
+    .then(function (obj) {
       // if obj is queued to be chained
       // assume it's on its way to be published
       if (obj && 'sealstatus' in obj) {
