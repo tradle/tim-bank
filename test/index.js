@@ -342,17 +342,17 @@ function testForwarding () {
     runSetup(init)
       .then(_setup => {
         setup = _setup
-        return Q.ninvoke(testHelpers, 'meet', setup.tims)
+        const bank = setup.banks[0]
+        return Q.ninvoke(testHelpers, 'meet', bank._employeeNodes.concat(bank.tim))
       })
       .then(() => new Promise(resolve => {
         var banks = setup.banks
         var applicant = setup.applicant
-        var a = banks[0]
-        var b = banks[1]
+        var bank = banks[0]
 
         var helpers = getHelpers({
           applicant: applicant,
-          bank: a,
+          bank: bank,
           banks: banks,
           forms: {},
           verifications: {},
@@ -362,18 +362,20 @@ function testForwarding () {
 
         var msgFromApplicant = 'hey hey'
         var msgFromEmployee = 'hey ho!'
-        var aPermalink = a.tim.identityInfo.permalink
-        a._employeeNodes.forEach(node => {
-          node.on('message', msg => {
-            t.equal(msg.author, aPermalink)
-            if (msg.object.object[TYPE] === 'tradle.Introduction') {
-              node.addContactIdentity(msg.object.object.identity).done()
+        var bankPermalink = bank.tim.identityInfo.permalink
+        bank._employeeNodes.forEach(employee => {
+          employee.on('message', msg => {
+            const obj = msg.object.object
+            t.equal(msg.author, bankPermalink)
+            if (obj[TYPE] === 'tradle.Introduction') {
+              t.same(obj.profile, applicant.profile)
+              employee.addContactIdentity(obj.identity).done()
             } else {
               t.equal(msg.objectinfo.author, applicant.identityInfo.permalink)
-              t.equal(msg.object.object.message, msgFromApplicant)
+              t.equal(obj.message, msgFromApplicant)
 
-              node.signAndSend({
-                to: a.tim._recipientOpts,
+              employee.signAndSend({
+                to: bank.tim._recipientOpts,
                 object: {
                   [TYPE]: types.SIMPLE_MESSAGE,
                   message: msgFromEmployee
@@ -388,19 +390,24 @@ function testForwarding () {
         })
 
         applicant.on('message', function (msg) {
-          t.equal(msg.author, aPermalink)
-          t.equal(msg.objectinfo.author, aPermalink)
-          t.equal(msg.object.object.message, msgFromEmployee)
-          resolve()
-        })
-
-        applicant.signAndSend({
-          to: a.tim._recipientOpts,
-          object: {
-            [TYPE]: types.SIMPLE_MESSAGE,
-            message: msgFromApplicant
+          t.equal(msg.author, bankPermalink)
+          t.equal(msg.objectinfo.author, bankPermalink)
+          if (msg.object.object[TYPE] === 'tradle.IdentityPublished') {
+            applicant.signAndSend({
+              to: bank.tim._recipientOpts,
+              object: {
+                [TYPE]: types.SIMPLE_MESSAGE,
+                message: msgFromApplicant
+              }
+            })
+          } else {
+            t.equal(msg.object.object.message, msgFromEmployee)
+            resolve()
           }
         })
+
+        helpers.sendIdentity().done()
+
         // helpers.startApplication('tradle.CurrentAccount').done()
 
         // const product = 'tradle.CurrentAccount'
@@ -1010,7 +1017,8 @@ function getHelpers (opts) {
     opts = opts || {}
     signNSend({
       [TYPE]: types.IDENTITY_PUBLISH_REQUEST,
-      identity: applicant.identity
+      identity: applicant.identity,
+      profile: applicant.profile
     })
 
     if (opts.awaitUnchained) {
@@ -1506,7 +1514,11 @@ function init (bankOpts) {
     dir: applicantKeys[0].fingerprint + initCount,
     keys: applicantKeys,
     identity: applicantIdentity,
-    name: 'APPLICANT'
+    name: 'APPLICANT',
+    profile: {
+      firstName: 'Kloop',
+      lastName: 'Grashplechnuff'
+    }
   })
 
   var tims = [applicant]

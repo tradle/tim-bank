@@ -94,16 +94,20 @@ function SimpleBank (opts) {
       this._models.docs.indexOf(msg[TYPE]) !== -1
   }
 
-  bank.use(this._assignRelationshipManager)
-
   bank.use((req, res) => {
     if (this._models.docs.indexOf(req.type) !== -1) {
       return this.handleDocument(req)
     }
   })
 
+  bank.use(IDENTITY_PUBLISH_REQUEST, this._setProfile)
+  bank.use(SELF_INTRODUCTION, this._setProfile)
+
   bank.use(IDENTITY_PUBLISH_REQUEST, this.publishCustomerIdentity)
   bank.use(SELF_INTRODUCTION, this.sendProductList)
+
+  bank.use(this._assignRelationshipManager)
+
   bank.use(NEXT_FORM_REQUEST, this.onNextFormRequest)
   // bank.use('tradle.GetMessage', this.lookupAndSend)
   // bank.use('tradle.GetHistory', this.sendHistory)
@@ -124,6 +128,9 @@ function SimpleBank (opts) {
 
   bank.use(req => {
     if (Bank.NO_FORWARDING || !this._employees.length) return
+
+    const type = req.payload.object[TYPE]
+    if (type === IDENTITY_PUBLISH_REQUEST || type === SELF_INTRODUCTION) return
 
     const from = req.payload.author.permalink
     const isEmployee = this._employees.some(e => e[ROOT_HASH] === from)
@@ -223,7 +230,8 @@ SimpleBank.prototype._assignRelationshipManager = function (req) {
       to: { permalink: req.state.relationshipManager },
       object: {
         [TYPE]: 'tradle.Introduction',
-        name: 'Customer ' + utils.randomDecimalString(6),
+        profile: req.state.profile,
+        name: req.state.profile ? null : 'Customer ' + utils.randomDecimalString(6),
         message: 'Your new customer',
         // [TYPE]: 'tradle.Introduction',
         // relationship: 'customer',
@@ -277,6 +285,14 @@ SimpleBank.prototype._ensureEmployees = function (employees) {
         throw err
       })
   }
+}
+
+SimpleBank.prototype._setProfile = function (req, res) {
+  const profile = req.payload.object.profile
+  if (!profile) return
+
+  const action = Actions.setProfile(profile)
+  req.state = getNextState(req.state, action)
 }
 
 SimpleBank.prototype.getMyEmployees = function () {
