@@ -101,9 +101,10 @@ function SimpleBank (opts) {
   })
 
   bank.use(IDENTITY_PUBLISH_REQUEST, this._setProfile)
-  bank.use(SELF_INTRODUCTION, this._setProfile)
-
   bank.use(IDENTITY_PUBLISH_REQUEST, this.publishCustomerIdentity)
+  bank.use(IDENTITY_PUBLISH_REQUEST, this.sendProductList)
+
+  bank.use(SELF_INTRODUCTION, this._setProfile)
   bank.use(SELF_INTRODUCTION, this.sendProductList)
 
   bank.use(this._assignRelationshipManager)

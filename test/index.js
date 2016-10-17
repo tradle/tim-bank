@@ -392,7 +392,8 @@ function testForwarding () {
         applicant.on('message', function (msg) {
           t.equal(msg.author, bankPermalink)
           t.equal(msg.objectinfo.author, bankPermalink)
-          if (msg.object.object[TYPE] === 'tradle.IdentityPublished') {
+          const obj = msg.object.object
+          if (obj[TYPE] === 'tradle.IdentityPublished') {
             applicant.signAndSend({
               to: bank.tim._recipientOpts,
               object: {
@@ -400,8 +401,8 @@ function testForwarding () {
                 message: msgFromApplicant
               }
             })
-          } else {
-            t.equal(msg.object.object.message, msgFromEmployee)
+          } else if (obj[TYPE] === types.SIMPLE_MESSAGE) {
+            t.equal(obj.message, msgFromEmployee)
             resolve()
           }
         })
