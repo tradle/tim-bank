@@ -29,6 +29,7 @@
     "simple-get": "^1.4.3",
     "stream-collector": "^1.0.1",
     "typeforce": "^1.4.0",
+    "uniq": "^1.0.1",
     "xtend": "^4.0.0"
   },
   "peerDependencies": {

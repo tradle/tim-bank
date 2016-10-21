@@ -146,6 +146,8 @@ function SimpleBank (opts) {
     }
   })
 
+  bank.use('tradle.ShareContext', this.shareContext)
+
   // bank.use(SIMPLE_MESSAGE, (req) => {
   //   var msg = req.payload.object.message
   //   if (!msg) return
@@ -813,6 +815,21 @@ SimpleBank.prototype.revokeProduct = function (opts) {
     .then(() => this.bank._setCustomerState(opts.req))
     .finally(() => this._endRequest(opts))
 }
+
+SimpleBank.prototype.shareContext = function (req, res) {
+  const props = req.payload.object
+  const recipients = props.recipients
+  const method = props.revoked ? 'shareContext' : 'unshareContext'
+  const action = Actions[method](props.context, props.recipients)
+  req.state = getNextState(req.state, action)
+}
+
+// SimpleBank.prototype.unshareContext = function (req, res) {
+//   const shareContext = req.payload.object
+//   const recipients = shareContext.recipients
+//   const action = Actions.unshareContext(shareContext.context, shareContext.recipients)
+//   req.state = getNextState(req.state, action)
+// }
 
 SimpleBank.prototype.models = function () {
   return this._models
