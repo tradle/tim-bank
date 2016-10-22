@@ -985,6 +985,7 @@ function getHelpers (opts) {
   const setup = opts.setup
   const t = opts.t
   const bankCoords = getCoords(bank.tim)
+  let application
   return {
     sendIdentity,
     sendIdentityAgain,
@@ -1078,6 +1079,9 @@ function getHelpers (opts) {
     signNSend({
       [TYPE]: PRODUCT_APPLICATION,
       product: productType
+    })
+    .done(result => {
+      application = result.object.link
     })
 
     return awaitForm(model.forms[0])
@@ -1260,10 +1264,15 @@ function getHelpers (opts) {
   }
 
   function signNSend (msg, opts) {
+    const other = opts.other || {}
+    if (application) {
+      other.context = application
+    }
+
     return applicant.signAndSend({
       object: msg,
       to: bankCoords,
-      other: opts && opts.other
+      other: other
     })
     .then(result => {
       const type = result.object.object[TYPE]

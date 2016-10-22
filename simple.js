@@ -438,7 +438,7 @@ SimpleBank.prototype.handleNewApplication = function (req, res) {
     productType: 'String'
   }, req)
 
-  req.state = getNextState(req.state, Actions.newApplication(req.productType))
+  req.state = getNextState(req.state, Actions.newApplication(req.productType, req.payload.permalink))
   return this.sendNextFormOrApprove({req})
 }
 
@@ -457,7 +457,8 @@ SimpleBank.prototype.handleDocument = function (req, res) {
 
     return this._sendVerification({
       req: req,
-      verifiedItem: req.payload
+      verifiedItem: req.payload,
+      context: msg.object.context
     })
     .then(() => {
       return this.sendNextFormOrApprove({req})
@@ -495,16 +496,19 @@ SimpleBank.prototype.validateDocument = function (req) {
 SimpleBank.prototype._sendVerification = function (opts) {
   typeforce({
     req: 'RequestState',
-    verifiedItem: 'Object'
+    verifiedItem: 'Object',
+    context: 'String'
   }, opts)
 
   const req = opts.req
   const verifiedItem = opts.verifiedItem
-  if (!utils.findFormState(req.state.forms, verifiedItem.link)) {
+  const application = opts.context
+  const pending = utils.getPendingApplication(req.state.pendingApplications, application)
+  if (!utils.findFormState(pending.forms, verifiedItem.link)) {
     return utils.rejectWithHttpError(400, new Error('form not found, refusing to send verification'))
   }
 
-  let action = Actions.createVerification(verifiedItem, this.tim.identity)
+  let action = Actions.createVerification(verifiedItem, this.tim.identity, application)
   req.state = getNextState(req.state, action)
   const verification = utils.lastVerificationFor(req.state.forms, verifiedItem.link)
 
@@ -513,7 +517,7 @@ SimpleBank.prototype._sendVerification = function (opts) {
       msg: verification.body
     })
     .then(sentVerification => {
-      let action = Actions.sentVerification(verifiedItem, verification, sentVerification.object)
+      let action = Actions.sentVerification(verifiedItem, verification, sentVerification.object, application)
       req.state = getNextState(req.state, action)
       this.tim.seal({ link: sentVerification.object.link })
     })
@@ -521,7 +525,8 @@ SimpleBank.prototype._sendVerification = function (opts) {
 
 SimpleBank.prototype.sendVerification = function (opts) {
   typeforce({
-    verifiedItem: typeforce.oneOf('String', 'Object')
+    verifiedItem: typeforce.oneOf('String', 'Object'),
+    context: typeforce.String
   }, opts)
 
   const lookup = typeof opts.verifiedItem === 'string'
@@ -543,7 +548,8 @@ SimpleBank.prototype.sendVerification = function (opts) {
       req.state = state
       return this._sendVerification({
         req: req,
-        verifiedItem: verifiedItem
+        verifiedItem: verifiedItem,
+        context: opts.context
       })
     })
     .then(() => {
@@ -774,7 +780,8 @@ SimpleBank.prototype._endRequest = function (opts) {
 SimpleBank.prototype.approveProduct = function (opts) {
   typeforce({
     customer: 'String',
-    productType: 'String'
+    productType: 'String',
+    context: 'String'
   }, opts)
 
   let req
@@ -885,6 +892,11 @@ SimpleBank.prototype._approveProduct = function (opts) {
 
   if (existing.length) {
     throw new Error('customer already has this product')
+  }
+
+  const pendingApp = getPendingApp(req, opts.context)
+  if (!pendingApp) {
+    throw new Error(`pending application ${appLink} not found`)
   }
 
   const productModel = this._models[productType]
@@ -1036,6 +1048,7 @@ SimpleBank.prototype.requestForm = function (opts) {
   typeforce({
     req: 'RequestState',
     form: 'String',
+    application: 'String',
     productModel: typeforce.Object
   }, opts)
 
@@ -1060,7 +1073,10 @@ SimpleBank.prototype.requestForm = function (opts) {
   debug('requesting form', form)
   return this.bank.send({
     req: req,
-    msg: msg
+    msg: msg,
+    other: {
+      context: opts.application
+    }
   })
 }
 
@@ -1172,7 +1188,7 @@ SimpleBank.prototype.handleVerification = function (req) {
     return utils.rejectWithHttpError(400, new Error('form not found'))
   }
 
-  req.state = getNextState(req.state, Actions.receivedVerification(req.payload))
+  req.state = getNextState(req.state, Actions.receivedVerification(req.payload, req.message.object.context))
   return this.sendNextFormOrApprove({req})
 }
 
