@@ -176,7 +176,7 @@ test.skip('models', function (t) {
   t.end()
 })
 
-// testForwarding()
+testForwarding()
 test('disable forwarding', function (t) {
   require('../core').NO_FORWARDING = true
   t.end()
@@ -614,6 +614,7 @@ function testGuestSession () {
         .then(() => helpers.sendIdentity({ awaitUnchained: true }))
         .then(() => helpers.sendSessionIdentifier(sessionHash, 'tradle.FormError'))
         .then(wrapper => {
+          helpers.setContext(wrapper.object.context)
           const errors = wrapper.object.object.errors
           t.ok(errors.some(e => e.name === missing))
           incompleteAboutYou[missing] = missingVal
@@ -707,6 +708,7 @@ function testRemediation () {
         .then(() => helpers.sendIdentity({ awaitUnchained: true }))
         .then(() => helpers.sendSessionIdentifier(sessionHash, types.FORM_ERROR))
         .then(wrapper => {
+          helpers.setContext(wrapper.object.context)
           const message = wrapper.object.object.message
           t.ok(/review/.test(message))
           helpers.signNSend(aboutYou)
@@ -758,6 +760,7 @@ function testManualMode () {
         t: t
       })
 
+      var application
       helpers.sendIdentity({ awaitUnchained: true })
         .then(() => helpers.startApplication(product))
         .then(() => helpers.sendForm({ form: ABOUT_YOU, awaitVerification: false }))
@@ -787,7 +790,8 @@ function testManualMode () {
         .then(() => {
           return Q.all(Object.keys(forms).map(type => {
             return bank.sendVerification({
-              verifiedItem: forms[type]
+              verifiedItem: forms[type],
+              application: helpers.getContext()
             })
           }))
         })
@@ -795,7 +799,8 @@ function testManualMode () {
           // should succeed
           return bank.approveProduct({
             customer: applicant.permalink,
-            productType: product
+            productType: product,
+            application: helpers.getContext()
           })
         })
         .done(() => approved = true)
@@ -1005,6 +1010,8 @@ function getHelpers (opts) {
     // shareYourMoneyVer,
     // shareLicenseVer,
     forget,
+    setContext,
+    getContext,
     signNSend,
     shareForm,
     shareFormAndVerification,
@@ -1082,9 +1089,7 @@ function getHelpers (opts) {
       [TYPE]: PRODUCT_APPLICATION,
       product: productType
     })
-    .done(result => {
-      application = result.object.link
-    })
+    .done(result => setContext(result.object.link))
 
     return awaitForm(model.forms[0])
       .then(function () {
@@ -1260,6 +1265,14 @@ function getHelpers (opts) {
     signNSend(msg)
     return awaitType(types.FORGOT_YOU)
       .then(() => applicant.forget(bank.tim.permalink))
+  }
+
+  function setContext (context) {
+    application = context
+  }
+
+  function getContext () {
+    return application
   }
 
   function signNSend (msg, opts) {
