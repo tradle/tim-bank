@@ -80,6 +80,7 @@ var DSA = require('@tradle/otr').DSA
 var testUtils = require('./utils')
 var getCoords = testUtils.getCoords
 var testHelpers = require('@tradle/engine/test/helpers')
+var testContexts = require('@tradle/engine/test/contexts')
 var tradle = require('@tradle/engine')
 var protocol = tradle.protocol
 var constants = tradle.constants
@@ -93,6 +94,7 @@ tradle.sender.DEFAULT_BACKOFF_OPTS = tradle.sealer.DEFAULT_BACKOFF_OPTS = {
 }
 
 var utils = require('../lib/utils')
+var createContextDB = require('../lib/contexts')
 var Bank = require('../simple')
 Bank.ALLOW_CHAINING = true
 var users = require('./fixtures/users')
@@ -174,7 +176,7 @@ test.skip('models', function (t) {
   t.end()
 })
 
-testForwarding()
+// testForwarding()
 test('disable forwarding', function (t) {
   require('../core').NO_FORWARDING = true
   t.end()
@@ -1163,9 +1165,6 @@ function getHelpers (opts) {
         opts.awaitVerification && awaitVerification(),
         opts.awaitConfirmation && awaitConfirmation()
       ])
-      .then(function () {
-        if (opts.nextForm) t.pass('got next form: ' + opts.nextForm)
-      })
   }
 
   function sendForms (opts) {
@@ -1264,7 +1263,7 @@ function getHelpers (opts) {
   }
 
   function signNSend (msg, opts) {
-    const other = opts.other || {}
+    const other = opts && opts.other || {}
     if (application) {
       other.context = application
     }
@@ -1376,7 +1375,7 @@ function getHelpers (opts) {
       }
 
       var form = msg.object.object.form
-      t.equal(form, nextFormType, 'got ' + nextFormType)
+      t.equal(form, nextFormType, 'got next form request: ' + nextFormType)
       defer.resolve()
     }
   }
@@ -1685,4 +1684,8 @@ function getPathPrefix (opts) {
   }
 
   return opts.identity.name.formatted + initCount
+}
+
+function rethrow (err) {
+  if (err) throw err
 }

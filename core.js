@@ -431,7 +431,7 @@ Bank.prototype.send = function (opts) {
       return self.tim.send({
         to: recipient,
         object: signed.object,
-        other: opts.other
+        other: req.context && { context: req.context }
       })
     })
     .then(function (_result) {

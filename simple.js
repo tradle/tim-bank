@@ -438,7 +438,9 @@ SimpleBank.prototype.handleNewApplication = function (req, res) {
     productType: 'String'
   }, req)
 
-  req.state = getNextState(req.state, Actions.newApplication(req.productType, req.payload.permalink))
+  const permalink = req.payload.permalink
+  req.state = getNextState(req.state, Actions.newApplication(req.productType, permalink))
+  req.context = permalink
   return this.sendNextFormOrApprove({req})
 }
 
@@ -448,7 +450,7 @@ SimpleBank.prototype.handleDocument = function (req, res) {
   const state = req.state
   const msg = req.msg
   const next = () => {
-    req.state = getNextState(req.state, Actions.receivedForm(req))
+    req.state = getNextState(req.state, Actions.receivedForm(req.payload, req.context))
 
     const prefilledVerification = utils.getImportedVerification(state, req.payload)
     if (!prefilledVerification && !this._auto.verify) {
@@ -457,8 +459,7 @@ SimpleBank.prototype.handleDocument = function (req, res) {
 
     return this._sendVerification({
       req: req,
-      verifiedItem: req.payload,
-      context: msg.object.context
+      verifiedItem: req.payload
     })
     .then(() => {
       return this.sendNextFormOrApprove({req})
@@ -496,28 +497,28 @@ SimpleBank.prototype.validateDocument = function (req) {
 SimpleBank.prototype._sendVerification = function (opts) {
   typeforce({
     req: 'RequestState',
-    verifiedItem: 'Object',
-    context: 'String'
+    verifiedItem: 'Object'
   }, opts)
 
   const req = opts.req
   const verifiedItem = opts.verifiedItem
-  const application = opts.context
-  const pending = utils.getPendingApplication(req.state.pendingApplications, application)
+  const application = req.context
+  const pending = utils.getApplication(req.state, application)
   if (!utils.findFormState(pending.forms, verifiedItem.link)) {
     return utils.rejectWithHttpError(400, new Error('form not found, refusing to send verification'))
   }
 
   let action = Actions.createVerification(verifiedItem, this.tim.identity, application)
   req.state = getNextState(req.state, action)
-  const verification = utils.lastVerificationFor(req.state.forms, verifiedItem.link)
+  const updatedApp = utils.getApplication(req.state, application)
+  const verification = utils.lastVerificationFor(updatedApp.forms, verifiedItem.link)
 
   return this.bank.send({
       req: req,
       msg: verification.body
     })
     .then(sentVerification => {
-      let action = Actions.sentVerification(verifiedItem, verification, sentVerification.object, application)
+      let action = Actions.sentVerification(verifiedItem, verification, sentVerification.object)//, application)
       req.state = getNextState(req.state, action)
       this.tim.seal({ link: sentVerification.object.link })
     })
@@ -526,7 +527,7 @@ SimpleBank.prototype._sendVerification = function (opts) {
 SimpleBank.prototype.sendVerification = function (opts) {
   typeforce({
     verifiedItem: typeforce.oneOf('String', 'Object'),
-    context: typeforce.String
+    application: typeforce.String
   }, opts)
 
   const lookup = typeof opts.verifiedItem === 'string'
@@ -539,6 +540,7 @@ SimpleBank.prototype.sendVerification = function (opts) {
     .then(_verifiedItem => {
       verifiedItem = _verifiedItem
       req = new RequestState(null, verifiedItem)
+      req.context = opts.application
       return this.bank._lock(verifiedItem.author)
     })
     .then(() => {
@@ -548,8 +550,7 @@ SimpleBank.prototype.sendVerification = function (opts) {
       req.state = state
       return this._sendVerification({
         req: req,
-        verifiedItem: verifiedItem,
-        context: opts.context
+        verifiedItem: verifiedItem
       })
     })
     .then(() => {
@@ -601,32 +602,20 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
   typeforce({
     state: '?Object',
     req: '?RequestState',
-    productType: '?String'
+    productType: '?String',
+    application: '?String'
   }, opts)
 
   const req = opts.req
   let state = (req || opts).state
-  const pendingApps = state.pendingApplications
-  if (!pendingApps.length) {
+  const context = opts.application || req.context
+  const application = utils.getApplication(state, context)
+  if (!application) {
+    this._debug(`pending application ${context} not found`)
     return Q()
   }
 
-  let productType = opts.productType
-  if (req && !productType) {
-    productType = req.productType
-    if (!productType) {
-      var product = this._getRelevantPending(pendingApps, req)
-      productType = product && product.type
-    }
-  }
-
-  if (!productType) {
-    this._debug('unable to determine product requested')
-    return Q()
-    // return utils.rejectWithHttpError(400, 'unable to determine product requested')
-  }
-
-  const application = utils.find(pendingApps, app => app.type === productType)
+  const productType = application.type
   const isRemediation = productType === REMEDIATION
   const productModel = isRemediation ? REMEDIATION_MODEL : this._models[productType]
   if (!productModel) {
@@ -663,16 +652,18 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
       return application.skip.indexOf(type) === -1
     }
 
-    return !utils.findLast(state.forms, form => form.type === type)
+    return !utils.find(application.forms, form => form.type === type)
   })
 
   if (missing) {
     if (!this._auto.prompt) return Q()
 
-    const prefilled = state.prefilled[missing]
+    const isMultiEntry = multiEntryForms.indexOf(missing) !== -1
+    let prefilled = !isMultiEntry && utils.findFilledForm(state, missing)
     if (prefilled) {
       const docReq = new RequestState({
         [TYPE]: missing,
+        context: context,
         state: state,
         author: req.from,
         to: req.to,
@@ -682,7 +673,7 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
         // parsed: {
         //   data: prefilled.form
         // }
-      }, { object: prefilled.form })
+      }, { object: prefilled })
 
       // TODO: figure out how to continue on req
       docReq.promise = req.promise.bind(req)
@@ -708,17 +699,19 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
     })
   }
 
-  let forms = utils.getForms(productModel).map(f => {
+  const forms = application.forms.map(wrapper => {
+    const form = wrapper.form
     // take latest form
-    const form = utils.findLast(state.forms, form => form.type === f).form
-    const props = utils.pick(form, 'body')
-    props[CUR_HASH] = form.link
-    return props
+    return {
+      body: form.body,
+      [CUR_HASH]: form.link
+    }
   })
 
   this.emit('application', {
     customer: req.payload.author.permalink,
     productType: productType,
+    application: application,
     forms: forms,
     req: this._auto.verify ? null : req
   })
@@ -730,6 +723,7 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
 
   return this._approveProduct({
     productType: productType,
+    application: context,
     req: req
   })
 }
@@ -781,7 +775,7 @@ SimpleBank.prototype.approveProduct = function (opts) {
   typeforce({
     customer: 'String',
     productType: 'String',
-    context: 'String'
+    application: 'String'
   }, opts)
 
   let req
@@ -885,6 +879,7 @@ SimpleBank.prototype._approveProduct = function (opts) {
   // TODO: minimize code repeat with sendNextFormOrApprove
   const req = opts.req
   const productType = opts.productType
+  const appLink = opts.application
   let state = req.state
   const existing = (state.products[productType] || []).filter(product => {
     return !product.revoked
@@ -894,18 +889,18 @@ SimpleBank.prototype._approveProduct = function (opts) {
     throw new Error('customer already has this product')
   }
 
-  const pendingApp = getPendingApp(req, opts.context)
-  if (!pendingApp) {
+  const application = utils.getApplication(req.state, appLink)
+  if (!application) {
     throw new Error(`pending application ${appLink} not found`)
   }
 
   const productModel = this._models[productType]
-  const missingForms = utils.getMissingForms(state, productModel)
+  const missingForms = utils.getMissingForms(application, productModel)
   if (missingForms.length) {
     return utils.rejectWithHttpError(400, 'request the following forms first: ' + missingForms.join(', '))
   }
 
-  const missingVerifications = utils.getUnverifiedForms(this.tim.identity, state, productModel)
+  const missingVerifications = utils.getUnverifiedForms(this.tim.identity, application, productModel)
   if (missingVerifications.length) {
     const types = missingVerifications.map(f => f.type).join(', ')
     return utils.rejectWithHttpError(400, 'verify the following forms first: ' + types)
@@ -924,8 +919,8 @@ SimpleBank.prototype._approveProduct = function (opts) {
   // }
 
   debug('approving for product', productType)
-  req.state = state = getNextState(state, Actions.approveProduct(productType))
-  const confirmation = this._newProductConfirmation(state, productType)
+  req.state = state = getNextState(state, Actions.approveProduct(appLink))
+  const confirmation = this._newProductConfirmation(state, application)
 
   return this.bank.send({
     req: req,
@@ -937,11 +932,7 @@ SimpleBank.prototype._approveProduct = function (opts) {
     }
 
     const pOfType = state.products[productType]
-    req.state = state = getNextState(state, Actions.approvedProduct({
-      product: utils.last(pOfType),
-      permalink: result.object.permalink
-    }))
-
+    req.state = state = getNextState(state, Actions.approvedProduct(appLink, productType, result.object.permalink))
     return result
   })
 }
@@ -954,9 +945,10 @@ SimpleBank.prototype._newProductRevocation = function (opts) {
   }
 }
 
-SimpleBank.prototype._newProductConfirmation = function (state, productType) {
+SimpleBank.prototype._newProductConfirmation = function (state, application) {
+  const productType = application.type
   const productModel = this._models[productType]
-  const forms = state.forms
+  const forms = application.forms
 
   /**
    * Heuristic:
@@ -1028,17 +1020,17 @@ SimpleBank.prototype._newProductConfirmation = function (state, productType) {
     }
 
     confirmationType = productType + 'Confirmation'
-    const formIds = this._getMyForms(productType, state)
-      .map(f => {
-        return f[TYPE] + '_' + f[CUR_HASH]
-      })
+    const formIds = application.forms.map(wrapper => {
+      return wrapper.type + '_ ' + wrapper.form.link
+    })
 
     return {
       [TYPE]: confirmationType,
       // message: imported
       //   ? `Imported product: ${productModel.title}`
       message: `Congratulations! You were approved for: ${productModel.title}`,
-      forms: formIds
+      forms: formIds,
+      application: application.permalink
     }
   // }
 
@@ -1048,7 +1040,6 @@ SimpleBank.prototype.requestForm = function (opts) {
   typeforce({
     req: 'RequestState',
     form: 'String',
-    application: 'String',
     productModel: typeforce.Object
   }, opts)
 
@@ -1073,10 +1064,7 @@ SimpleBank.prototype.requestForm = function (opts) {
   debug('requesting form', form)
   return this.bank.send({
     req: req,
-    msg: msg,
-    other: {
-      context: opts.application
-    }
+    msg: msg
   })
 }
 
@@ -1188,7 +1176,7 @@ SimpleBank.prototype.handleVerification = function (req) {
     return utils.rejectWithHttpError(400, new Error('form not found'))
   }
 
-  req.state = getNextState(req.state, Actions.receivedVerification(req.payload, req.message.object.context))
+  req.state = getNextState(req.state, Actions.receivedVerification(req.payload, req.context))
   return this.sendNextFormOrApprove({req})
 }
 

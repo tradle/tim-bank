@@ -1,9 +1,9 @@
 'use strict'
 
 const test = require('tape')
-const constants = require('@tradle/constants')
-const CUR_HASH = constants.CUR_HASH
-const ROOT_HASH = constants.ROOT_HASH
+const constants = require('@tradle/engine').constants
+const CUR_HASH = constants.LINK
+const ROOT_HASH = constants.PERMALINK
 const TYPE = constants.TYPE
 const types = constants.TYPES
 const utils = require('../lib/utils')
@@ -13,7 +13,7 @@ const multiEntryProduct =  require('./fixtures/multi-entry')
 
 test('state changes', function (t) {
   const customerRootHash = 'blah'
-  let state = getNewState(null, Actions.newCustomer(customerRootHash))
+  let state = getNewState(null, Actions.newCustomer({ permalink: customerRootHash }))
   t.same(state, {
     pendingApplications: [],
     products: {},
