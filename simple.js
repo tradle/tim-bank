@@ -438,8 +438,15 @@ SimpleBank.prototype.handleNewApplication = function (req, res) {
     productType: 'String'
   }, req)
 
+  const productType = req.productType
+  const pendingApp = find(req.state.pendingApplications || [], app => app.type === productType)
+  if (pendingApp) {
+    req.context = pendingApp.permalink
+    return this.sendNextFormOrApprove({req})
+  }
+
   const permalink = req.payload.permalink
-  req.state = getNextState(req.state, Actions.newApplication(req.productType, permalink))
+  req.state = getNextState(req.state, Actions.newApplication(productType, permalink))
   req.context = permalink
   return this.sendNextFormOrApprove({req})
 }

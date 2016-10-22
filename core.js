@@ -405,7 +405,7 @@ Bank.prototype._delResource = function (type, rootHash) {
  * @return {Promise}
  */
 Bank.prototype.send = function (opts) {
-  var self = this
+  const self = this
   // typeforce('RequestState', req)
   // typeforce('Object', resp)
 

@@ -187,6 +187,7 @@ testMultiEntry()
 testGuestSession()
 testRemediation()
 testManualMode()
+testContinue()
 
 runTests(init)
 // Object.keys(setups).forEach(name => runTests(setups[name]))
@@ -510,6 +511,36 @@ function testMultiEntry () {
         })
     })
     .done()
+  })
+}
+
+function testContinue () {
+  test.only('continue application', function (t) {
+    return runSetup(init).then(setup => {
+      const banks = setup.banks
+      const applicant = setup.applicant
+      const product = CurrentAccount.id
+      const helpers = getHelpers({
+        applicant: applicant,
+        bank: banks[0],
+        banks: banks,
+        forms: {},
+        verifications: {},
+        setup: setup,
+        t: t
+      })
+
+      return helpers.sendIdentity()
+        .then(() => helpers.startApplication(product))
+        .then(formReq1 => {
+          return helpers.startApplication(product)
+            .then(formReq2 => {
+              t.equal(formReq2.object.context, formReq1.object.context)
+            })
+        })
+        .then(() => teardown(setup))
+    })
+    .done(() => t.end())
   })
 }
 
@@ -1092,8 +1123,9 @@ function getHelpers (opts) {
     .done(result => setContext(result.object.link))
 
     return awaitForm(model.forms[0])
-      .then(function () {
+      .then(result => {
         t.pass('got next form')
+        return result
       })
   }
 
@@ -1268,6 +1300,7 @@ function getHelpers (opts) {
   }
 
   function setContext (context) {
+    console.log('setting context', context)
     application = context
   }
 
@@ -1276,9 +1309,11 @@ function getHelpers (opts) {
   }
 
   function signNSend (msg, opts) {
-    const other = opts && opts.other || {}
-    if (application) {
-      other.context = application
+    let other = opts && opts.other
+    let context = getContext()
+    if (context) {
+      if (!other) other = {}
+      other.context = context
     }
 
     return applicant.signAndSend({
@@ -1374,12 +1409,13 @@ function getHelpers (opts) {
     }
   }
 
-  function awaitForm (nextFormType) {
+  function awaitForm (nextFormType, context) {
     var defer = Q.defer()
     applicant.on('message', onmessage)
     return defer.promise
-      .then(function () {
+      .then(result => {
         applicant.removeListener('message', onmessage)
+        return result
       })
 
     function onmessage (msg) {
@@ -1389,7 +1425,8 @@ function getHelpers (opts) {
 
       var form = msg.object.object.form
       t.equal(form, nextFormType, 'got next form request: ' + nextFormType)
-      defer.resolve()
+      // t.equal(msg.object.context, context)
+      defer.resolve(msg)
     }
   }
 
