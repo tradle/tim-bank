@@ -814,7 +814,8 @@ function testManualMode () {
           // should fail
           return bank.approveProduct({
             customer: applicant.permalink,
-            productType: product
+            productType: product,
+            applicant: helpers.getContext()
           })
         })
         .then(() => t.fail('approval should not be possible without verifications'))
@@ -829,10 +830,11 @@ function testManualMode () {
         })
         .then(() => {
           // should succeed
+          debugger
           return bank.approveProduct({
             customer: applicant.permalink,
             productType: product,
-            application: helpers.getContext()
+            // application: helpers.getContext()
           })
         })
         .done(() => approved = true)
@@ -866,7 +868,7 @@ function testManualMode () {
 }
 
 function testShareContext () {
-  test.only('share context', function (t) {
+  test('share context', function (t) {
     let setup
     return runSetup(init).then(_setup => {
       setup = _setup
@@ -905,9 +907,9 @@ function testShareContext () {
 
       let batch = existing
       const receiveMsg = banks[1].receiveMsg
-      console.log('applicant', applicant.permalink)
-      console.log('banks[0]', banks[0].tim.permalink)
-      console.log('banks[1]', banks[1].tim.permalink)
+      // console.log('applicant', applicant.permalink)
+      // console.log('banks[0]', banks[0].tim.permalink)
+      // console.log('banks[1]', banks[1].tim.permalink)
       banks[1].receiveMsg = function (msg, from) {
         msg = tradleUtils.unserializeMessage(msg)
         t.equal(msg.object.object[TYPE], batch.shift())

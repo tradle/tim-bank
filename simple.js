@@ -795,9 +795,9 @@ SimpleBank.prototype._endRequest = function (opts) {
 
 SimpleBank.prototype.approveProduct = function (opts) {
   typeforce({
-    customer: 'String',
-    productType: 'String',
-    application: 'String'
+    customer: typeforce.String,
+    productType: typeforce.maybe(typeforce.String),
+    application: typeforce.maybe(typeforce.String)
   }, opts)
 
   let req
@@ -933,20 +933,26 @@ SimpleBank.prototype._revokeProduct = function (opts) {
 SimpleBank.prototype._approveProduct = function (opts) {
   // TODO: minimize code repeat with sendNextFormOrApprove
   const req = opts.req
-  const productType = opts.productType
-  const appLink = opts.application
   let state = req.state
+  let appLink = opts.application
+  let application = utils.getApplication(req.state, appLink)
+  let productType = opts.productType
+  if (!application) {
+    application = find(req.state.pendingApplications || [], app => app.type === productType)
+    if (!application) {
+      throw new Error(`pending application ${appLink} not found`)
+    } else {
+      appLink = application.permalink
+    }
+  }
+
+  productType = application.type
   const existing = (state.products[productType] || []).filter(product => {
     return !product.revoked
   })
 
   if (existing.length) {
     throw new Error('customer already has this product')
-  }
-
-  const application = utils.getApplication(req.state, appLink)
-  if (!application) {
-    throw new Error(`pending application ${appLink} not found`)
   }
 
   const productModel = this._models[productType]
