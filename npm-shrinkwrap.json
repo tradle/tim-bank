@@ -16,18 +16,6 @@
           "version": "2.0.0",
           "from": "clone@>=2.0.0 <3.0.0",
           "resolved": "https://registry.npmjs.org/clone/-/clone-2.0.0.tgz"
-        },
-        "feed-indexer": {
-          "version": "1.2.1",
-          "from": "feed-indexer@>=1.2.1 <2.0.0",
-          "resolved": "https://registry.npmjs.org/feed-indexer/-/feed-indexer-1.2.1.tgz",
-          "dependencies": {
-            "readable-stream": {
-              "version": "2.1.5",
-              "from": "readable-stream@^2.1.4",
-              "resolved": "https://registry.npmjs.org/readable-stream/-/readable-stream-2.1.5.tgz"
-            }
-          }
         }
       }
     },
@@ -37,9 +25,9 @@
       "resolved": "https://registry.npmjs.org/@tradle/keeper/-/keeper-3.1.0.tgz"
     },
     "@tradle/message-context": {
-      "version": "1.0.0",
-      "from": "@tradle/message-context@latest",
-      "resolved": "https://registry.npmjs.org/@tradle/message-context/-/message-context-1.0.0.tgz"
+      "version": "1.0.1",
+      "from": "@tradle/message-context@>=1.0.0 <2.0.0",
+      "resolved": "https://registry.npmjs.org/@tradle/message-context/-/message-context-1.0.1.tgz"
     },
     "@tradle/otr": {
       "version": "0.2.17",
