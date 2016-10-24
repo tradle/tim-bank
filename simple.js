@@ -20,6 +20,8 @@ const DEFAULT_PRODUCT_LIST = [
   'tradle.JumboMortgage'
 ]
 
+const createContextDB = require('@tradle/message-context')
+
 // const tradleUtils = require('@tradle/utils')
 // const Identity = require('@tradle/identity').Identity
 const Bank = require('./')
@@ -116,7 +118,10 @@ function SimpleBank (opts) {
   bank.use(GUEST_SESSION_PROOF, this.importSession)
   bank.use(FORGET_ME, this.forgetMe)
   bank.use(VERIFICATION, this.handleVerification)
-  bank.use(CUSTOMER_WAITING, this.sendProductList)
+  bank.use(CUSTOMER_WAITING, req => {
+    if (!req.context) return this.sendProductList(req)
+  })
+
   bank.use(PRODUCT_APPLICATION, (req) => {
     var product = req.payload.object.product
     if (this._productList.indexOf(product) === -1) {
@@ -146,6 +151,7 @@ function SimpleBank (opts) {
     }
   })
 
+  bank.use('tradle.Message', this._handleSharedMessage)
   bank.use('tradle.ShareContext', this.shareContext)
 
   // bank.use(SIMPLE_MESSAGE, (req) => {
@@ -188,6 +194,8 @@ function SimpleBank (opts) {
   //     message: 'The feature of switching to representative is coming soon!',
   //   })
   // })
+
+  this._shareContexts()
 }
 
 module.exports = SimpleBank
@@ -199,6 +207,8 @@ SimpleBank.prototype.receiveMsg = function (msg, senderInfo, sync) {
 
   const obj = msg.object
   const type = obj[TYPE]
+  this._debug('receiving ' + type)
+
   const from = senderInfo.permalink || senderInfo.fingerprint || senderInfo.pubKey
   return this._ready.then(() => {
     if (type === SELF_INTRODUCTION || type === IDENTITY_PUBLISH_REQUEST) {
@@ -511,6 +521,11 @@ SimpleBank.prototype._sendVerification = function (opts) {
   const verifiedItem = opts.verifiedItem
   const application = req.context
   const pending = utils.getApplication(req.state, application)
+  if (!pending) {
+    // TODO: save in prefilled verifications
+    return utils.rejectWithHttpError(400, new Error(`application ${application} not found`))
+  }
+
   if (!utils.findFormState(pending.forms, verifiedItem.link)) {
     return utils.rejectWithHttpError(400, new Error('form not found, refusing to send verification'))
   }
@@ -551,7 +566,7 @@ SimpleBank.prototype.sendVerification = function (opts) {
       return this.bank._lock(verifiedItem.author)
     })
     .then(() => {
-      return this.bank._getCustomerState(verifiedItem.author)
+      return this.getCustomerState(verifiedItem.author)
     })
     .then(state => {
       req.state = state
@@ -759,7 +774,7 @@ SimpleBank.prototype._getMyForms = function (product, state) {
 SimpleBank.prototype._simulateReq = function (opts) {
   let req
   const customerHash = opts.customer
-  return this.bank._getCustomerState(customerHash)
+  return this.getCustomerState(customerHash)
     .then(state => {
       req = new RequestState({
         state: state,
@@ -826,10 +841,24 @@ SimpleBank.prototype.revokeProduct = function (opts) {
 
 SimpleBank.prototype.shareContext = function (req, res) {
   const props = req.payload.object
+  const context = props.context
   const recipients = props.recipients
-  const method = props.revoked ? 'shareContext' : 'unshareContext'
-  const action = Actions[method](props.context, props.recipients)
+  const method = props.revoked ? 'unshareContext' : 'shareContext'
+  const action = Actions[method](context, recipients)
   req.state = getNextState(req.state, action)
+
+  const shareMethod = props.revoked ? 'unshare' : 'share'
+  return Q.all(recipients.map(recipient => {
+    return this._ctxDB[shareMethod]({
+      context,
+      recipient,
+      seq: props.seq || 0
+    })
+  }))
+}
+
+SimpleBank.prototype._handleSharedMessage = function (req) {
+  debugger
 }
 
 // SimpleBank.prototype.unshareContext = function (req, res) {
@@ -1293,6 +1322,13 @@ SimpleBank.prototype.importSession = function (req) {
       //   return this.handleDocument(req)
       // }
     })
+}
+
+SimpleBank.prototype._shareContexts = function () {
+  this._ctxDB = createContextDB({
+    node: this.tim,
+    db: 'contexts.db'
+  })
 }
 
 function getType (obj) {

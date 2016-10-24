@@ -94,7 +94,7 @@ tradle.sender.DEFAULT_BACKOFF_OPTS = tradle.sealer.DEFAULT_BACKOFF_OPTS = {
 }
 
 var utils = require('../lib/utils')
-var createContextDB = require('../lib/contexts')
+// var createContextDB = require('../lib/contexts')
 var Bank = require('../simple')
 Bank.ALLOW_CHAINING = true
 var users = require('./fixtures/users')
@@ -515,7 +515,7 @@ function testMultiEntry () {
 }
 
 function testContinue () {
-  test.only('continue application', function (t) {
+  test('continue application', function (t) {
     return runSetup(init).then(setup => {
       const banks = setup.banks
       const applicant = setup.applicant
@@ -1316,19 +1316,27 @@ function getHelpers (opts) {
       other.context = context
     }
 
-    return applicant.signAndSend({
-      object: msg,
-      to: bankCoords,
-      other: other
-    })
-    .then(result => {
-      const type = result.object.object[TYPE]
-      if (MODELS_BY_ID[type].subClassOf === 'tradle.Form' || CurrentAccount.forms.indexOf(type) !== -1) {
-        forms[type] = result.object.permalink
-      }
+    return applicant.sign({ object: msg })
+      .then(result => {
+        if (!other && msg[TYPE] === PRODUCT_APPLICATION) {
+          const link = tradleUtils.hexLink(result.object)
+          other = { context: link }
+        }
 
-      return result
-    })
+        return applicant.send({
+          object: result.object,
+          to: bankCoords,
+          other: other
+        })
+      })
+      .then(result => {
+        const type = result.object.object[TYPE]
+        if (MODELS_BY_ID[type].subClassOf === 'tradle.Form' || CurrentAccount.forms.indexOf(type) !== -1) {
+          forms[type] = result.object.permalink
+        }
+
+        return result
+      })
   }
 
   function shareForm (type) {

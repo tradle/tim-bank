@@ -10,6 +10,7 @@
   "license": "GPLv3",
   "dependencies": {
     "@tradle/engine": "^3.4.2",
+    "@tradle/message-context": "github:mvayngrib/tradle-ctx",
     "array-find": "^1.0.0",
     "clone": "^1.0.2",
     "compression": "^1.6.0",
