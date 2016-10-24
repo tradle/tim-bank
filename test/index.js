@@ -188,6 +188,7 @@ testGuestSession()
 testRemediation()
 testManualMode()
 testContinue()
+testShareContext()
 
 runTests(init)
 // Object.keys(setups).forEach(name => runTests(setups[name]))
@@ -864,6 +865,88 @@ function testManualMode () {
   })
 }
 
+function testShareContext () {
+  test.only('share context', function (t) {
+    let setup
+    return runSetup(init).then(_setup => {
+      setup = _setup
+      return Q.ninvoke(testHelpers, 'meet', setup.tims)
+    })
+    .then(() => {
+      const banks = setup.banks
+      const applicant = setup.applicant
+      const product = CurrentAccount.id
+      let helpers = banks.map(bank => getHelpers({
+        applicant: applicant,
+        bank: bank,
+        banks: banks,
+        forms: {},
+        verifications: {},
+        setup: setup,
+        t: t
+      }))
+
+      const existing = [
+        PRODUCT_APPLICATION,
+        FORM_REQUEST,
+        ABOUT_YOU,
+        VERIFICATION,
+        FORM_REQUEST,
+        YOUR_MONEY,
+        VERIFICATION,
+        FORM_REQUEST // for LICENSE
+      ]
+
+      const live = [
+        LICENSE,
+        VERIFICATION,
+        'tradle.CurrentAccountConfirmation'
+      ]
+
+      let batch = existing
+      const receiveMsg = banks[1].receiveMsg
+      console.log('applicant', applicant.permalink)
+      console.log('banks[0]', banks[0].tim.permalink)
+      console.log('banks[1]', banks[1].tim.permalink)
+      banks[1].receiveMsg = function (msg, from) {
+        msg = tradleUtils.unserializeMessage(msg)
+        t.equal(msg.object.object[TYPE], batch.shift())
+        if (!batch.length) {
+          if (batch !== live) {
+            batch = live
+            helpers[0].sendForm({ form: LICENSE })
+          }
+        }
+
+        return receiveMsg.apply(banks[1], arguments)
+        // return Q.resolve()
+      }
+
+      const employeeToReceive = existing.concat(live)
+      banks[1]._employeeNodes[0].on('message', function (msg, from) {
+        if (msg.object.object.object) {
+          // forwarded message
+          t.equal(msg.object.object.object[TYPE], employeeToReceive.shift())
+          if (!employeeToReceive.length) {
+            teardown(setup).done(() => t.end())
+          }
+        }
+      })
+
+      return helpers[0].startApplication(product)
+        .then(() => helpers[0].sendForm({ form: ABOUT_YOU, nextForm: YOUR_MONEY }))
+        .then(() => helpers[0].sendForm({ form: YOUR_MONEY, nextForm: LICENSE }))
+        .then(() => {
+          return helpers[0].signNSend({
+            [TYPE]: 'tradle.ShareContext',
+            context: helpers[0].getContext(),
+            recipients: [banks[1].tim.permalink]
+          })
+        })
+    })
+  })
+}
+
 function runTests (setupFn, idx) {
   test('current account', function (t) {
     var setup
@@ -1311,7 +1394,7 @@ function getHelpers (opts) {
   function signNSend (msg, opts) {
     let other = opts && opts.other
     let context = getContext()
-    if (context) {
+    if (context && msg[TYPE] !== 'tradle.ShareContext') {
       if (!other) other = {}
       other.context = context
     }

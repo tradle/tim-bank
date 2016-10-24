@@ -858,7 +858,26 @@ SimpleBank.prototype.shareContext = function (req, res) {
 }
 
 SimpleBank.prototype._handleSharedMessage = function (req) {
-  debugger
+  const embeddedMsgAuthor = req.payload.author.permalink
+  const embeddedMsgRecipient = req.payload.recipient.permalink
+  return Q.allSettled([
+    this.getCustomerState(embeddedMsgAuthor),
+    this.getCustomerState(embeddedMsgRecipient)
+  ])
+  .then(results => {
+    const customer = results.filter(r => r.state === 'fulfilled')[0]
+    if (!customer) return
+
+    const rm = customer.relationshipManager
+    if (rm) {
+      this.tim.send({
+        to: { permalink: rm },
+        link: req.payload.link
+      })
+    }
+  })
+
+  // console.log(req.payload.object.object[TYPE], 'from', embeddedMsgAuthor, 'to', embeddedMsgRecipient)
 }
 
 // SimpleBank.prototype.unshareContext = function (req, res) {

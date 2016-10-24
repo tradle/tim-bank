@@ -8,14 +8,50 @@
       "resolved": "https://registry.npmjs.org/@tradle/bitcoinjs-lib/-/bitcoinjs-lib-1.6.0.tgz"
     },
     "@tradle/engine": {
-      "version": "3.4.2",
+      "version": "3.5.0",
       "from": "@tradle/engine@latest",
-      "resolved": "https://registry.npmjs.org/@tradle/engine/-/engine-3.4.2.tgz"
+      "resolved": "https://registry.npmjs.org/@tradle/engine/-/engine-3.5.0.tgz",
+      "dependencies": {
+        "clone": {
+          "version": "2.0.0",
+          "from": "clone@>=2.0.0 <3.0.0",
+          "resolved": "https://registry.npmjs.org/clone/-/clone-2.0.0.tgz"
+        },
+        "feed-indexer": {
+          "version": "1.2.1",
+          "from": "feed-indexer@>=1.2.1 <2.0.0",
+          "resolved": "https://registry.npmjs.org/feed-indexer/-/feed-indexer-1.2.1.tgz",
+          "dependencies": {
+            "readable-stream": {
+              "version": "2.1.5",
+              "from": "readable-stream@^2.1.4",
+              "resolved": "https://registry.npmjs.org/readable-stream/-/readable-stream-2.1.5.tgz"
+            }
+          }
+        }
+      }
     },
     "@tradle/keeper": {
       "version": "3.1.0",
       "from": "@tradle/keeper@>=3.1.0 <4.0.0",
       "resolved": "https://registry.npmjs.org/@tradle/keeper/-/keeper-3.1.0.tgz"
+    },
+    "@tradle/message-context": {
+      "version": "1.0.0",
+      "from": "mvayngrib/tradle-ctx",
+      "resolved": "git://github.com/mvayngrib/tradle-ctx.git#4db20db03087a3f3b45372f42b683a8f8e523aaf",
+      "dependencies": {
+        "feed-indexer": {
+          "version": "1.2.1",
+          "from": "feed-indexer@>=1.2.1 <2.0.0",
+          "resolved": "https://registry.npmjs.org/feed-indexer/-/feed-indexer-1.2.1.tgz"
+        },
+        "readable-stream": {
+          "version": "2.1.5",
+          "from": "readable-stream@^2.1.4",
+          "resolved": "https://registry.npmjs.org/readable-stream/-/readable-stream-2.1.5.tgz"
+        }
+      }
     },
     "@tradle/otr": {
       "version": "0.2.17",
@@ -167,9 +203,9 @@
       "resolved": "https://registry.npmjs.org/balanced-match/-/balanced-match-0.4.2.tgz"
     },
     "base64-js": {
-      "version": "0.0.8",
-      "from": "base64-js@0.0.8",
-      "resolved": "https://registry.npmjs.org/base64-js/-/base64-js-0.0.8.tgz"
+      "version": "1.2.0",
+      "from": "base64-js@>=1.0.2 <2.0.0",
+      "resolved": "https://registry.npmjs.org/base64-js/-/base64-js-1.2.0.tgz"
     },
     "bcrypt-pbkdf": {
       "version": "1.0.0",
@@ -295,9 +331,9 @@
       "resolved": "https://registry.npmjs.org/bs58check/-/bs58check-1.0.8.tgz"
     },
     "buffer": {
-      "version": "3.6.0",
-      "from": "buffer@>=3.6.0 <4.0.0",
-      "resolved": "https://registry.npmjs.org/buffer/-/buffer-3.6.0.tgz"
+      "version": "4.9.1",
+      "from": "buffer@>=4.9.1 <5.0.0",
+      "resolved": "https://registry.npmjs.org/buffer/-/buffer-4.9.1.tgz"
     },
     "buffer-equal": {
       "version": "0.0.1",
@@ -735,18 +771,6 @@
       "from": "fast-future@>=1.0.0 <1.1.0",
       "resolved": "https://registry.npmjs.org/fast-future/-/fast-future-1.0.1.tgz"
     },
-    "feed-indexer": {
-      "version": "1.1.1",
-      "from": "feed-indexer@>=1.1.1 <2.0.0",
-      "resolved": "https://registry.npmjs.org/feed-indexer/-/feed-indexer-1.1.1.tgz",
-      "dependencies": {
-        "readable-stream": {
-          "version": "2.1.5",
-          "from": "readable-stream@>=2.1.4 <3.0.0",
-          "resolved": "https://registry.npmjs.org/readable-stream/-/readable-stream-2.1.5.tgz"
-        }
-      }
-    },
     "filestream": {
       "version": "4.1.3",
       "from": "filestream@>=4.0.0 <5.0.0",
@@ -1140,9 +1164,9 @@
       "resolved": "https://registry.npmjs.org/level-codec/-/level-codec-6.1.0.tgz"
     },
     "level-encrypt": {
-      "version": "3.0.0",
+      "version": "3.1.0",
       "from": "level-encrypt@>=3.0.0 <4.0.0",
-      "resolved": "https://registry.npmjs.org/level-encrypt/-/level-encrypt-3.0.0.tgz"
+      "resolved": "https://registry.npmjs.org/level-encrypt/-/level-encrypt-3.1.0.tgz"
     },
     "level-errors": {
       "version": "1.0.4",
