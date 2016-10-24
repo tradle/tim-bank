@@ -72,6 +72,11 @@ var typeforce = require('typeforce')
 var express = require('express')
 var Q = require('q')
 Q.longStackSupport = true
+Q.onerror = function (err) {
+  console.error(err)
+  throw err
+}
+
 var extend = require('xtend')
 var clone = require('clone')
 var find = require('array-find')

@@ -38,20 +38,8 @@
     },
     "@tradle/message-context": {
       "version": "1.0.0",
-      "from": "mvayngrib/tradle-ctx",
-      "resolved": "git://github.com/mvayngrib/tradle-ctx.git#4db20db03087a3f3b45372f42b683a8f8e523aaf",
-      "dependencies": {
-        "feed-indexer": {
-          "version": "1.2.1",
-          "from": "feed-indexer@>=1.2.1 <2.0.0",
-          "resolved": "https://registry.npmjs.org/feed-indexer/-/feed-indexer-1.2.1.tgz"
-        },
-        "readable-stream": {
-          "version": "2.1.5",
-          "from": "readable-stream@^2.1.4",
-          "resolved": "https://registry.npmjs.org/readable-stream/-/readable-stream-2.1.5.tgz"
-        }
-      }
+      "from": "@tradle/message-context@latest",
+      "resolved": "https://registry.npmjs.org/@tradle/message-context/-/message-context-1.0.0.tgz"
     },
     "@tradle/otr": {
       "version": "0.2.17",
@@ -770,6 +758,18 @@
       "version": "1.0.1",
       "from": "fast-future@>=1.0.0 <1.1.0",
       "resolved": "https://registry.npmjs.org/fast-future/-/fast-future-1.0.1.tgz"
+    },
+    "feed-indexer": {
+      "version": "1.2.1",
+      "from": "feed-indexer@>=1.2.1 <2.0.0",
+      "resolved": "https://registry.npmjs.org/feed-indexer/-/feed-indexer-1.2.1.tgz",
+      "dependencies": {
+        "readable-stream": {
+          "version": "2.1.5",
+          "from": "readable-stream@>=2.1.4 <3.0.0",
+          "resolved": "https://registry.npmjs.org/readable-stream/-/readable-stream-2.1.5.tgz"
+        }
+      }
     },
     "filestream": {
       "version": "4.1.3",

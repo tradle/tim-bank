@@ -874,6 +874,7 @@ SimpleBank.prototype._handleSharedMessage = function (req) {
         to: { permalink: rm },
         link: req.payload.link
       })
+      .done()
     }
   })
 
