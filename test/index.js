@@ -910,19 +910,21 @@ function testShareContext () {
         'tradle.CurrentAccountConfirmation'
       ]
 
-      let batch = existing
+      let batch = existing.slice()
+      let nowLive
       const receiveMsg = banks[1].receiveMsg
       // console.log('applicant', applicant.permalink)
       // console.log('banks[0]', banks[0].tim.permalink)
+      // console.log('banks[0].employee', banks[0]._employeeNodes[0].permalink)
       // console.log('banks[1]', banks[1].tim.permalink)
+      // console.log('banks[1].employee', banks[1]._employeeNodes[0].permalink)
       banks[1].receiveMsg = function (msg, from) {
         msg = tradleUtils.unserializeMessage(msg)
         t.equal(msg.object.object[TYPE], batch.shift())
-        if (!batch.length) {
-          if (batch !== live) {
-            batch = live
-            helpers[0].sendForm({ form: LICENSE })
-          }
+        if (!batch.length && !nowLive) {
+          nowLive = true
+          batch = live.slice()
+          helpers[0].sendForm({ form: LICENSE }).done()
         }
 
         return receiveMsg.apply(banks[1], arguments)
@@ -930,14 +932,18 @@ function testShareContext () {
       }
 
       const employeeToReceive = existing.concat(live)
-      banks[1]._employeeNodes[0].on('message', function (msg, from) {
-        if (msg.object.object.object) {
-          // forwarded message
-          t.equal(msg.object.object.object[TYPE], employeeToReceive.shift())
-          if (!employeeToReceive.length) {
-            teardown(setup).done(() => t.end())
+      banks[1]._employeeNodes.forEach(function (e, i) {
+        // we don't know which employee will be assigned
+        banks[1]._employeeNodes[i].on('message', function (msg, from) {
+          // console.log('EMPLOYEE RECEIVEING')
+          if (msg.object.object.object) {
+            // forwarded message
+            t.equal(msg.object.object.object[TYPE], employeeToReceive.shift())
+            if (!employeeToReceive.length) {
+              teardown(setup).done(() => t.end())
+            }
           }
-        }
+        })
       })
 
       return helpers[0].startApplication(product)
@@ -1390,7 +1396,7 @@ function getHelpers (opts) {
   }
 
   function setContext (context) {
-    console.log('setting context', context)
+    // console.log('setting context', context)
     application = context
   }
 

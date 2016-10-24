@@ -2,7 +2,6 @@
 
 var crypto = require('crypto')
 var extend = require('xtend')
-var randomName = require('random-name')
 var typeforce = require('typeforce')
 var leveldown = require('leveldown')
 var levelup = require('levelup')

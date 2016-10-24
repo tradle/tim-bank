@@ -136,7 +136,12 @@ function SimpleBank (opts) {
     if (Bank.NO_FORWARDING || !this._employees.length) return
 
     const type = req.payload.object[TYPE]
-    if (type === IDENTITY_PUBLISH_REQUEST || type === SELF_INTRODUCTION) return
+    if (type === IDENTITY_PUBLISH_REQUEST || type === SELF_INTRODUCTION
+        // || type === 'tradle.Message'
+        || type === 'tradle.ShareContext'
+    ) {
+      return
+    }
 
     const from = req.payload.author.permalink
     const isEmployee = this._employees.some(e => e[ROOT_HASH] === from)
@@ -144,6 +149,7 @@ function SimpleBank (opts) {
 
     const relationshipManager = req.state.relationshipManager
     if (relationshipManager) {
+      this._debug(`FORWARDING ${req[TYPE]} FROM ${req.customer} TO RM ${relationshipManager}`)
       this.tim.send({
         to: { permalink: relationshipManager },
         link: req.payload.link
@@ -239,6 +245,7 @@ SimpleBank.prototype._assignRelationshipManager = function (req) {
     const idx = Math.floor(Math.random() * this._employees.length)
     req.state = getNextState(req.state, Actions.assignRelationshipManager(this._employees[idx]))
     // no need to wait for this to finish
+    // console.log('ASSIGNED RELATIONSHIP MANAGER TO ' + req.customer)
     this.tim.signAndSend({
       to: { permalink: req.state.relationshipManager },
       object: {
@@ -858,27 +865,27 @@ SimpleBank.prototype.shareContext = function (req, res) {
 }
 
 SimpleBank.prototype._handleSharedMessage = function (req) {
-  const embeddedMsgAuthor = req.payload.author.permalink
-  const embeddedMsgRecipient = req.payload.recipient.permalink
-  return Q.allSettled([
-    this.getCustomerState(embeddedMsgAuthor),
-    this.getCustomerState(embeddedMsgRecipient)
-  ])
-  .then(results => {
-    const customer = results.filter(r => r.state === 'fulfilled')[0]
-    if (!customer) return
+  // const embeddedMsgAuthor = req.payload.author.permalink
+  // const embeddedMsgRecipient = req.payload.recipient.permalink
+  // return Q.allSettled([
+  //   this.getCustomerState(embeddedMsgAuthor),
+  //   this.getCustomerState(embeddedMsgRecipient)
+  // ])
+  // .then(results => {
+  //   const match = results.filter(r => r.state === 'fulfilled')[0]
+  //   if (!match) return console.log('NO MATCH')
 
-    const rm = customer.relationshipManager
-    if (rm) {
-      this.tim.send({
-        to: { permalink: rm },
-        link: req.payload.link
-      })
-      .done()
-    }
-  })
+  //   const customer = match.value
+  //   const rm = customer.relationshipManager
+  //   if (!rm) return console.log('NO RELATIONSHIP MANAGER', req.payload.object.object[TYPE])
 
-  // console.log(req.payload.object.object[TYPE], 'from', embeddedMsgAuthor, 'to', embeddedMsgRecipient)
+  //   console.log('YES RELATIONSHIP MANAGER')
+  //   this.tim.send({
+  //     to: { permalink: rm },
+  //     link: req.payload.link
+  //   })
+  //   .done()
+  // })
 }
 
 // SimpleBank.prototype.unshareContext = function (req, res) {
