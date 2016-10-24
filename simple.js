@@ -848,8 +848,11 @@ SimpleBank.prototype.revokeProduct = function (opts) {
 
 SimpleBank.prototype.shareContext = function (req, res) {
   const props = req.payload.object
-  const context = props.context
-  const recipients = props.recipients
+  const context = props.context.id.split('_')[1]
+  const recipients = props.with.map(r => {
+    return r.id.split('_')[1]
+  })
+
   const method = props.revoked ? 'unshareContext' : 'shareContext'
   const action = Actions[method](context, recipients)
   req.state = getNextState(req.state, action)

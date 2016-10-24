@@ -952,8 +952,8 @@ function testShareContext () {
         .then(() => {
           return helpers[0].signNSend({
             [TYPE]: 'tradle.ShareContext',
-            context: helpers[0].getContext(),
-            recipients: [banks[1].tim.permalink]
+            context: { id: `_${helpers[0].getContext()}` },
+            with: [{ id: `_${banks[1].tim.permalink}` }]
           })
         })
     })
