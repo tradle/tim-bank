@@ -102,6 +102,11 @@ function SimpleBank (opts) {
     }
   })
 
+  bank.use('tradle.Introduction', req => {
+    // danger!
+    return this.tim.addContactIdentity(req.payload.object.identity)
+  })
+
   bank.use(IDENTITY_PUBLISH_REQUEST, this._setProfile)
   bank.use(IDENTITY_PUBLISH_REQUEST, this.publishCustomerIdentity)
   bank.use(IDENTITY_PUBLISH_REQUEST, this.sendProductList)
