@@ -835,7 +835,6 @@ function testManualMode () {
         })
         .then(() => {
           // should succeed
-          debugger
           return bank.approveProduct({
             customer: applicant.permalink,
             productType: product,
@@ -920,6 +919,10 @@ function testShareContext () {
       // console.log('banks[1].employee', banks[1]._employeeNodes[0].permalink)
       banks[1].receiveMsg = function (msg, from) {
         msg = tradleUtils.unserializeMessage(msg)
+        if (!msg.object.object) {
+          return receiveMsg.apply(banks[1], arguments)
+        }
+
         t.equal(msg.object.object[TYPE], batch.shift())
         if (!batch.length && !nowLive) {
           nowLive = true
@@ -934,6 +937,7 @@ function testShareContext () {
       const employeeToReceive = existing.concat(live)
       banks[1]._employeeNodes.forEach(function (e, i) {
         // we don't know which employee will be assigned
+        let receivedIntro
         banks[1]._employeeNodes[i].on('message', function (msg, from) {
           // console.log('EMPLOYEE RECEIVEING')
           if (msg.object.object.object) {
@@ -942,6 +946,8 @@ function testShareContext () {
             if (!employeeToReceive.length) {
               teardown(setup).done(() => t.end())
             }
+          } else {
+            t.equal(msg.object.object[TYPE], 'tradle.Introduction')
           }
         })
       })

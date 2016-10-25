@@ -851,6 +851,9 @@ SimpleBank.prototype.revokeProduct = function (opts) {
 }
 
 SimpleBank.prototype.shareContext = function (req, res) {
+  // TODO:
+  // need to check whether this context is theirs to share
+
   const props = req.payload.object
   const context = props.context.id.split('_')[1]
   const recipients = props.with.map(r => {
@@ -861,14 +864,35 @@ SimpleBank.prototype.shareContext = function (req, res) {
   const action = Actions[method](context, recipients)
   req.state = getNextState(req.state, action)
 
+  const customerIdentity = req.from.object
+  const customerProfile = req.state.profile
   const shareMethod = props.revoked ? 'unshare' : 'share'
-  return Q.all(recipients.map(recipient => {
+  const shareWithOne = recipient => {
+    const intro = props.revoked ? Q.resolve() : introduceCustomerTo(recipient)
+    return intro.then(() => doShareWith(recipient))
+  }
+
+  const introduceCustomerTo = recipient => {
+    return this.tim.signAndSend({
+      to: { permalink: recipient },
+      object: {
+        [TYPE]: 'tradle.Introduction',
+        profile: customerProfile,
+        message: 'introducing...',
+        identity: customerIdentity
+      }
+    })
+  }
+
+  const doShareWith = recipient => {
     return this._ctxDB[shareMethod]({
       context,
       recipient,
       seq: props.seq || 0
     })
-  }))
+  }
+
+  return Q.all(recipients.map(shareWithOne))
 }
 
 SimpleBank.prototype._handleSharedMessage = function (req) {
