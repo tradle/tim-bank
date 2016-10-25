@@ -469,12 +469,16 @@ SimpleBank.prototype.handleNewApplication = function (req, res) {
 }
 
 SimpleBank.prototype.handleDocument = function (req, res) {
-  const bank = this.bank
-  const type = req.type
-  const state = req.state
-  const msg = req.msg
+  const appLink = req.context
+  const pending = utils.getApplication(req.state, appLink)
+  if (!pending) {
+    // TODO: save in prefilled documents
+    return utils.rejectWithHttpError(400, new Error(`application ${appLink} not found`))
+  }
+
+  let state = req.state
   const next = () => {
-    req.state = getNextState(req.state, Actions.receivedForm(req.payload, req.context))
+    req.state = state = getNextState(req.state, Actions.receivedForm(req.payload, appLink))
 
     const prefilledVerification = utils.getImportedVerification(state, req.payload.object)
     if (!prefilledVerification && !this._auto.verify) {
@@ -1244,11 +1248,17 @@ SimpleBank.prototype.getEmployee = function (req) {
 
 SimpleBank.prototype.handleVerification = function (req) {
   // dangerous if verification is malformed
-  if (!utils.findFormState(req.state.forms, req.payload.object.document.id.split('_')[1])) {
+  const appLink = req.context
+  const pending = utils.getApplication(req.state, appLink)
+  if (!pending) {
+    return utils.rejectWithHttpError(400, new Error(`application ${appLink} not found`))
+  }
+
+  if (!utils.findFormState(pending.forms, req.payload.object.document.id.split('_')[1])) {
     return utils.rejectWithHttpError(400, new Error('form not found'))
   }
 
-  req.state = getNextState(req.state, Actions.receivedVerification(req.payload, req.context))
+  req.state = getNextState(req.state, Actions.receivedVerification(req.payload, appLink))
   return this.sendNextFormOrApprove({req})
 }
 
