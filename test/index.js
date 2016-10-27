@@ -113,6 +113,7 @@ var applicantKeys = applicantInfo.keys
 var applicantIdentity = applicantInfo.identity
 var types = require('../lib/types')
 var FORM_REQUEST = 'tradle.FormRequest'
+var SIMPLE_MESSAGE = types.SIMPLE_MESSAGE
 var multiEntryProduct = require('./fixtures/multi-entry')
 // var testHelpers = require('@tradle/test-helpers')
 // var Keeper = require('offline-keeper')
@@ -181,7 +182,8 @@ test.skip('models', function (t) {
   t.end()
 })
 
-testForwarding()
+testForwarding()   // requires forwarding
+testShareContext() // requires forwarding
 test('disable forwarding', function (t) {
   require('../core').NO_FORWARDING = true
   t.end()
@@ -193,7 +195,6 @@ testGuestSession()
 testRemediation()
 testManualMode()
 testContinue()
-testShareContext()
 
 runTests(init)
 // Object.keys(setups).forEach(name => runTests(setups[name]))
@@ -386,7 +387,7 @@ function testForwarding () {
               employee.signAndSend({
                 to: bank.tim._recipientOpts,
                 object: {
-                  [TYPE]: types.SIMPLE_MESSAGE,
+                  [TYPE]: SIMPLE_MESSAGE,
                   message: msgFromEmployee
                 },
                 other: {
@@ -406,11 +407,11 @@ function testForwarding () {
             applicant.signAndSend({
               to: bank.tim._recipientOpts,
               object: {
-                [TYPE]: types.SIMPLE_MESSAGE,
+                [TYPE]: SIMPLE_MESSAGE,
                 message: msgFromApplicant
               }
             })
-          } else if (obj[TYPE] === types.SIMPLE_MESSAGE) {
+          } else if (obj[TYPE] === SIMPLE_MESSAGE) {
             t.equal(obj.message, msgFromEmployee)
             resolve()
           }
@@ -761,7 +762,7 @@ function testRemediation () {
           const message = wrapper.object.object.message
           t.ok(/review/.test(message))
           helpers.signNSend(license)
-          return helpers.awaitType(types.SIMPLE_MESSAGE)
+          return helpers.awaitType(SIMPLE_MESSAGE)
         })
         .then(msg => {
           t.ok(/confirm/.test(msg.object.object.message))
@@ -898,6 +899,10 @@ function testShareContext () {
         ABOUT_YOU,
         VERIFICATION,
         FORM_REQUEST,
+        // start interaction with employee
+        SIMPLE_MESSAGE,
+        SIMPLE_MESSAGE,
+        // end interaction with employee
         YOUR_MONEY,
         VERIFICATION,
         FORM_REQUEST // for LICENSE
@@ -917,12 +922,34 @@ function testShareContext () {
       // console.log('banks[0].employee', banks[0]._employeeNodes[0].permalink)
       // console.log('banks[1]', banks[1].tim.permalink)
       // console.log('banks[1].employee', banks[1]._employeeNodes[0].permalink)
+      banks[0]._employeeNodes.forEach(employee => {
+        employee.on('message', msg => {
+          const type = msg.object.object[TYPE]
+          if (type !== SIMPLE_MESSAGE) return
+
+            // console.log(msg.object.context, helpers[0].getContext())
+          employee.signAndSend({
+            object: {
+              [TYPE]: SIMPLE_MESSAGE,
+              message: 'what is it?'
+            },
+            to: banks[0].tim._recipientOpts,
+            other: {
+              forward: applicant.permalink,
+              context: msg.object.context
+            }
+          }, rethrow)
+        })
+      })
+
       banks[1].receiveMsg = function (msg, from) {
         msg = tradleUtils.unserializeMessage(msg)
         if (!msg.object.object) {
           return receiveMsg.apply(banks[1], arguments)
         }
 
+        // console.log(msg.object.object[TYPE])
+        // if (msg.object.object[TYPE] === SIMPLE_MESSAGE) console.log(msg.object.object)
         t.equal(msg.object.object[TYPE], batch.shift())
         if (!batch.length && !nowLive) {
           nowLive = true
@@ -935,25 +962,32 @@ function testShareContext () {
       }
 
       const employeeToReceive = existing.concat(live)
-      banks[1]._employeeNodes.forEach(function (e, i) {
+      banks[1]._employeeNodes.forEach(employee => {
         // we don't know which employee will be assigned
         let receivedIntro
-        banks[1]._employeeNodes[i].on('message', function (msg, from) {
+        employee.on('message', function (msg, from) {
           // console.log('EMPLOYEE RECEIVEING')
-          if (msg.object.object.object) {
-            // forwarded message
-            t.equal(msg.object.object.object[TYPE], employeeToReceive.shift())
-            if (!employeeToReceive.length) {
-              teardown(setup).done(() => t.end())
-            }
-          } else {
-            t.equal(msg.object.object[TYPE], 'tradle.Introduction')
+          const fwded = msg.object.object.object
+          if (!fwded) {
+            return t.equal(msg.object.object[TYPE], 'tradle.Introduction')
+          }
+
+          // forwarded message
+          const type = fwded[TYPE]
+          t.equal(type, employeeToReceive.shift())
+          if (!employeeToReceive.length) {
+            return teardown(setup).done(() => t.end())
           }
         })
       })
 
       return helpers[0].startApplication(product)
         .then(() => helpers[0].sendForm({ form: ABOUT_YOU, nextForm: YOUR_MONEY }))
+        .then(() => helpers[0].signNSend({
+          [TYPE]: SIMPLE_MESSAGE,
+          message: 'i have a question'
+        }))
+        .then(() => helpers[0].awaitType(SIMPLE_MESSAGE))
         .then(() => helpers[0].sendForm({ form: YOUR_MONEY, nextForm: LICENSE }))
         .then(() => {
           return helpers[0].signNSend({
@@ -1233,7 +1267,7 @@ function getHelpers (opts) {
 
   function tryUnacquainted () {
     var msg = {
-      [TYPE]: types.SIMPLE_MESSAGE,
+      [TYPE]: SIMPLE_MESSAGE,
 //      [NONCE]: '' + nonce++,
       hey: 'ho'
     }

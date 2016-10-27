@@ -38,6 +38,7 @@ const SIGNEE = constants.SIGNEE
 const TYPE = constants.TYPE
 const PREVLINK = constants.PREVLINK
 const PERMALINK = constants.PERMALINK
+const MESSAGE_TYPE = constants.TYPES.MESSAGE
 const types = require('./lib/types')
 const GUEST_SESSION_PROOF = types.GUEST_SESSION_PROOF
 const FORGET_ME = types.FORGET_ME
@@ -55,7 +56,7 @@ const REMEDIATION_MODEL = {
   [TYPE]: 'tradle.Model',
   id: REMEDIATION,
   subClassOf: 'tradle.FinancialProduct',
-  interfaces: ['tradle.Message'],
+  interfaces: [MESSAGE_TYPE],
   forms: []
 }
 
@@ -154,10 +155,17 @@ function SimpleBank (opts) {
 
     const relationshipManager = req.state.relationshipManager
     if (relationshipManager) {
-      this._debug(`FORWARDING ${req[TYPE]} FROM ${req.customer} TO RM ${relationshipManager}`)
+      const obj = req.msg.object.object
+      const embeddedType = obj[TYPE] === MESSAGE_TYPE && obj.object[TYPE]
+      const type = embeddedType || req[TYPE]
+      this._debug(`FORWARDING ${type} FROM ${req.customer} TO RM ${relationshipManager}`)
       this.tim.send({
         to: { permalink: relationshipManager },
-        link: req.payload.link
+        link: req.payload.link,
+        // bad: this creates a duplicate message in the context
+        other: {
+          context: req.context
+        }
       })
     }
   })
@@ -891,7 +899,7 @@ SimpleBank.prototype.shareContext = function (req, res) {
 
   const doShareWith = recipient => {
     return this._ctxDB[shareMethod]({
-      context,
+      context: context + ':' + getConversationIdentifier(this.tim.permalink, req.customer),
       recipient,
       seq: props.seq || 0
     })
@@ -1402,7 +1410,12 @@ SimpleBank.prototype.importSession = function (req) {
 SimpleBank.prototype._shareContexts = function () {
   this._ctxDB = createContextDB({
     node: this.tim,
-    db: 'contexts.db'
+    db: 'contexts.db',
+    getContext: val => {
+      if (val.object.context) {
+        return val.object.context + ':' + getConversationIdentifier(val.author, val.recipient)
+      }
+    }
   })
 }
 
@@ -1436,4 +1449,12 @@ function ensureFormState (forms, curHash) {
 
 function newApplicationState (type) {
   { type }
+}
+
+function alphabetical (a, b) {
+  return a < b ? -1 : a === b ? 0 : 1
+}
+
+function getConversationIdentifier (a, b) {
+  return [a, b].sort(alphabetical).join(':')
 }
