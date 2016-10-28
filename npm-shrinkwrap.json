@@ -25,9 +25,9 @@
       "resolved": "https://registry.npmjs.org/@tradle/keeper/-/keeper-3.1.0.tgz"
     },
     "@tradle/message-context": {
-      "version": "1.3.0",
+      "version": "1.4.0",
       "from": "@tradle/message-context@latest",
-      "resolved": "https://registry.npmjs.org/@tradle/message-context/-/message-context-1.3.0.tgz"
+      "resolved": "https://registry.npmjs.org/@tradle/message-context/-/message-context-1.4.0.tgz"
     },
     "@tradle/otr": {
       "version": "0.2.17",
