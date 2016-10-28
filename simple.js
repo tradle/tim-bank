@@ -157,15 +157,15 @@ function SimpleBank (opts) {
     if (relationshipManager) {
       const obj = req.msg.object.object
       const embeddedType = obj[TYPE] === MESSAGE_TYPE && obj.object[TYPE]
+      const context = req.context
+      const other = context && { context }
       const type = embeddedType || req[TYPE]
       this._debug(`FORWARDING ${type} FROM ${req.customer} TO RM ${relationshipManager}`)
       this.tim.send({
         to: { permalink: relationshipManager },
         link: req.payload.link,
         // bad: this creates a duplicate message in the context
-        other: {
-          context: req.context
-        }
+        other: other
       })
     }
   })
@@ -346,7 +346,7 @@ SimpleBank.prototype.receivePrivateMsg = function (msg, senderInfo, sync) {
         return this.bank.receiveMsg(msg, them, sync)
       },
       err => {
-        const req = new RequestState({ from: senderInfo })
+        const req = new RequestState({ author: senderInfo })
         return this.replyNotFound(req)
       }
     )

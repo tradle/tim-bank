@@ -429,12 +429,13 @@ Bank.prototype.send = function (opts) {
   }
 
   let result
+  const context = req.context
   return maybeSign
     .then(function (signed) {
       return self.tim.send({
         to: recipient,
         object: signed.object,
-        other: req.context && { context: req.context }
+        other: context && { context }
       })
     })
     .then(function (_result) {
