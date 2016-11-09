@@ -616,7 +616,7 @@ SimpleBank.prototype.requestEdit = function (req, errs) {
     errors: '?Array'
   }, errs)
 
-  const prefill = req.payload.object
+  const prefill = clone(req.payload.object)
   if (prefill) {
     // clean prefilled data
     for (let p in prefill) {
