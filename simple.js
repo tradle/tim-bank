@@ -70,6 +70,7 @@ function SimpleBank (opts) {
   tradleUtils.bindFunctions(this)
   EventEmitter.call(this)
 
+  this._validate = opts.validate !== false
   this._auto = extend({
     // approve: true,
     prompt: true,
@@ -531,8 +532,21 @@ SimpleBank.prototype.validateDocument = function (req) {
   const model = this._models[type]
   if (!model) throw new Error(`unknown type ${type}`)
 
-  const errs = utils.validateResource(doc, model)
-  return errs ? Q.reject(errs) : Q()
+  let err
+  if (this._validate) {
+    err = utils.validateResource(doc, model)
+  }
+
+  if (!err) {
+    if (!doc[SIG]) {
+      err = {
+        message: 'Please take a second to review this data',
+        errors: []
+      }
+    }
+  }
+
+  return err ? Q.reject(err) : Q()
 }
 
 SimpleBank.prototype._sendVerification = function (opts) {
