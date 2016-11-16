@@ -494,6 +494,10 @@ SimpleBank.prototype.handleDocument = function (req, res) {
   const next = () => {
     req.state = state = getNextState(req.state, Actions.receivedForm(req.payload, appLink))
 
+    if (!utils.isVerifiableForm(this._models[req.type])) {
+      return this.sendNextFormOrApprove({req})
+    }
+
     const prefilledVerification = utils.getImportedVerification(state, req.payload.object)
     if (!prefilledVerification && !this._auto.verify) {
       return this.sendNextFormOrApprove({req})
