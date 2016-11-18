@@ -783,33 +783,24 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
   if (!this._auto.verify || productType === 'tradle.EmployeeOnboarding') {
     // 'application' event ugly side-effect
     return req.continue || Q()
+    // return (req.continue || Q())
+    //   .then(() => {
+    //     return this.bank.send({
+    //       req: req,
+    //       msg: {
+    //         [TYPE]: 'tradle.ApplicationSubmitted',
+    //         application: context,
+    //         message: 'Application submitted. We\'ll be in touch shortly!',
+    //         forms: getFormIds(application.forms)
+    //       }
+    //     })
+    //   })
   }
 
   return this._approveProduct({
     productType: productType,
     application: context,
     req: req
-  })
-}
-
-SimpleBank.prototype._getMyForms = function (product, state) {
-  const model = typeof product === 'string'
-    ? this._models[product]
-    : product
-
-  return utils.getForms(model).map(f => {
-    const ret = { [TYPE]: f }
-    const docState = utils.findLast(state.forms, form => form.type === f)
-    const verifications = docState.verifications
-    if (verifications && verifications.length) {
-      let formId = verifications[0].body.document.id
-      let parts = formId.split('_')
-      ret[CUR_HASH] = parts[1]
-    } else {
-      ret[CUR_HASH] = docState.form[CUR_HASH]
-    }
-
-    return ret
   })
 }
 
@@ -886,9 +877,9 @@ SimpleBank.prototype.shareContext = function (req, res) {
   // need to check whether this context is theirs to share
 
   const props = req.payload.object
-  const context = props.context.id.split('_')[1]
+  const context = utils.parseObjectId(props.context.id).permalink
   const recipients = props.with.map(r => {
-    return r.id.split('_')[1]
+    return utils.parseObjectId(r.id).permalink
   })
 
   const method = props.revoked ? 'unshareContext' : 'shareContext'
@@ -1151,10 +1142,7 @@ SimpleBank.prototype._newProductConfirmation = function (state, application) {
     }
 
     confirmationType = productType + 'Confirmation'
-    const formIds = application.forms.map(wrapper => {
-      return wrapper.type + '_ ' + wrapper.form.link
-    })
-
+    const formIds = getFormIds(application.forms)
     return {
       [TYPE]: confirmationType,
       // message: imported
@@ -1309,7 +1297,8 @@ SimpleBank.prototype.handleVerification = function (req) {
     return utils.rejectWithHttpError(400, new Error(`application ${appLink} not found`))
   }
 
-  if (!utils.findFormState(pending.forms, req.payload.object.document.id.split('_')[1])) {
+  const { link } = utils.parseObjectId(req.payload.object.document.id)
+  if (!utils.findFormState(pending.forms, link)) {
     return utils.rejectWithHttpError(400, new Error('form not found'))
   }
 
@@ -1440,7 +1429,7 @@ SimpleBank.prototype._shareContexts = function () {
 function getType (obj) {
   if (obj[TYPE]) return obj[TYPE]
   if (!obj.id) return
-  return obj.id.split('_')[0]
+  return utils.parseObjectId(obj.id).type
 }
 
 function assert (statement, errMsg) {
@@ -1475,4 +1464,14 @@ function alphabetical (a, b) {
 
 function getConversationIdentifier (a, b) {
   return [a, b].sort(alphabetical).join(':')
+}
+
+function getFormIds (forms) {
+  const ids = forms.map(wrapper => {
+    const link = wrapper.form.link
+    const permalink = wrapper.form.body[PERMALINK] || link
+    return `${wrapper.type}_${permalink}_${link}`
+  })
+
+  return ids
 }

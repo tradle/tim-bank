@@ -679,7 +679,7 @@ function testGuestSession () {
         ])
         .spread(verifications => {
           const yourMoneyV = find(verifications, v => {
-            return v.object.object.document.id.split('_')[0] === YOUR_MONEY
+            return utils.parseObjectId(v.object.object.document.id).type === YOUR_MONEY
           })
 
           t.equal(yourMoneyV.object.object.backDated, 10000)
@@ -736,7 +736,7 @@ function testRemediation () {
       const verified = helpers.awaitVerification(3)
         .then(verifications => {
           const yourMoneyV = find(verifications, v => {
-            return v.object.object.document.id.split('_')[0] === YOUR_MONEY
+            return utils.parseObjectId(v.object.object.document.id).type === YOUR_MONEY
           })
 
           t.equal(yourMoneyV.object.object.backDated, 10000)
@@ -849,7 +849,7 @@ function testManualMode () {
         if (wrapper.object.object[TYPE] !== VERIFICATION) return
 
         t.equal(--verificationsTogo >= 0, true)
-        t.pass('got verification for ' + wrapper.object.object.document.id.split('_')[0])
+        t.pass('got verification for ' + utils.parseObjectId(wrapper.object.object.document.id).type)
       })
 
       helpers.awaitConfirmation()
@@ -1102,7 +1102,7 @@ function runTests (setupFn, idx) {
           return
         }
 
-        var documentHash = wrapper.object.document.id.split('_')[1]
+        var documentHash = utils.parseObjectId(wrapper.object.document.id).link
         return applicant.objects.get(documentHash)
           .then(function (docWrapper) {
             var vType = docWrapper.object[TYPE]
