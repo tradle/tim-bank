@@ -142,7 +142,7 @@ function SimpleBank (opts) {
   bank.use(req => {
     if (Bank.NO_FORWARDING || !this._employees.length) return
 
-    const type = req.payload.object[TYPE]
+    let type = req.payload.object[TYPE]
     if (type === IDENTITY_PUBLISH_REQUEST || type === SELF_INTRODUCTION
         // || type === 'tradle.Message'
         || type === 'tradle.ShareContext'
@@ -155,24 +155,40 @@ function SimpleBank (opts) {
     if (isEmployee) return
 
     const relationshipManager = req.state.relationshipManager
-    if (relationshipManager) {
-      const obj = req.msg.object.object
-      const embeddedType = obj[TYPE] === MESSAGE_TYPE && obj.object[TYPE]
-      const context = req.context
-      const other = context && { context }
-      const type = embeddedType || req[TYPE]
-      this._debug(`FORWARDING ${type} FROM ${req.customer} TO RM ${relationshipManager}`)
-      this.tim.send({
-        to: { permalink: relationshipManager },
-        link: req.payload.link,
-        // bad: this creates a duplicate message in the context
-        other: other
-      })
-    }
+    if (!relationshipManager) return
+
+    const obj = req.msg.object.object
+    const embeddedType = obj[TYPE] === MESSAGE_TYPE && obj.object[TYPE]
+    const context = req.context
+    const other = context && { context }
+    type = embeddedType || req[TYPE]
+    this._debug(`FORWARDING ${type} FROM ${req.customer} TO RM ${relationshipManager}`)
+    this.tim.send({
+      to: { permalink: relationshipManager },
+      link: req.payload.link,
+      // bad: this creates a duplicate message in the context
+      other: other
+    })
   })
 
   bank.use('tradle.Message', this._handleSharedMessage)
   bank.use('tradle.ShareContext', this.shareContext)
+
+  // bank.use(req => {
+  //   const relationshipManager = req.state.relationshipManager
+  //   if (!relationshipManager) return
+
+  //   req.sent.forEach(msg => {
+  //     debugger
+  //     // this._debug(`FORWARDING SELF-SENT ${type} TO RM ${relationshipManager}`)
+  //     // this.tim.send({
+  //     //   to: { permalink: relationshipManager },
+  //     //   object: msg.object,
+  //     //   // bad: this creates a duplicate message in the context
+  //     //   other: other
+  //     // })
+  //   })
+  // })
 
   // bank.use(SIMPLE_MESSAGE, (req) => {
   //   var msg = req.payload.object.message
@@ -216,6 +232,7 @@ function SimpleBank (opts) {
   // })
 
   this._shareContexts()
+  // this._forwardConversations()
 }
 
 module.exports = SimpleBank
@@ -250,18 +267,20 @@ SimpleBank.prototype._assignRelationshipManager = function (req) {
   const isEmployee = this._employees.some(e => e[ROOT_HASH] === from)
   if (isEmployee) return
 
-  let currentRM = req.state.relationshipManager
-  const rmIsStillEmployed = this._employees.some(e => e[ROOT_HASH] === currentRM)
-  if (!rmIsStillEmployed) currentRM = null
+  let relationshipManager = req.state.relationshipManager
+  const rmIsStillEmployed = this._employees.some(e => e[ROOT_HASH] === relationshipManager)
+  if (!rmIsStillEmployed) relationshipManager = null
 
-  if (!Bank.NO_FORWARDING && req.state && !currentRM && this._employees.length) {
+  if (!Bank.NO_FORWARDING && req.state && !relationshipManager && this._employees.length) {
     // for now, just assign first employee
     const idx = Math.floor(Math.random() * this._employees.length)
     req.state = getNextState(req.state, Actions.assignRelationshipManager(this._employees[idx]))
     // no need to wait for this to finish
     // console.log('ASSIGNED RELATIONSHIP MANAGER TO ' + req.customer)
+
+    relationshipManager = req.state.relationshipManager
     this.tim.signAndSend({
-      to: { permalink: req.state.relationshipManager },
+      to: { permalink: relationshipManager },
       object: {
         [TYPE]: 'tradle.Introduction',
         profile: req.state.profile,
@@ -272,6 +291,12 @@ SimpleBank.prototype._assignRelationshipManager = function (req) {
         identity: req.from.object
       }
     })
+
+    // this._forwardDB.share({
+    //   context: getConversationIdentifier(this.tim.permalink, req.customer),
+    //   recipient: relationshipManager,
+    //   seq: 0
+    // })
   }
 }
 
@@ -1422,6 +1447,16 @@ SimpleBank.prototype._shareContexts = function () {
       if (val.object.context) {
         return val.object.context + ':' + getConversationIdentifier(val.author, val.recipient)
       }
+    }
+  })
+}
+
+SimpleBank.prototype._forwardConversations = function () {
+  this._forwardDB = createContextDB({
+    node: this.tim,
+    db: 'forward.db',
+    getContext: val => {
+      return getConversationIdentifier(val.author, val.object.forward || val.recipient)
     }
   })
 }
