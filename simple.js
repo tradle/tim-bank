@@ -1319,7 +1319,13 @@ SimpleBank.prototype.handleVerification = function (req) {
   const appLink = req.context
   const pending = utils.getApplication(req.state, appLink)
   if (!pending) {
-    return utils.rejectWithHttpError(400, new Error(`application ${appLink} not found`))
+    const product = utils.getProduct(req.state, appLink)
+    if (!product) {
+      return utils.rejectWithHttpError(400, new Error(`application ${appLink} not found`))
+    }
+
+    req.state = getNextState(req.state, Actions.receivedVerification(req.payload, appLink))
+    return Q.resolve()
   }
 
   const { link } = utils.parseObjectId(req.payload.object.document.id)

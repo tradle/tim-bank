@@ -1024,7 +1024,7 @@ function runTests (setupFn, idx) {
       // tryUnacquainted() // TODO: get this working
       Q()
         .then(runBank1Scenario)
-        // .then(runBank2Scenario)
+        .then(runBank2Scenario)
         .then(function () {
           changeBank(banks[0])
           console.log('exercising right to be forgotten')
@@ -1445,26 +1445,36 @@ function getHelpers (opts) {
   }
 
   function signNSend (msg, opts) {
+    return applicant.sign({ object: msg })
+      .then(result => {
+        return send({
+          object: result.object
+        }, opts)
+      })
+  }
+
+  function send (msg, opts) {
+    const type = msg.object ? msg.object[TYPE] : msg.type
     let other = opts && opts.other
     let context = getContext()
-    if (context && msg[TYPE] !== 'tradle.ShareContext') {
+    if (context && type !== 'tradle.ShareContext') {
       if (!other) other = {}
       other.context = context
     }
 
-    return applicant.sign({ object: msg })
-      .then(result => {
-        if (!other && msg[TYPE] === PRODUCT_APPLICATION) {
-          const link = tradleUtils.hexLink(result.object)
-          other = { context: link }
-        }
+    if (!other && type === PRODUCT_APPLICATION) {
+      const link = msg.link || tradleUtils.hexLink(msg.object)
+      other = { context: link }
+    }
 
-        return applicant.send({
-          object: result.object,
-          to: bankCoords,
-          other: other
-        })
-      })
+    const sendOpts = { other, to: bankCoords }
+    if (msg.object) {
+      sendOpts.object = msg.object
+    } else {
+      sendOpts.link = msg.link
+    }
+
+    return applicant.send(sendOpts)
       .then(result => {
         const type = result.object.object[TYPE]
         if (MODELS_BY_ID[type].subClassOf === 'tradle.Form' || CurrentAccount.forms.indexOf(type) !== -1) {
@@ -1476,11 +1486,18 @@ function getHelpers (opts) {
   }
 
   function shareForm (type) {
-    return applicant.send({ link: forms[type], to: bankCoords })
+    return send({
+      link: forms[type],
+      type: type
+    })
   }
 
   function shareVerification (type) {
-    return applicant.send({ link: verifications[type], to: bankCoords })
+    return send({
+      link: verifications[type],
+      to: bankCoords ,
+      type: VERIFICATION
+    })
   }
 
   function awaitVerification (n) {
