@@ -1069,11 +1069,11 @@ SimpleBank.prototype._approveProduct = function (opts) {
     return !product.revoked
   })
 
-  if (existing.length) {
+  const productModel = this._models[productType]
+  if (existing.length && !productModel.customerCanHaveMultiple) {
     throw new Error('customer already has this product')
   }
 
-  const productModel = this._models[productType]
   const missingForms = utils.getMissingForms(application, productModel)
   if (missingForms.length) {
     return utils.rejectWithHttpError(400, 'request the following forms first: ' + missingForms.join(', '))
