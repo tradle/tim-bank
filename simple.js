@@ -747,17 +747,15 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
   }
 
   const thisProduct = state.products[productType]
-  if (thisProduct) {
-    if (thisProduct.length) {
-      const msg = utils.buildSimpleMsg(
-        'You already have a ' + productModel.title + ' with us!'
-      )
+  if (thisProduct && thisProduct.length && !productModel.customerCanHaveMultiple) {
+    const msg = utils.buildSimpleMsg(
+      'You already have a ' + productModel.title + ' with us!'
+    )
 
-      return this.bank.send({
-        msg: msg,
-        req: req
-      })
-    }
+    return this.bank.send({
+      msg: msg,
+      req: req
+    })
   }
   // else if (productType !== REMEDIATION) {
   //   state.products[productType] = []
@@ -842,19 +840,18 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
 
   if (!this._auto.verify || productType === 'tradle.EmployeeOnboarding') {
     // 'application' event ugly side-effect
-    return req.continue || Q()
-    // return (req.continue || Q())
-    //   .then(() => {
-    //     return this.bank.send({
-    //       req: req,
-    //       msg: {
-    //         [TYPE]: 'tradle.ApplicationSubmitted',
-    //         application: context,
-    //         message: 'Application submitted. We\'ll be in touch shortly!',
-    //         forms: getFormIds(application.forms)
-    //       }
-    //     })
-    //   })
+    return (req.continue || Q())
+      .then(() => {
+        return this.bank.send({
+          req: req,
+          msg: {
+            [TYPE]: 'tradle.ApplicationSubmitted',
+            application: context,
+            message: 'Application submitted. We\'ll be in touch shortly!',
+            forms: getFormIds(application.forms)
+          }
+        })
+      })
   }
 
   return this._approveProduct({
