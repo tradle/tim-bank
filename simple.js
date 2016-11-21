@@ -232,6 +232,19 @@ function SimpleBank (opts) {
   // })
 
   this._shareContexts()
+  this._plugins = []
+
+  // default plugins
+  this.use({
+    shouldSendVerification: ({ form }) => {
+      const iVerified = form.verifications.some(v => {
+        return v.author.permalink === this.tim.permalink
+      })
+
+      if (iVerified) return false
+    }
+  })
+
   // this._forwardConversations()
 }
 
@@ -379,7 +392,7 @@ SimpleBank.prototype.receivePrivateMsg = function (msg, senderInfo, sync) {
 }
 
 SimpleBank.prototype.replyNotFound = function (req, whatWasntFound) {
-  return this.bank.send({
+  return this.send({
     req: req,
     msg: {
       [TYPE]: 'tradle.NotFound',
@@ -393,26 +406,6 @@ SimpleBank.prototype.replyNotFound = function (req, whatWasntFound) {
 
   // public=true because not knowing their identity,
   // we don't know how to encrypt messages for them
-}
-
-SimpleBank.prototype.shouldSendVerification = function ({ state, application, form }) {
-  // console.log(application.forms.map(f => f.verifications))
-  const iVerified = form.verifications.some(v => {
-    return v.author.permalink === this.tim.permalink
-  })
-
-  return iVerified
-    ? Q.resolve(false)
-    : this._shouldSendVerification({ state, application, form })
-}
-
-/**
- * Override this for custom logic
- * @param  {[type]} form [description]
- * @return {[type]}      [description]
- */
-SimpleBank.prototype._shouldSendVerification = function () {
-  return Q.resolve(true)
 }
 
 SimpleBank.prototype.sendProductList = function (req) {
@@ -637,7 +630,7 @@ SimpleBank.prototype._sendVerification = function (opts) {
   const updatedApp = req.application // dynamically calc'c prop
   const verification = utils.lastVerificationFor(updatedApp.forms, verifiedItem.link)
 
-  return this.bank.send({
+  return this.send({
       req: req,
       msg: verification.body
     })
@@ -709,7 +702,7 @@ SimpleBank.prototype.requestEdit = function (req, errs) {
     message = 'Importing...' + message[0].toLowerCase() + message.slice(1)
   }
 
-  return this.bank.send({
+  return this.send({
     req: req,
     msg: {
       [TYPE]: 'tradle.FormError',
@@ -752,7 +745,7 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
       'You already have a ' + productModel.title + ' with us!'
     )
 
-    return this.bank.send({
+    return this.send({
       msg: msg,
       req: req
     })
@@ -815,7 +808,7 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
     )
 
     debug('finished remediation')
-    return this.bank.send({
+    return this.send({
       req: req,
       msg: msg
     })
@@ -842,7 +835,7 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
     // 'application' event ugly side-effect
     return (req.continue || Q())
       .then(() => {
-        return this.bank.send({
+        return this.send({
           req: req,
           msg: {
             [TYPE]: 'tradle.ApplicationSubmitted',
@@ -1034,7 +1027,7 @@ SimpleBank.prototype._revokeProduct = function (opts) {
       product[PREVLINK] = wrapper.link
       product[PERMALINK] = wrapper.permalink
       isEmployeePass = product[TYPE] === 'tradle.MyEmployeeOnboarding'
-      return this.bank.send({
+      return this.send({
         req: req,
         msg: product
       })
@@ -1101,7 +1094,7 @@ SimpleBank.prototype._approveProduct = function (opts) {
   req.state = state = getNextState(state, Actions.approveProduct(appLink))
   const confirmation = this._newProductConfirmation(state, application)
 
-  return this.bank.send({
+  return this.send({
     req: req,
     msg: confirmation
   })
@@ -1212,9 +1205,10 @@ SimpleBank.prototype._newProductConfirmation = function (state, application) {
 
 }
 
-/** Override this to change form request */
-SimpleBank.prototype._willRequestForm = function ({ state, application, form, formRequest }) {
-  return formRequest
+
+SimpleBank.prototype.send = function ({ req, msg }) {
+  return this.willSend({ req, msg })
+    .then(() => this.bank.send({ req, msg }))
 }
 
 SimpleBank.prototype.requestForm = function (opts) {
@@ -1235,24 +1229,27 @@ SimpleBank.prototype.requestForm = function (opts) {
     // isMultiEntry ? 'Please fill out this form and attach a snapshot of the original document' :
     'Please fill out this form and attach a snapshot of the original document' : 'Please fill out this form'
 
-  const formRequest = this._willRequestForm({
-    state: req.state,
-    application: req.application,
-    form: form,
-    // allow the developer to modify this
-    formRequest: {
-      [TYPE]: 'tradle.FormRequest',
-      message: prompt,
-      product: productModel.id,
-      form: form
-    }
-  })
+  const formRequest = {
+    [TYPE]: 'tradle.FormRequest',
+    message: prompt,
+    product: productModel.id,
+    form: form
+  }
 
-  debug('requesting form', form)
-  return this.bank.send({
-    req: req,
-    msg: formRequest
-  })
+  return this.willRequestForm({
+      state: req.state,
+      application: req.application,
+      form,
+      // allow the developer to modify this
+      formRequest
+    })
+    .then(() => {
+      debug('requesting form', form)
+      return this.send({
+        req: req,
+        msg: formRequest
+      })
+    })
 }
 
 SimpleBank.prototype._getRelevantPending = function (pending, reqState) {
@@ -1340,7 +1337,7 @@ SimpleBank.prototype.getEmployee = function (req) {
       identifier: employeeIdentifier
     }
 
-    return this.bank.send({
+    return this.send({
       req: req,
       msg: employeeNotFound
     })
@@ -1351,7 +1348,7 @@ SimpleBank.prototype.getEmployee = function (req) {
     employee: utils.pick(employeeInfo, 'pub', 'profile')
   }
 
-  return this.bank.send({
+  return this.send({
     req: req,
     msg: resp
   })
@@ -1394,7 +1391,12 @@ SimpleBank.prototype.handleVerification = function (req) {
       if (should) {
         return this._sendVerification({
           req: req,
-          verifiedItem: verifiedItem.form.body
+          verifiedItem: {
+            author: req.from,
+            object: verifiedItem.form.body,
+            link: verifiedItem.form.link,
+            permalink: verifiedItem.form.permalink
+          }
         })
       }
     })
@@ -1474,7 +1476,7 @@ SimpleBank.prototype.importSession = function (req) {
           ? 'Please check and correct the following data'
           : `Let's get this ${this._models[req.productType].title} Application on the road!`
 
-        return this.bank.send({
+        return this.send({
           req: req,
           msg: {
             [TYPE]: SIMPLE_MESSAGE,
@@ -1529,6 +1531,46 @@ SimpleBank.prototype._forwardConversations = function () {
       return getConversationIdentifier(val.author, val.object.forward || val.recipient)
     }
   })
+}
+
+// PLUGIN RELATED METHODS
+
+SimpleBank.prototype.use = function (plugin) {
+  this._plugins.push(plugin)
+}
+
+SimpleBank.prototype._execPlugins = function (method, args) {
+  return this._plugins
+    .filter(p => p[method])
+    .reduce(function (promise, plugin) {
+      return promise.then(() => {
+        return plugin[method](...args)
+      })
+    }, Q())
+}
+
+SimpleBank.prototype.willSend = function ({ req, msg }) {
+  return this._execPlugins('willSend', arguments)
+}
+
+SimpleBank.prototype.willRequestForm = function ({ state, application, form, formRequest }) {
+  return this._execPlugins('willRequestForm', arguments)
+}
+
+SimpleBank.prototype.shouldSendVerification = function ({ state, application, form }) {
+  return this._plugins
+    .filter(p => p.shouldSendVerification)
+    .reduce(function (promise, plugin) {
+      return promise.then(should => {
+        if (typeof should === 'boolean') return should
+
+        return plugin.shouldSendVerification({ state, application, form })
+      })
+    }, Q())
+    .then(should => {
+      // if not vetoed, send
+      return typeof should === 'bolean' ? should : true
+    })
 }
 
 function getType (obj) {
