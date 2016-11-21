@@ -401,6 +401,17 @@ Bank.prototype._delResource = function (type, rootHash) {
   return Q.ninvoke(this._db, 'del', prefixKey(type, rootHash))
 };
 
+Bank.prototype.createReadStream = function (type, opts={}) {
+  return this._db.createReadStream(extend({
+    gt: prefixKey(type, ''),
+    lt: prefixKey(type, '\xff')
+  }, opts))
+}
+
+Bank.prototype.createCustomerStream = function (opts) {
+  return this.createReadStream(CUSTOMER, opts)
+}
+
 /**
  * Send message to customer
  * @param  {Object} opts
