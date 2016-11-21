@@ -1,7 +1,7 @@
 'use strict'
 
 // var LOG = require('why-is-node-running')
-// require('q-to-bluebird')
+// require('./q-to-bluebird')
 // require('@tradle/multiplex-utp')
 
 var crypto = require('crypto')
@@ -944,17 +944,13 @@ function testShareContext () {
 
       banks[1].receiveMsg = function (msg, from) {
         msg = tradleUtils.unserializeMessage(msg)
-        if (!msg.object.object) {
-          return receiveMsg.apply(banks[1], arguments)
-        }
-
-        // console.log(msg.object.object[TYPE])
-        // if (msg.object.object[TYPE] === SIMPLE_MESSAGE) console.log(msg.object.object)
-        t.equal(msg.object.object[TYPE], batch.shift())
-        if (!batch.length && !nowLive) {
-          nowLive = true
-          batch = live.slice()
-          helpers[0].sendForm({ form: LICENSE }).done()
+        if (msg.object.object) {
+          t.equal(msg.object.object[TYPE], batch.shift())
+          if (!batch.length && !nowLive) {
+            nowLive = true
+            batch = live.slice()
+            helpers[0].sendForm({ form: LICENSE }).done()
+          }
         }
 
         return receiveMsg.apply(banks[1], arguments)
