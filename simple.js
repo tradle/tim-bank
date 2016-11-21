@@ -395,6 +395,26 @@ SimpleBank.prototype.replyNotFound = function (req, whatWasntFound) {
   // we don't know how to encrypt messages for them
 }
 
+SimpleBank.prototype.shouldSendVerification = function ({ state, application, form }) {
+  // console.log(application.forms.map(f => f.verifications))
+  const iVerified = form.verifications.some(v => {
+    return v.author.permalink === this.tim.permalink
+  })
+
+  return iVerified
+    ? Q.resolve(false)
+    : this._shouldSendVerification({ state, application, form })
+}
+
+/**
+ * Override this for custom logic
+ * @param  {[type]} form [description]
+ * @return {[type]}      [description]
+ */
+SimpleBank.prototype._shouldSendVerification = function () {
+  return Q.resolve(true)
+}
+
 SimpleBank.prototype.sendProductList = function (req) {
   var bank = this.bank
   var formModels = {}
@@ -509,7 +529,7 @@ SimpleBank.prototype.handleNewApplication = function (req, res) {
 
 SimpleBank.prototype.handleDocument = function (req, res) {
   const appLink = req.context
-  const pending = utils.getApplication(req.state, appLink)
+  const pending = req.application
   if (!pending) {
     // TODO: save in prefilled documents
     return utils.rejectWithHttpError(400, new Error(`application ${appLink} not found`))
@@ -520,34 +540,49 @@ SimpleBank.prototype.handleDocument = function (req, res) {
     req.state = state = getNextState(req.state, Actions.receivedForm(req.payload, appLink))
 
     if (!utils.isVerifiableForm(this._models[req.type])) {
-      return this.sendNextFormOrApprove({req})
+      return
     }
 
     const prefilledVerification = utils.getImportedVerification(state, req.payload.object)
     if (!prefilledVerification && !this._auto.verify) {
-      return this.sendNextFormOrApprove({req})
+      return
     }
 
-    return this._sendVerification({
-      req: req,
-      verifiedItem: req.payload
-    })
-    .then(() => {
-      return this.sendNextFormOrApprove({req})
-    })
+    // get updated application state
+    return this.shouldSendVerification({
+        state,
+        application: req.application,
+        form: utils.findFormState(req.application.forms, req.payload.link)
+      })
+      .then(should => {
+        if (should) {
+          return this._sendVerification({
+            req: req,
+            verifiedItem: req.payload
+          })
+        }
+      })
+
     // .then(() => {
     //   req.state = getNextState(req.state, Actions.sentVerification(msg))
     // })
   }
 
+  let valid = true
   return this.validateDocument(req)
     .then(
       next,
       errs => {
+        valid = false
         req.nochain = true
         return this.requestEdit(req, errs)
       }
     )
+    .then(() => {
+      if (valid) {
+        return this.sendNextFormOrApprove({req})
+      }
+    })
 }
 
 SimpleBank.prototype.onNextFormRequest = function (req, res) {
@@ -586,20 +621,20 @@ SimpleBank.prototype._sendVerification = function (opts) {
 
   const req = opts.req
   const verifiedItem = opts.verifiedItem
-  const application = req.context
-  const pending = utils.getApplication(req.state, application)
+  const appLink = req.context
+  const pending = req.application
   if (!pending) {
     // TODO: save in prefilled verifications
-    return utils.rejectWithHttpError(400, new Error(`application ${application} not found`))
+    return utils.rejectWithHttpError(400, new Error(`application ${appLink} not found`))
   }
 
   if (!utils.findFormState(pending.forms, verifiedItem.link)) {
     return utils.rejectWithHttpError(400, new Error('form not found, refusing to send verification'))
   }
 
-  let action = Actions.createVerification(verifiedItem, this.tim.identity, application)
+  let action = Actions.createVerification(verifiedItem, this.tim.identityInfo, appLink)
   req.state = getNextState(req.state, action)
-  const updatedApp = utils.getApplication(req.state, application)
+  const updatedApp = req.application // dynamically calc'c prop
   const verification = utils.lastVerificationFor(updatedApp.forms, verifiedItem.link)
 
   return this.bank.send({
@@ -607,7 +642,7 @@ SimpleBank.prototype._sendVerification = function (opts) {
       msg: verification.body
     })
     .then(sentVerification => {
-      let action = Actions.sentVerification(verifiedItem, verification, sentVerification.object)//, application)
+      let action = Actions.sentVerification(verifiedItem, verification, sentVerification.object)
       req.state = getNextState(req.state, action)
       this.tim.seal({ link: sentVerification.object.link })
     })
@@ -736,12 +771,12 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
     : utils.getForms(productModel)
 
   const multiEntryForms = productModel.multiEntryForms || []
-  const missing = utils.find(reqdForms, type => {
+  const missing = find(reqdForms, type => {
     if (multiEntryForms.indexOf(type) !== -1) {
       return application.skip.indexOf(type) === -1
     }
 
-    return !utils.find(application.forms, form => form.type === type)
+    return !find(application.forms, form => form.type === type)
   })
 
   if (missing) {
@@ -1180,6 +1215,11 @@ SimpleBank.prototype._newProductConfirmation = function (state, application) {
 
 }
 
+/** Override this to change form request */
+SimpleBank.prototype._willRequestForm = function ({ state, application, form, formRequest }) {
+  return formRequest
+}
+
 SimpleBank.prototype.requestForm = function (opts) {
   typeforce({
     req: 'RequestState',
@@ -1198,17 +1238,23 @@ SimpleBank.prototype.requestForm = function (opts) {
     // isMultiEntry ? 'Please fill out this form and attach a snapshot of the original document' :
     'Please fill out this form and attach a snapshot of the original document' : 'Please fill out this form'
 
-  const msg = {
-    [TYPE]: 'tradle.FormRequest',
-    message: prompt,
-    product: productModel.id,
-    form: form
-  }
+  const formRequest = this._willRequestForm({
+    state: req.state,
+    application: req.application,
+    form: form,
+    // allow the developer to modify this
+    formRequest: {
+      [TYPE]: 'tradle.FormRequest',
+      message: prompt,
+      product: productModel.id,
+      form: form
+    }
+  })
 
   debug('requesting form', form)
   return this.bank.send({
     req: req,
-    msg: msg
+    msg: formRequest
   })
 }
 
@@ -1317,7 +1363,7 @@ SimpleBank.prototype.getEmployee = function (req) {
 SimpleBank.prototype.handleVerification = function (req) {
   // dangerous if verification is malformed
   const appLink = req.context
-  const pending = utils.getApplication(req.state, appLink)
+  let pending = req.application
   if (!pending) {
     const product = utils.getProduct(req.state, appLink)
     if (!product) {
@@ -1329,12 +1375,33 @@ SimpleBank.prototype.handleVerification = function (req) {
   }
 
   const { link } = utils.parseObjectId(req.payload.object.document.id)
-  if (!utils.findFormState(pending.forms, link)) {
+  let verifiedItem = utils.findFormState(pending.forms, link)
+  if (!verifiedItem) {
     return utils.rejectWithHttpError(400, new Error('form not found'))
   }
 
   req.state = getNextState(req.state, Actions.receivedVerification(req.payload, appLink))
-  return this.sendNextFormOrApprove({req})
+
+  // get updated application and form state
+  pending = req.application // dynamically calc'd prop
+  verifiedItem = utils.findFormState(pending.forms, link)
+
+  const opts = {
+    state: req.state,
+    application: pending,
+    form: verifiedItem
+  }
+
+  return this.shouldSendVerification(opts)
+    .then(should => {
+      if (should) {
+        return this._sendVerification({
+          req: req,
+          verifiedItem: verifiedItem.form.body
+        })
+      }
+    })
+    .then(() => this.sendNextFormOrApprove({req}))
 }
 
 SimpleBank.prototype.forgetMe = function (req) {
