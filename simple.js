@@ -1569,7 +1569,7 @@ SimpleBank.prototype.shouldSendVerification = function ({ state, application, fo
     }, Q())
     .then(should => {
       // if not vetoed, send
-      return typeof should === 'bolean' ? should : true
+      return typeof should === 'boolean' ? should : true
     })
 }
 
