@@ -802,6 +802,13 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
     })
   }
 
+  const missingVerifications = utils.getUnverifiedForms(this.tim.identity, application, productModel)
+  if (missingVerifications.length) {
+    const types = missingVerifications.map(f => f.type).join(', ')
+    this._debug(`still waiting to verify: ${types}`)
+    return
+  }
+
   if (isRemediation) {
     const msg = utils.buildSimpleMsg(
       'Thank you for confirming your information with us!'
