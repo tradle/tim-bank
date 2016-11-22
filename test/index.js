@@ -90,8 +90,8 @@ var tradle = require('@tradle/engine')
 var protocol = tradle.protocol
 var constants = tradle.constants
 var TYPE = constants.TYPE
-var CUR_HASH = constants.CUR_HASH
-var ROOT_HASH = constants.ROOT_HASH
+var LINK = constants.LINK
+var PERMALINK = constants.PERMALINK
 var tradleUtils = tradle.utils
 tradle.sender.DEFAULT_BACKOFF_OPTS = tradle.sealer.DEFAULT_BACKOFF_OPTS = {
   initialDelay: 100,
@@ -104,7 +104,7 @@ var Bank = require('../simple')
 Bank.ALLOW_CHAINING = true
 var users = require('./fixtures/users')
 users.forEach(u => {
-  if (!u[ROOT_HASH]) u[ROOT_HASH] = u[CUR_HASH]
+  if (!u[PERMALINK]) u[PERMALINK] = u[LINK]
 })
 
 var applicantInfo = users.pop()
@@ -182,6 +182,7 @@ test.skip('models', function (t) {
   t.end()
 })
 
+testStableRM()
 testForwarding()   // requires forwarding
 testShareContext() // requires forwarding
 test('disable forwarding', function (t) {
@@ -345,6 +346,91 @@ runTests(init)
 //       })
 //   })
 // }
+
+function testStableRM () {
+  // send messages back and forth between the employees of respective banks
+  // make sure that employees get assigned to a consistent employee on the other side
+  test('stable relationship manager', t => {
+    var setup
+    runSetup(init)
+      .then(_setup => {
+        setup = _setup
+        // meet
+        // TODO: this test should pass without employees of
+        // the respective banks having to know each other's identities
+        return Q.ninvoke(testHelpers, 'meet', setup.tims)
+      })
+      .then(() => new Promise(resolve => {
+        var [b0, b1] = setup.banks
+        b0._assignRelationshipManager = () => t.fail('relationship manager should not be assigned')
+
+        const b1AssignRM = b1._assignRelationshipManager
+        let assigned
+        b1._assignRelationshipManager = function () {
+          t.notOk(assigned, 'relationship manager got reassigned')
+          assigned = true
+          return b1AssignRM.apply(this, arguments)
+        }
+
+        // console.log('b0', b0.tim.identity.pubkeys[2].pub, b0._employeeNodes.map(e => e.permalink))
+        // console.log('b1', b1.tim.identity.pubkeys[2].pub, b1._employeeNodes.map(e => e.permalink))
+        var applicant = setup.applicant
+        var b0employee = b0._employeeNodes[0]
+        var b1employee
+        var togo = 10
+
+        b0employee.on('message', msg => {
+          if (msg.object.object[TYPE] !== SIMPLE_MESSAGE) return
+
+          t.equal(msg.object.contact, b1employee.permalink)
+          if (!checkDone(msg)) sendNext(b0, b1, b0employee, msg.object.contact)
+        })
+
+        b1._employeeNodes.forEach(e => {
+          e.on('message', msg => {
+            if (!b1employee) {
+              b1employee = e
+            }
+
+            if (msg.object.object[TYPE] !== SIMPLE_MESSAGE) return
+
+            t.equal(msg.object.contact, b0employee.permalink)
+            if (!checkDone(msg)) sendNext(b1, b0, e, msg.object.contact)
+          })
+        })
+
+        sendNext(b0, b1, b0employee)
+
+        function sendNext (fromBank, toBank, fromEmployee, inReplyTo) {
+          return fromEmployee.signAndSend({
+            to: getCoords(fromBank.tim),
+            object: {
+              [TYPE]: 'tradle.SimpleMessage',
+              message: togo--
+            },
+            other: {
+              forward: [
+                toBank.tim.permalink
+              ].concat(inReplyTo || [])
+            }
+          })
+          .done()
+        }
+
+        function checkDone (msg) {
+          const n = msg.object.object.message
+          if (n === 0) {
+            t.end()
+            resolve()
+          }
+
+          return n <= 0
+        }
+      }))
+      .then(() => teardown(setup))
+      .done()
+  })
+}
 
 function testForwarding () {
   test('forward messages through bot', t => {
@@ -922,8 +1008,11 @@ function testShareContext () {
       // console.log('banks[0].employee', banks[0]._employeeNodes[0].permalink)
       // console.log('banks[1]', banks[1].tim.permalink)
       // console.log('banks[1].employee', banks[1]._employeeNodes[0].permalink)
+      let b0employee
       banks[0]._employeeNodes.forEach(employee => {
         employee.on('message', msg => {
+          if (!b0employee) b0employee = employee
+
           const type = msg.object.object[TYPE]
           if (type !== SIMPLE_MESSAGE) return
 
@@ -986,6 +1075,15 @@ function testShareContext () {
         .then(() => helpers[0].awaitType(SIMPLE_MESSAGE))
         .then(() => helpers[0].sendForm({ form: YOUR_MONEY, nextForm: LICENSE }))
         .then(() => {
+          // return b0employee.signAndSend({
+          //   to: getCoords(banks[0].tim),
+          //   object: {
+          //     [TYPE]: 'tradle.ShareContext',
+          //     context: { id: `_${helpers[0].getContext()}` },
+          //     with: [{ id: `_${banks[1].tim.permalink}` }]
+          //   }
+          // })
+
           return helpers[0].signNSend({
             [TYPE]: 'tradle.ShareContext',
             context: { id: `_${helpers[0].getContext()}` },
@@ -1591,7 +1689,7 @@ function getHelpers (opts) {
   //   var backup
   //   var bank = banks[0]
   //   var bankCoords = {}
-  //   bankCoords[ROOT_HASH] = bank.tim.myRootHash()
+  //   bankCoords[PERMALINK] = bank.tim.myRootHash()
   //   var options = applicant.options()
   //   applicant.history(bankCoords)
   //     .then(function (msgs) {
@@ -1619,7 +1717,7 @@ function getHelpers (opts) {
   //   function oneDown (info) {
   //     var idx
   //     backup.some(function (msg, i) {
-  //       if (msg[ROOT_HASH] === info[ROOT_HASH]) {
+  //       if (msg[PERMALINK] === info[PERMALINK]) {
   //         idx = i
   //         t.pass('retrieved backed up msg')
   //         return true
@@ -1663,7 +1761,7 @@ function runSetup (init) {
   //   })
 
   //   function onReadSealOne (info) {
-  //     // console.log(this.myRootHash(), info[ROOT_HASH])
+  //     // console.log(this.myRootHash(), info[PERMALINK])
   //     if (--togo === 0) {
   //       defer.resolve()
   //     }
@@ -1740,8 +1838,8 @@ function init (bankOpts) {
   var tims = [applicant]
   var banks = BANK_PERSONNEL.map(function (personnel, i) {
     var port = BASE_PORT++
-    // console.log('employees: ' + employees.map(e => e[ROOT_HASH]).join(', '))
-    // console.log('bot: ' + personnel[0][ROOT_HASH])
+    // console.log('employees: ' + employees.map(e => e[PERMALINK]).join(', '))
+    // console.log('bot: ' + personnel[0][PERMALINK])
     var botName = 'Bank ' + i
     var personnelNodes = personnel.map(function (rep, j) {
       return createNode({
@@ -1755,8 +1853,8 @@ function init (bankOpts) {
     var bot = personnelNodes[0]
     var employees = personnel.slice(1).map(e => {
       const props = utils.pick(e, 'identity', 'profile')
-      props[CUR_HASH] = e.link
-      props[ROOT_HASH] = e.identity[ROOT_HASH] || e.link
+      props[LINK] = e.link
+      props[PERMALINK] = e.identity[PERMALINK] || e.link
       return props
     })
 

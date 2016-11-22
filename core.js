@@ -21,8 +21,8 @@ var RequestState = require('./lib/requestState')
 var getNewState = require('./lib/reducers')
 var Actions = require('./lib/actionCreators')
 var debug = require('./debug')
-var CUR_HASH = constants.CUR_HASH
-var ROOT_HASH = constants.ROOT_HASH
+var LINK = constants.LINK
+var PERMALINK = constants.PERMALINK
 var SIG = constants.SIG
 var TYPE = constants.TYPE
 // var OWNER = constants.OWNER
@@ -254,31 +254,35 @@ Bank.prototype._onMessage = function (received, sync) {
 
   const from = msgWrapper.author.permalink
   let customer = from
-  const employee = find(this._employees || [], e => {
-    return e[ROOT_HASH] === from
-  })
+  const employee = find(this._employees || [], e => e[PERMALINK] === from)
 
-  const fwdTo = !Bank.NO_FORWARDING && msgWrapper.object.forward
-  if (fwdTo) {
-    if (!employee) {
-      return utils.rejectWithHttpError(403, 'this bot only forwards message from employees')
-    }
-
-    if (fwdTo !== this.tim.permalink && fwdTo !== this.tim.link) {
+  let fwdTo = !Bank.NO_FORWARDING && utils.getForward(msgWrapper)
+  if (fwdTo && employee) {
+    const myIdx = fwdTo.indexOf(this.tim.permalink)
+    const nextIdx = myIdx === -1 ? 0 : myIdx + 1.1
+    const nextInLine = fwdTo[nextIdx]
+    if (nextInLine) {
       // re-sign the object
-      // the customer doesn't need to know the identity of the employee
+      // before: the customer doesn't need to know the identity of the employee
+      // now: the customer should know the remote employee but talk through the bot
       const context = msgWrapper.object.context
-      const other = context && { context }
+      const other = { contact: from }
+      if (context) other.context = context
+      if (fwdTo.length > nextIdx + 1) {
+        other.forward = fwdTo.slice(nextIdx + 1)
+      }
+
       this.tim.signAndSend({
-        to: { permalink: fwdTo },
+        to: { permalink: nextInLine },
         object: tutils.omit(obj, SIG),
         other: other
       })
+      .catch(err => this._debug('failed to forward message', err))
 
       if (obj[TYPE] === VERIFICATION) {
         // rewire "from"
         // why?
-        customer = fwdTo
+        customer = nextInLine
       } else {
         // forward without processing
         return
@@ -509,7 +513,7 @@ function unprefixKey (type, key) {
 //       .on('data', function (data) {
 //         tim.lookupObject(data)
 //           .then(function (msg) {
-//             console.log('msg', msg[CUR_HASH])
+//             console.log('msg', msg[LINK])
 //           })
 //       })
 //   })

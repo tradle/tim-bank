@@ -31,11 +31,10 @@ const find = utils.find
 const RequestState = require('./lib/requestState')
 const getNextState = require('./lib/reducers')
 const debug = require('./debug')
-const ROOT_HASH = constants.ROOT_HASH
-const CUR_HASH = constants.CUR_HASH
 const SIG = constants.SIG
 const SIGNEE = constants.SIGNEE
 const TYPE = constants.TYPE
+const LINK = constants.LINK
 const PREVLINK = constants.PREVLINK
 const PERMALINK = constants.PERMALINK
 const MESSAGE_TYPE = constants.TYPES.MESSAGE
@@ -116,7 +115,7 @@ function SimpleBank (opts) {
   bank.use(SELF_INTRODUCTION, this._setProfile)
   bank.use(SELF_INTRODUCTION, this.sendProductList)
 
-  bank.use(this._assignRelationshipManager)
+  bank.use(this._setRelationshipManager)
 
   bank.use(NEXT_FORM_REQUEST, this.onNextFormRequest)
   // bank.use('tradle.GetMessage', this.lookupAndSend)
@@ -151,18 +150,25 @@ function SimpleBank (opts) {
     }
 
     const from = req.payload.author.permalink
-    const isEmployee = this._employees.some(e => e[ROOT_HASH] === from)
+    const isEmployee = this._employees.some(e => e[PERMALINK] === from)
     if (isEmployee) return
 
-    const relationshipManager = req.state.relationshipManager
+    const relationshipManager = req.relationshipManager
     if (!relationshipManager) return
 
     const obj = req.msg.object.object
     const embeddedType = obj[TYPE] === MESSAGE_TYPE && obj.object[TYPE]
     const context = req.context
-    const other = context && { context }
+    const other = {}
+    if (context) other.context = context
+
+    const remoteRM = getRemoteContact(req)
+    if (remoteRM) other.contact = remoteRM
+
     type = embeddedType || req[TYPE]
     this._debug(`FORWARDING ${type} FROM ${req.customer} TO RM ${relationshipManager}`)
+
+    // should we be attaching req.msg.object.contact? (the remote relationship manager)
     this.tim.send({
       to: { permalink: relationshipManager },
       link: req.payload.link,
@@ -274,24 +280,35 @@ SimpleBank.prototype.receiveMsg = function (msg, senderInfo, sync) {
   }
 }
 
-SimpleBank.prototype._assignRelationshipManager = function (req) {
+SimpleBank.prototype._setRelationshipManager = function (req) {
   // assign relationship manager if none is assigned
   const from = req.payload.author.permalink
-  const isEmployee = this._employees.some(e => e[ROOT_HASH] === from)
+  const isEmployee = this._employees.some(e => e[PERMALINK] === from)
   if (isEmployee) return
 
-  let relationshipManager = req.state.relationshipManager
-  const rmIsStillEmployed = this._employees.some(e => e[ROOT_HASH] === relationshipManager)
-  if (!rmIsStillEmployed) relationshipManager = null
+  let relationshipManager = this._deduceRelationshipManager(req)
+  if (relationshipManager) {
+    const rmIsStillEmployed = this._employees.some(e => e[PERMALINK] === relationshipManager)
+    if (!rmIsStillEmployed) {
+      relationshipManager = null
+    } else {
+      req.relationshipManager = relationshipManager
+    }
+  }
 
   if (!Bank.NO_FORWARDING && req.state && !relationshipManager && this._employees.length) {
-    // for now, just assign first employee
-    const idx = Math.floor(Math.random() * this._employees.length)
-    req.state = getNextState(req.state, Actions.assignRelationshipManager(this._employees[idx]))
+    relationshipManager = this._assignRelationshipManager(req)
+    // console.log('assigned relationship manager', relationshipManager, 'to', req.customer)
+    if (relationshipManager !== this._deduceRelationshipManager(req)) {
+      throw new Error('relationship manager get/set mismatch')
+    }
+
+    // req.state = getNextState(req.state, Actions.assignRelationshipManager(this._employees[idx]))
+
     // no need to wait for this to finish
     // console.log('ASSIGNED RELATIONSHIP MANAGER TO ' + req.customer)
 
-    relationshipManager = req.state.relationshipManager
+    // relationshipManager = req.state.relationshipManager
     this.tim.signAndSend({
       to: { permalink: relationshipManager },
       object: {
@@ -311,6 +328,63 @@ SimpleBank.prototype._assignRelationshipManager = function (req) {
     //   seq: 0
     // })
   }
+}
+
+SimpleBank.prototype._deduceRelationshipManager = function (req) {
+  let fwd = utils.getForward(req.message)
+  if (fwd) {
+    // check if we're being asked to forward this msg to one of our employees
+    const myIdx = fwd.indexOf(this.tim.permalink)
+    if (myIdx !== -1) {
+      fwd = fwd.slice(myIdx + 1)
+    }
+
+    const rm = find(this._employees, e => e[PERMALINK] === fwd[0])
+    if (rm) return rm[PERMALINK]
+  }
+
+  const state = req.state
+  const rms = req.state.relationshipManagers
+  if (rms) {
+    const rmsForCustomer = rms[req.customer]
+    if (rmsForCustomer) {
+      // if there's a relationship manager for this customer in this context
+      // assign them
+      if (req.context && rmsForCustomer.context[req.context]) {
+        return rmsForCustomer.context[req.context]
+      }
+
+      // if there's no context, get the assigned relationship manager for remote contact
+      return rmsForCustomer.contact[getRemoteContact(req)]
+    }
+  }
+}
+
+SimpleBank.prototype._assignRelationshipManager = function (req) {
+  // console.log(this.tim.permalink, 'ASSIGNING')
+  const employees = this._employees
+  const idx = Math.floor(Math.random() * employees.length)
+  const employee = employees[idx][PERMALINK]
+  let rms = req.state.relationshipManagers
+  if (!rms) {
+    rms = req.state.relationshipManagers = {}
+  }
+
+  if (!rms[req.customer]) {
+    rms[req.customer] = {
+      context: {},
+      contact: {}
+    }
+  }
+
+  rms = rms[req.customer]
+  if (req.context) {
+    rms.context[req.context] = employee
+  } else {
+    rms.contact[getRemoteContact(req)] = employee
+  }
+
+  return req.relationshipManager = employee
 }
 
 SimpleBank.prototype._wrapInLock = function (locker, fn) {
@@ -343,7 +417,7 @@ SimpleBank.prototype._ensureEmployees = function (employees) {
           const e = employees[i]
           const pass = e.object
           return {
-            [ROOT_HASH]: e.object.customer,
+            [PERMALINK]: e.object.customer,
             pub: identityInfo.object,
             profile: {
               name: utils.pick(pass, 'firstName', 'lastName')
@@ -456,7 +530,7 @@ SimpleBank.prototype.publishCustomerIdentity = function (req) {
   var rootHash
   var wasAlreadyPublished
   var curHash = protocol.linkString(identity)
-  var rootHash = identity[ROOT_HASH] || curHash
+  var rootHash = identity[PERMALINK] || curHash
   tim.objects.get(curHash)
     .catch(noop)
     .then(function (obj) {
@@ -826,7 +900,7 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
     // take latest form
     return {
       body: form.body,
-      [CUR_HASH]: form.link
+      [LINK]: form.link
     }
   })
 
@@ -964,10 +1038,22 @@ SimpleBank.prototype.shareContext = function (req, res) {
   }
 
   const doShareWith = recipient => {
+    const from = req.customer
+    const isEmployee = this._employees.some(e => e[PERMALINK] === from)
+    const other = {}
+    if (isEmployee) other.contact = from
+
     return this._ctxDB[shareMethod]({
-      context: context + ':' + getConversationIdentifier(this.tim.permalink, req.customer),
+      context: context + ':' + getConversationIdentifier(this.tim.permalink, from),
       recipient,
-      seq: props.seq || 0
+      seq: props.seq || 0,
+      worker: (data, cb) => {
+        this.send({
+          link: data.permalink,
+          to: { permalink: data.recipient },
+          other: other
+        }, cb)
+      }
     })
   }
 
@@ -1088,7 +1174,7 @@ SimpleBank.prototype._approveProduct = function (opts) {
   // const promiseVerifications = Q.all(unverified.map(docState => {
   //   return this.sendVerification({
   //     req: req,
-  //     verifiedItem: docState.form[ROOT_HASH]
+  //     verifiedItem: docState.form[PERMALINK]
   //   })
   // }))
 
@@ -1287,7 +1373,7 @@ SimpleBank.prototype._getRelevantPending = function (pending, reqState) {
 //       var found = infos.some(function (info) {
 //         // check if they're allowed to see this message
 //         if ((info.from && info.author.permalink
-//           (info.to && info.to[ROOT_HASH] === from)) {
+//           (info.to && info.to[PERMALINK] === from)) {
 //           match = info
 //           return true
 //         }
@@ -1315,7 +1401,7 @@ SimpleBank.prototype._getRelevantPending = function (pending, reqState) {
 //   var bank = this.bank
 //   var senderRootHash = req.payload.author.permalink
 //   var from = {}
-//   from[ROOT_HASH] = senderRootHash
+//   from[PERMALINK] = senderRootHash
 //   return this.tim.history(from)
 //     .then(function (objs) {
 //       return Q.all(objs.map(function (obj) {
@@ -1335,7 +1421,7 @@ SimpleBank.prototype.getEmployee = function (req) {
   var bank = this.bank
   var employeeIdentifier = req.payload.object.employee
   var employeeInfo = find(this._employees, info => {
-    return info[CUR_HASH] === employeeIdentifier[CUR_HASH]
+    return info[LINK] === employeeIdentifier[LINK]
   })
 
   if (!employeeInfo) {
@@ -1601,7 +1687,7 @@ function ensureFormType (state, type) {
 function ensureFormState (forms, curHash) {
   var formState = findFormState(forms, curHash)
   if (!formState) {
-    formState = { [CUR_HASH]: curHash }
+    formState = { [LINK]: curHash }
     forms.push(formState)
   }
 
@@ -1628,4 +1714,8 @@ function getFormIds (forms) {
   })
 
   return ids
+}
+
+function getRemoteContact (req) {
+  return (req.message && req.message.object.contact) || req.customer
 }
