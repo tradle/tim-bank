@@ -962,7 +962,7 @@ SimpleBank.prototype.shareContext = function (req, res) {
 
   const doShareWith = recipient => {
     return this._ctxDB[shareMethod]({
-      context: context + ':' + getConversationIdentifier(this.tim.permalink, req.customer),
+      context: calcSubContext(context, this.tim.permalink, req.customer),
       recipient,
       seq: props.seq || 0
     })
@@ -1488,7 +1488,7 @@ SimpleBank.prototype._shareContexts = function () {
     db: 'contexts.db',
     getContext: val => {
       if (val.object.context) {
-        return val.object.context + ':' + getConversationIdentifier(val.author, val.recipient)
+        return calcSubContext(val.object.context, val.author, val.recipient)
       }
     }
   })
@@ -1621,4 +1621,8 @@ function getConversationIdentifier (a, b) {
 
 function toError (err) {
   return new Error(err.message || err)
+}
+
+function calcSubContext (context, ...participants) {
+  return context + ':' + getConversationIdentifier(...participants)
 }
