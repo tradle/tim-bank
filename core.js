@@ -30,6 +30,7 @@ var NONCE = constants.NONCE
 // var types = constants.TYPES
 var VERIFICATION = 'tradle.Verification'
 var CUSTOMER = 'tradle.Customer'
+var CONTEXT = 'context'
 var noop = function () {}
 var types = require('./lib/types')
 
@@ -195,9 +196,16 @@ Bank.prototype._getCustomerState = function (customerRootHash) {
 }
 
 Bank.prototype._setCustomerState = function (req) {
-  return req.state == null
-    ? this._delResource(CUSTOMER, req.customer)
-    : this._setResource(CUSTOMER, req.customer, req.state);
+  const promises = []
+  if (req.state == null) {
+    promises.push(this._delResource(CUSTOMER, req.customer))
+    if (req.context) promises.push(this._delResource(CONTEXT, req.context))
+  } else {
+    promises.push(this._setResource(CUSTOMER, req.customer, req.state))
+    if (req.context) promises.push(this._setResource(CONTEXT, req.context, req.customer))
+  }
+
+  return Q.all(promises).spread(customerState => customerState)
 }
 
 /**
@@ -287,14 +295,31 @@ Bank.prototype._onMessage = function (received, sync) {
   }
 
   // TODO: move most of this out to implementation (e.g. simple.js)
-
-  var req = new RequestState(msgWrapper, objWrapper)
+  const appLink = msgWrapper.object.context
+  const req = new RequestState(msgWrapper, objWrapper)
   req.sync = sync
   req.customer = customer
 
+  if (appLink) {
+    return this._getResource(CONTEXT, appLink)
+      .then(customer => {
+        req.customer = customer
+      }, err => {
+        this._debug('custmoer not found for context', appLink)
+      })
+      .then(() => this._handleRequest(req))
+  }
+
+  return this._handleRequest(req)
+}
+
+Bank.prototype._handleRequest = function (req) {
+  const self = this
+  const customer = req.customer
+  const from = req.from
+
   var res = {}
   this._debug(`received ${req[TYPE]} from ${from}`)
-
   return this._lock(customer, 'process incoming message')
     .then(() => this._getCustomerState(customer))
     .catch(function (err) {
