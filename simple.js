@@ -258,6 +258,34 @@ function SimpleBank (opts) {
           forms: getFormIds(application.forms)
         }
       })
+    },
+    shouldIssueProduct: ({ state, application }) => {
+      // const req = opts.req
+      // let state = req.state
+      // let appLink = opts.application
+      // let application = utils.getApplication(req.state, appLink)
+      const productType = application.type
+      const existing = (state.products[productType] || []).filter(product => {
+        return !product.revoked
+      })
+
+      const productModel = this._models[productType]
+      if (existing.length && !productModel.customerCanHaveMultiple) {
+        throw new Error('customer already has this product')
+      }
+
+      const missingForms = utils.getMissingForms(application, productModel)
+      if (missingForms.length) {
+        throw new Error('request the following forms first: ' + missingForms.join(', '))
+      }
+
+      const missingVerifications = utils.getUnverifiedForms(this.tim.identity, application, productModel)
+      if (missingVerifications.length) {
+        const types = missingVerifications.map(f => f.type).join(', ')
+        throw new Error('verify the following forms first: ' + types)
+      }
+
+      return true
     }
   })
 
@@ -568,7 +596,7 @@ SimpleBank.prototype.handleDocument = function (req, res) {
         form: utils.findFormState(req.application.forms, req.payload.link)
       })
       .then(should => {
-        return should && this._sendVerification({
+        return should.result && this._sendVerification({
           req: req,
           verifiedItem: req.payload
         })
@@ -862,11 +890,13 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
       .then(() => this.onApplicationFormsCollected({ req, application }))
   }
 
-  return this._approveProduct({
-    productType: productType,
-    application: context,
-    req: req
-  })
+  return this.shouldIssueProduct({ state: req.state, application })
+    .then(should => {
+      return should.result && this._approveProduct({
+        application: application,
+        req: req
+      })
+    })
 }
 
 SimpleBank.prototype._simulateReq = function (opts) {
@@ -899,14 +929,34 @@ SimpleBank.prototype.approveProduct = function (opts) {
   }, opts)
 
   let req
+  let application
   // return this._simulateReq(opts.customer)
 
   return this._simulateReq(opts)
     .then(updatedOpts => {
-      opts = updatedOpts
-      return this._approveProduct(opts)
+      req = updatedOpts.req
+      let appLink = opts.application
+      application = appLink && utils.getApplication(req.state, appLink)
+      if (!application) {
+        application = find(req.state.pendingApplications || [], app => app.type === opts.productType)
+        if (!application) {
+          throw new Error(`pending application ${appLink} not found`)
+        } else {
+          appLink = application.permalink
+        }
+      }
+
+      req.context = appLink
+      return this.shouldIssueProduct({ state: req.state, application })
     })
-    .then(() => this.bank._setCustomerState(opts.req))
+    .then(should => {
+      if (should.result) {
+        return this._approveProduct({ req, application })
+      }
+
+      throw toError(should.reason || 'issue product action prevented')
+    })
+    .then(() => this.bank._setCustomerState(req))
     .finally(() => this._endRequest(opts))
 }
 
@@ -1056,42 +1106,11 @@ SimpleBank.prototype._revokeProduct = function (opts) {
     })
 }
 
-SimpleBank.prototype._approveProduct = function (opts) {
+SimpleBank.prototype._approveProduct = function ({ req, application }) {
   // TODO: minimize code repeat with sendNextFormOrApprove
-  const req = opts.req
+  const appLink = req.context
+  const productType = application.type
   let state = req.state
-  let appLink = opts.application
-  let application = utils.getApplication(req.state, appLink)
-  let productType = opts.productType
-  if (!application) {
-    application = find(req.state.pendingApplications || [], app => app.type === productType)
-    if (!application) {
-      throw new Error(`pending application ${appLink} not found`)
-    } else {
-      appLink = application.permalink
-    }
-  }
-
-  productType = application.type
-  const existing = (state.products[productType] || []).filter(product => {
-    return !product.revoked
-  })
-
-  const productModel = this._models[productType]
-  if (existing.length && !productModel.customerCanHaveMultiple) {
-    throw new Error('customer already has this product')
-  }
-
-  const missingForms = utils.getMissingForms(application, productModel)
-  if (missingForms.length) {
-    return utils.rejectWithHttpError(400, 'request the following forms first: ' + missingForms.join(', '))
-  }
-
-  const missingVerifications = utils.getUnverifiedForms(this.tim.identity, application, productModel)
-  if (missingVerifications.length) {
-    const types = missingVerifications.map(f => f.type).join(', ')
-    return utils.rejectWithHttpError(400, 'verify the following forms first: ' + types)
-  }
 
   // const promiseVerifications = Q.all(unverified.map(docState => {
   //   return this.sendVerification({
@@ -1403,7 +1422,7 @@ SimpleBank.prototype.handleVerification = function (req) {
 
   return this.shouldSendVerification(opts)
     .then(should => {
-      return should && this._sendVerification({
+      return should.result && this._sendVerification({
         req: req,
         verifiedItem: {
           author: req.from,
@@ -1578,6 +1597,10 @@ SimpleBank.prototype.shouldSendVerification = function ({ state, application, fo
   return this._execBooleanPlugin('shouldSendVerification', arguments, true)
 }
 
+SimpleBank.prototype.shouldIssueProduct = function ({ state, application }) {
+  return this._execBooleanPlugin('shouldIssueProduct', arguments, true)
+}
+
 /**
  * Execute a plugin method that (maybe) returns a boolean
  * @param  {String}           method
@@ -1589,15 +1612,23 @@ SimpleBank.prototype._execBooleanPlugin = function (method, args, fallbackValue)
   return this._plugins
     .filter(p => p[method])
     .reduce(function (promise, plugin) {
-      return promise.then(should => {
-        if (typeof should === 'boolean') return should
+      return promise.then(result => {
+        if (typeof result === 'boolean') {
+          return { result }
+        }
 
         return plugin[method](...args)
       })
     }, Q())
-    .then(should => {
+    .then(result => {
       // if not vetoed, send
-      return typeof should === 'boolean' ? should : fallbackValue
+      return result == null  ? { result: fallbackValue } :
+        typeof result === 'boolean' ? { result } : result
+    }, err => {
+      return {
+        result: false,
+        reason: err
+      }
     })
 }
 
@@ -1649,4 +1680,8 @@ function getFormIds (forms) {
   })
 
   return ids
+}
+
+function toError (err) {
+  return new Error(err.message || err)
 }
