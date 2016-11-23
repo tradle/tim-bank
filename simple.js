@@ -30,6 +30,7 @@ const Actions = require('./lib/actionCreators')
 const find = utils.find
 const RequestState = require('./lib/requestState')
 const getNextState = require('./lib/reducers')
+const defaultPlugins = require('./lib/defaultPlugins')
 const debug = require('./debug')
 const ROOT_HASH = constants.ROOT_HASH
 const CUR_HASH = constants.CUR_HASH
@@ -78,28 +79,29 @@ function SimpleBank (opts) {
   }, opts.auto)
 
   const rawModels = (opts.models || []).concat(REMEDIATION_MODEL)
-  this._models = Object.freeze(utils.processModels(rawModels))
+  this.models = Object.freeze(utils.processModels(rawModels))
 
   this._productList = (opts.productList || DEFAULT_PRODUCT_LIST).slice()
   this._productList.push(REMEDIATION)
 
-  const missingProduct = find(this._productList, p => !this._models[p])
+  const missingProduct = find(this._productList, p => !this.models[p])
   if (missingProduct) {
     throw new Error(`missing model for product: ${missingProduct}`)
   }
 
   // this._employees = opts.employees
-  this.tim = opts.node
+  this.tim = this.node = opts.node
   var bank = this.bank = new Bank(opts)
   this._ready = this._ensureEmployees(opts.employees)
 
+  // TODO: plugin-ize
   bank._shouldChainReceivedMessage = (msg) => {
     return msg[TYPE] === VERIFICATION ||
-      this._models.docs.indexOf(msg[TYPE]) !== -1
+      this.models.docs.indexOf(msg[TYPE]) !== -1
   }
 
   bank.use((req, res) => {
-    if (this._models.docs.indexOf(req.type) !== -1) {
+    if (this.models.docs.indexOf(req.type) !== -1) {
       return this.handleDocument(req)
     }
   })
@@ -235,63 +237,7 @@ function SimpleBank (opts) {
   this._plugins = []
 
   // default plugins
-  this._disabledDefaultPlugins = {}
-  this.use({
-    shouldSendVerification: ({ form }) => {
-      if (this._disabledDefaultPlugins['shouldSendVerification']) return
-
-      const iVerified = form.verifications.some(v => {
-        return v.author.permalink === this.tim.permalink
-      })
-
-      if (iVerified) return false
-    },
-    onApplicationFormsCollected: ({ req, state, application }) => {
-      if (this._disabledDefaultPlugins['onApplicationFormsCollected']) return
-
-      return this.send({
-        req: req,
-        msg: {
-          [TYPE]: 'tradle.ApplicationSubmitted',
-          application: req.context,
-          message: 'Application submitted. We\'ll be in touch shortly!',
-          forms: getFormIds(application.forms)
-        }
-      })
-    },
-    shouldIssueProduct: ({ state, application }) => {
-      // const req = opts.req
-      // let state = req.state
-      // let appLink = opts.application
-      // let application = utils.getApplication(req.state, appLink)
-      const productType = application.type
-      const existing = (state.products[productType] || []).filter(product => {
-        return !product.revoked
-      })
-
-      const productModel = this._models[productType]
-      if (existing.length && !productModel.customerCanHaveMultiple) {
-        throw new Error('customer already has this product')
-      }
-
-      const missingForms = utils.getMissingForms(application, productModel)
-      if (missingForms.length) {
-        throw new Error('request the following forms first: ' + missingForms.join(', '))
-      }
-
-      const missingVerifications = utils.getUnverifiedForms(this.tim.identity, application, productModel)
-      if (missingVerifications.length) {
-        const types = missingVerifications.map(f => f.type).join(', ')
-        throw new Error('verify the following forms first: ' + types)
-      }
-
-      return true
-    }
-  })
-
-  this._disableDefaultPlugin = method => {
-    this._disabledDefaultPlugins[method] = true
-  }
+  this.use(defaultPlugins)
 
   // this._forwardConversations()
 }
@@ -462,12 +408,12 @@ SimpleBank.prototype.sendProductList = function (req) {
   var list = this._productList
     .filter(productModelId => productModelId !== REMEDIATION && productModelId !== 'tradle.EmployeeOnboarding')
     .map(productModelId => {
-      var model = this._models[productModelId]
+      var model = this.models[productModelId]
       var forms = utils.getForms(model)
       forms.forEach(formModelId => {
-        if (this._models[formModelId]) {
+        if (this.models[formModelId]) {
           // avoid duplicates by using object
-          formModels[formModelId] = this._models[formModelId]
+          formModels[formModelId] = this.models[formModelId]
         }
       })
 
@@ -580,7 +526,7 @@ SimpleBank.prototype.handleDocument = function (req, res) {
   const next = () => {
     req.state = state = getNextState(req.state, Actions.receivedForm(req.payload, appLink))
 
-    if (!utils.isVerifiableForm(this._models[req.type])) {
+    if (!utils.isVerifiableForm(this.models[req.type])) {
       return
     }
 
@@ -625,14 +571,14 @@ SimpleBank.prototype.handleDocument = function (req, res) {
 }
 
 SimpleBank.prototype.onNextFormRequest = function (req, res) {
-  req.state = getNextState(req.state, Actions.skipForm(this._models, req.payload.object.after))
+  req.state = getNextState(req.state, Actions.skipForm(this.models, req.payload.object.after))
   return this.sendNextFormOrApprove({req})
 }
 
 SimpleBank.prototype.validateDocument = function (req) {
   const doc = req.payload.object
   const type = doc[TYPE]
-  const model = this._models[type]
+  const model = this.models[type]
   if (!model) throw new Error(`unknown type ${type}`)
 
   let err
@@ -780,7 +726,7 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
 
   const productType = application.type
   const isRemediation = productType === REMEDIATION
-  const productModel = isRemediation ? REMEDIATION_MODEL : this._models[productType]
+  const productModel = isRemediation ? REMEDIATION_MODEL : this.models[productType]
   if (!productModel) {
     return utils.rejectWithHttpError(400, 'no such product model: ' + productType)
   }
@@ -802,7 +748,7 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
 
   if (req.type === VERIFICATION) return Q()
 
-  const isFormOrVerification = req[TYPE] === VERIFICATION || this._models.docs.indexOf(req[TYPE]) !== -1
+  const isFormOrVerification = req[TYPE] === VERIFICATION || this.models.docs.indexOf(req[TYPE]) !== -1
   const reqdForms = isRemediation
     ? Object.keys(state.prefilled)
     : utils.getForms(productModel)
@@ -947,14 +893,7 @@ SimpleBank.prototype.approveProduct = function (opts) {
       }
 
       req.context = appLink
-      return this.shouldIssueProduct({ state: req.state, application })
-    })
-    .then(should => {
-      if (should.result) {
-        return this._approveProduct({ req, application })
-      }
-
-      throw toError(should.reason || 'issue product action prevented')
+      return this._approveProduct({ req, application })
     })
     .then(() => this.bank._setCustomerState(req))
     .finally(() => this._endRequest(opts))
@@ -1064,7 +1003,7 @@ SimpleBank.prototype._handleSharedMessage = function (req) {
 // }
 
 SimpleBank.prototype.models = function () {
-  return this._models
+  return this.models
 }
 
 SimpleBank.prototype.getCustomerState = function (customerHash) {
@@ -1153,7 +1092,7 @@ SimpleBank.prototype._newProductRevocation = function (opts) {
 
 SimpleBank.prototype._newProductConfirmation = function (state, application) {
   const productType = application.type
-  const productModel = this._models[productType]
+  const productModel = this.models[productType]
   const forms = application.forms
 
   /**
@@ -1165,7 +1104,7 @@ SimpleBank.prototype._newProductConfirmation = function (state, application) {
    * @return {Object} confirmation
    */
   const copyProperties = (confirmation, confirmationType) => {
-    const confirmationModel = this._models[confirmationType]
+    const confirmationModel = this.models[confirmationType]
     const props = confirmationModel.properties
     for (let id in forms) {
       const form = forms[id].form.body
@@ -1214,7 +1153,7 @@ SimpleBank.prototype._newProductConfirmation = function (state, application) {
   //     })
   //     return confirmation
   //   default:
-    const guessedMyProductModel = this._models[productType.replace('.', '.My')]
+    const guessedMyProductModel = this.models[productType.replace('.', '.My')]
     if (guessedMyProductModel && guessedMyProductModel.subClassOf === 'tradle.MyProduct') {
       confirmation[TYPE] = confirmationType = guessedMyProductModel.id
       copyProperties(confirmation, confirmationType)
@@ -1226,7 +1165,7 @@ SimpleBank.prototype._newProductConfirmation = function (state, application) {
     }
 
     confirmationType = productType + 'Confirmation'
-    const formIds = getFormIds(application.forms)
+    const formIds = utils.getFormIds(application.forms)
     return {
       [TYPE]: confirmationType,
       // message: imported
@@ -1257,7 +1196,7 @@ SimpleBank.prototype.requestForm = function (opts) {
   const productModel = opts.productModel
   const multiEntryForms = opts.productModel.multiEntryForms || []
   const isMultiEntry = multiEntryForms.indexOf(opts.form) !== -1
-  const formModel = this._models[form]
+  const formModel = this.models[form]
   const prompt = formModel.subClassOf === 'tradle.MyProduct'
     ? 'Please share the following information' : formModel.properties.photos ?
     // isMultiEntry ? 'Please fill out this form and attach a snapshot of the original document' :
@@ -1297,7 +1236,7 @@ SimpleBank.prototype._getRelevantPending = function (pending, reqState) {
       return state && state.prefilled && state.prefilled[docType]
     }
 
-    return this._models.docs[product.type].indexOf(docType) !== -1
+    return this.models.docs[product.type].indexOf(docType) !== -1
   })
 }
 
@@ -1475,7 +1414,7 @@ SimpleBank.prototype.importSession = function (req) {
   return this.bank._getResource(GUEST_SESSION, hash)
     .then(_session => {
       session = _session
-      req.state = getNextState(req.state, Actions.importSession(session, this._models))
+      req.state = getNextState(req.state, Actions.importSession(session, this.models))
       // confirmations = session.map(data => {
       //   return data[TYPE].indexOf('Confirmation') !== -1
       // })
@@ -1503,10 +1442,10 @@ SimpleBank.prototype.importSession = function (req) {
       if (applications.length) {
         // TODO: queue up all the products
         req.productType = applications[0]
-        const productModel = this._models[req.productType]
+        const productModel = this.models[req.productType]
         const instructionalMsg = req.productType === REMEDIATION
           ? 'Please check and correct the following data'
-          : `Let's get this ${this._models[req.productType].title} Application on the road!`
+          : `Let's get this ${this.models[req.productType].title} Application on the road!`
 
         return this.send({
           req: req,
@@ -1567,6 +1506,14 @@ SimpleBank.prototype._forwardConversations = function () {
 
 // PLUGIN RELATED METHODS
 
+SimpleBank.prototype.disableDefaultPlugin = function (method) {
+  const idx = this._plugins.indexOf(defaultPlugins[method])
+  if (idx !== -1) {
+    this._plugins.splice(idx, 1)
+    return true
+  }
+}
+
 SimpleBank.prototype.use = function (plugin) {
   this._plugins.push(plugin)
 }
@@ -1574,9 +1521,9 @@ SimpleBank.prototype.use = function (plugin) {
 SimpleBank.prototype._execPlugins = function (method, args) {
   return this._plugins
     .filter(p => p[method])
-    .reduce(function (promise, plugin) {
+    .reduce((promise, plugin) => {
       return promise.then(() => {
-        return plugin[method](...args)
+        return plugin[method].apply(this, args)
       })
     }, Q())
 }
@@ -1611,13 +1558,13 @@ SimpleBank.prototype.shouldIssueProduct = function ({ state, application }) {
 SimpleBank.prototype._execBooleanPlugin = function (method, args, fallbackValue) {
   return this._plugins
     .filter(p => p[method])
-    .reduce(function (promise, plugin) {
+    .reduce((promise, plugin) => {
       return promise.then(result => {
         if (typeof result === 'boolean') {
           return { result }
         }
 
-        return plugin[method](...args)
+        return plugin[method].apply(this, args)
       })
     }, Q())
     .then(result => {
@@ -1670,16 +1617,6 @@ function alphabetical (a, b) {
 
 function getConversationIdentifier (a, b) {
   return [a, b].sort(alphabetical).join(':')
-}
-
-function getFormIds (forms) {
-  const ids = forms.map(wrapper => {
-    const link = wrapper.form.link
-    const permalink = wrapper.form.body[PERMALINK] || link
-    return `${wrapper.type}_${permalink}_${link}`
-  })
-
-  return ids
 }
 
 function toError (err) {

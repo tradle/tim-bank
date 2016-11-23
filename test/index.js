@@ -468,7 +468,7 @@ function testMultiEntry () {
       var bankCoords = getCoords(bank.tim)
       var productModel = multiEntryProduct
       var product = multiEntryProduct.id
-      bank._models = utils.processModels([productModel])
+      bank.models = utils.processModels([productModel])
       bank._productList.push(product)
       MODELS_BY_ID[product] = productModel
 
@@ -802,31 +802,34 @@ function testManualMode () {
       helpers.sendIdentity({ awaitUnchained: true })
         .then(() => helpers.startApplication(product))
         .then(() => helpers.sendForm({ form: ABOUT_YOU, awaitVerification: false }))
-        .then(() => {
-          // should fail
-          return bank.approveProduct({
-            customer: applicant.permalink,
-            productType: product
+        .then(() => bank.getCustomerState(applicant.permalink))
+        .then(state => {
+          // should really just test the plugin separately
+          // now that we've extracted the functionality
+          return bank.shouldIssueProduct({
+            state,
+            application: state.pendingApplications[0]
           })
         })
-        .then(() => t.fail('approval should not be possible without requisite forms'))
-        .catch(err => t.pass('approval prevented without required forms'))
-        .then(() => helpers.sendForm({ form: YOUR_MONEY, awaitVerification: false }))
+        .then(should => {
+          t.equal(should.result, false)
+          t.ok(/request the following forms first/.test(should.reason))
+          return helpers.sendForm({ form: YOUR_MONEY, awaitVerification: false })
+        })
         .then(() => helpers.sendForm({ form: LICENSE, awaitVerification: false, awaitConfirmation: false }))
         // delay to make sure no auto-confirmation happens
         .then(() => console.log('patience...'))
         .then(() => Q.Promise(resolve => setTimeout(resolve, 1000)))
-        .then(() => {
-          // should fail
-          return bank.approveProduct({
-            customer: applicant.permalink,
-            productType: product,
-            applicant: helpers.getContext()
+        .then(() => bank.getCustomerState(applicant.permalink))
+        .then(state => {
+          return bank.shouldIssueProduct({
+            state,
+            application: state.pendingApplications[0]
           })
         })
-        .then(() => t.fail('approval should not be possible without verifications'))
-        .catch(err => t.pass('verifications enforced as pre-req to approval'))
-        .then(() => {
+        .then(should => {
+          t.equal(should.result, false)
+          t.ok(/verify the following forms first/.test(should.reason))
           return Q.all(Object.keys(forms).map(type => {
             return bank.sendVerification({
               verifiedItem: forms[type],
