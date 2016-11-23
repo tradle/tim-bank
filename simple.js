@@ -235,15 +235,35 @@ function SimpleBank (opts) {
   this._plugins = []
 
   // default plugins
+  this._disabledDefaultPlugins = {}
   this.use({
     shouldSendVerification: ({ form }) => {
+      if (this._disabledDefaultPlugins['shouldSendVerification']) return
+
       const iVerified = form.verifications.some(v => {
         return v.author.permalink === this.tim.permalink
       })
 
       if (iVerified) return false
+    },
+    onApplicationFormsCollected: ({ req, state, application }) => {
+      if (this._disabledDefaultPlugins['onApplicationFormsCollected']) return
+
+      return this.send({
+        req: req,
+        msg: {
+          [TYPE]: 'tradle.ApplicationSubmitted',
+          application: req.context,
+          message: 'Application submitted. We\'ll be in touch shortly!',
+          forms: getFormIds(application.forms)
+        }
+      })
     }
   })
+
+  this._disableDefaultPlugin = method => {
+    this._disabledDefaultPlugins[method] = true
+  }
 
   // this._forwardConversations()
 }
@@ -548,12 +568,10 @@ SimpleBank.prototype.handleDocument = function (req, res) {
         form: utils.findFormState(req.application.forms, req.payload.link)
       })
       .then(should => {
-        if (should) {
-          return this._sendVerification({
-            req: req,
-            verifiedItem: req.payload
-          })
-        }
+        return should && this._sendVerification({
+          req: req,
+          verifiedItem: req.payload
+        })
       })
 
     // .then(() => {
@@ -841,17 +859,7 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
   if (!this._auto.verify || productType === 'tradle.EmployeeOnboarding') {
     // 'application' event ugly side-effect
     return (req.continue || Q())
-      .then(() => {
-        return this.send({
-          req: req,
-          msg: {
-            [TYPE]: 'tradle.ApplicationSubmitted',
-            application: context,
-            message: 'Application submitted. We\'ll be in touch shortly!',
-            forms: getFormIds(application.forms)
-          }
-        })
-      })
+      .then(() => this.onApplicationFormsCollected({ req, application }))
   }
 
   return this._approveProduct({
@@ -1395,17 +1403,15 @@ SimpleBank.prototype.handleVerification = function (req) {
 
   return this.shouldSendVerification(opts)
     .then(should => {
-      if (should) {
-        return this._sendVerification({
-          req: req,
-          verifiedItem: {
-            author: req.from,
-            object: verifiedItem.form.body,
-            link: verifiedItem.form.link,
-            permalink: verifiedItem.form.permalink
-          }
-        })
-      }
+      return should && this._sendVerification({
+        req: req,
+        verifiedItem: {
+          author: req.from,
+          object: verifiedItem.form.body,
+          link: verifiedItem.form.link,
+          permalink: verifiedItem.form.permalink
+        }
+      })
     })
     .then(() => this.sendNextFormOrApprove({req}))
 }
@@ -1564,19 +1570,34 @@ SimpleBank.prototype.willRequestForm = function ({ state, application, form, for
   return this._execPlugins('willRequestForm', arguments)
 }
 
+SimpleBank.prototype.onApplicationFormsCollected = function ({ req, state, application }) {
+  return this._execPlugins('onApplicationFormsCollected', arguments)
+}
+
 SimpleBank.prototype.shouldSendVerification = function ({ state, application, form }) {
+  return this._execBooleanPlugin('shouldSendVerification', arguments, true)
+}
+
+/**
+ * Execute a plugin method that (maybe) returns a boolean
+ * @param  {String}           method
+ * @param  {Array|Arguments}  arguments to method
+ * @param  {Boolean}          fallbackValue if plugins don't return a boolean, default to this value
+ * @return {Promise}
+ */
+SimpleBank.prototype._execBooleanPlugin = function (method, args, fallbackValue) {
   return this._plugins
-    .filter(p => p.shouldSendVerification)
+    .filter(p => p[method])
     .reduce(function (promise, plugin) {
       return promise.then(should => {
         if (typeof should === 'boolean') return should
 
-        return plugin.shouldSendVerification({ state, application, form })
+        return plugin[method](...args)
       })
     }, Q())
     .then(should => {
       // if not vetoed, send
-      return typeof should === 'boolean' ? should : true
+      return typeof should === 'boolean' ? should : fallbackValue
     })
 }
 
