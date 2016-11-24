@@ -516,8 +516,8 @@ SimpleBank.prototype.handleNewApplication = function (req, res) {
 
 SimpleBank.prototype.handleDocument = function (req, res) {
   const appLink = req.context
-  const pending = req.application
-  if (!pending) {
+  const application = req.application
+  if (!application || application.isProduct) {
     // TODO: save in prefilled documents
     return utils.rejectWithHttpError(400, new Error(`application ${appLink} not found`))
   }
@@ -607,19 +607,19 @@ SimpleBank.prototype._sendVerification = function (opts) {
   const req = opts.req
   const verifiedItem = opts.verifiedItem
   const appLink = req.context
-  const pending = req.application
-  if (!pending) {
+  const application = req.application || req.product
+  if (!application) {
     // TODO: save in prefilled verifications
     return utils.rejectWithHttpError(400, new Error(`application ${appLink} not found`))
   }
 
-  if (!utils.findFormState(pending.forms, verifiedItem.link)) {
+  if (!utils.findFormState(application.forms, verifiedItem.link)) {
     return utils.rejectWithHttpError(400, new Error('form not found, refusing to send verification'))
   }
 
   let action = Actions.createVerification(verifiedItem, this.tim.identityInfo, appLink)
   req.state = getNextState(req.state, action)
-  const updatedApp = req.application // dynamically calc'c prop
+  const updatedApp = req.application || req.product // dynamically calc'c prop
   const verification = utils.lastVerificationFor(updatedApp.forms, verifiedItem.link)
 
   return this.send({
@@ -1356,8 +1356,7 @@ SimpleBank.prototype.handleVerification = function (req) {
   const appLink = req.context
   let pending = req.application
   if (!pending) {
-    const product = utils.getProduct(req.state, appLink)
-    if (!product) {
+    if (!req.product) {
       return utils.rejectWithHttpError(400, new Error(`application ${appLink} not found`))
     }
 
