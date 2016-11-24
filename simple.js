@@ -961,8 +961,13 @@ SimpleBank.prototype.shareContext = function (req, res) {
   }
 
   const doShareWith = recipient => {
+    // console.log('sharing context: ' + calcContextIdentifier(context, this.tim.permalink, req.customer))
     return this._ctxDB[shareMethod]({
-      context: calcSubContext(context, this.tim.permalink, req.customer),
+      context: calcContextIdentifier({
+        bank: this,
+        context: context,
+        participants: [this.tim.permalink, req.customer],
+      }),
       recipient,
       seq: props.seq || 0
     })
@@ -1488,7 +1493,11 @@ SimpleBank.prototype._shareContexts = function () {
     db: 'contexts.db',
     getContext: val => {
       if (val.object.context) {
-        return calcSubContext(val.object.context, val.author, val.recipient)
+        return calcContextIdentifier({
+          bank: this,
+          context: val.object.context,
+          participants: [val.author, val.recipient]
+        })
       }
     }
   })
@@ -1623,6 +1632,13 @@ function toError (err) {
   return new Error(err.message || err)
 }
 
-function calcSubContext (context, ...participants) {
-  return context + ':' + getConversationIdentifier(...participants)
+function calcContextIdentifier ({ bank, context, participants }) {
+  const rmIsParticipant = bank.employees()
+    .some(e => participants.indexOf(e[PERMALINK]) !== -1)
+
+  // messages from/to an employee get re-written and sent by the bank
+  // this ignores the originals
+  if (rmIsParticipant) return
+
+  return context// + ':' + getConversationIdentifier(...participants)
 }

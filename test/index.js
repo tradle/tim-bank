@@ -919,6 +919,7 @@ function testShareContext () {
 
       let batch = existing.slice()
       let nowLive
+      let b0employee
       const receiveMsg = banks[1].receiveMsg
       // console.log('applicant', applicant.permalink)
       // console.log('banks[0]', banks[0].tim.permalink)
@@ -927,6 +928,8 @@ function testShareContext () {
       // console.log('banks[1].employee', banks[1]._employeeNodes[0].permalink)
       banks[0]._employeeNodes.forEach(employee => {
         employee.on('message', msg => {
+          if (!b0employee) b0employee = employee
+
           const type = msg.object.object[TYPE]
           if (type !== SIMPLE_MESSAGE) return
 
@@ -948,6 +951,8 @@ function testShareContext () {
       banks[1].receiveMsg = function (msg, from) {
         msg = tradleUtils.unserializeMessage(msg)
         if (msg.object.object) {
+          // delete msg.object.object._s
+          // console.log('RECEIVED SHARED', JSON.stringify(msg.object.object))
           t.equal(msg.object.object[TYPE], batch.shift())
           if (!batch.length && !nowLive) {
             nowLive = true
@@ -980,7 +985,7 @@ function testShareContext () {
         })
       })
 
-      return helpers[0].startApplication(product)
+      helpers[0].startApplication(product)
         .then(() => helpers[0].sendForm({ form: ABOUT_YOU, nextForm: YOUR_MONEY }))
         .then(() => helpers[0].signNSend({
           [TYPE]: SIMPLE_MESSAGE,
@@ -989,12 +994,27 @@ function testShareContext () {
         .then(() => helpers[0].awaitType(SIMPLE_MESSAGE))
         .then(() => helpers[0].sendForm({ form: YOUR_MONEY, nextForm: LICENSE }))
         .then(() => {
-          return helpers[0].signNSend({
-            [TYPE]: 'tradle.ShareContext',
-            context: { id: `_${helpers[0].getContext()}` },
-            with: [{ id: `_${banks[1].tim.permalink}` }]
+          // ask my employer to share context with banks[1]
+          return b0employee.signAndSend({
+            to: getCoords(banks[0].tim),
+            object: {
+              [TYPE]: 'tradle.ShareContext',
+              context: { id: `_${helpers[0].getContext()}` },
+              with: [{ id: `_${banks[1].tim.permalink}` }]
+            },
+            other: {
+              context: helpers[0].getContext()
+            }
           })
+
+          // same thing but customer asks
+          // return helpers[0].signNSend({
+          //   [TYPE]: 'tradle.ShareContext',
+          //   context: { id: `_${helpers[0].getContext()}` },
+          //   with: [{ id: `_${banks[1].tim.permalink}` }]
+          // })
         })
+        .done()
     })
   })
 }
