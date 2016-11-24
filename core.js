@@ -195,6 +195,10 @@ Bank.prototype._getCustomerState = function (customerRootHash) {
   return this._getResource(CUSTOMER, customerRootHash)
 }
 
+Bank.prototype._getCustomerForContext = function (context) {
+  return this._getResource(CONTEXT, context)
+}
+
 Bank.prototype._setCustomerState = function (req) {
   const promises = []
   if (req.state == null) {
@@ -295,19 +299,28 @@ Bank.prototype._onMessage = function (received, sync) {
   }
 
   // TODO: move most of this out to implementation (e.g. simple.js)
-  const appLink = msgWrapper.object.context
+  let appLink = msgWrapper.object.context
+  // HACK!
+  if (!appLink && obj[TYPE] === 'tradle.ShareContext') {
+    appLink = utils.parseObjectId(obj.context.id).permalink
+  }
+
   const req = new RequestState(msgWrapper, objWrapper)
   req.sync = sync
   req.customer = customer
 
   if (appLink) {
-    return this._getResource(CONTEXT, appLink)
+    return this._getCustomerForContext(appLink)
       .then(customer => {
         req.customer = customer
+        return this.tim.addressBook.lookupIdentity({ permalink: customer })
       }, err => {
-        this._debug('custmoer not found for context', appLink)
+        this._debug('customer not found for context', appLink)
       })
-      .then(() => this._handleRequest(req))
+      .then(identityInfo => {
+        req.customerIdentityInfo = identityInfo
+        return this._handleRequest(req)
+      })
   }
 
   return this._handleRequest(req)

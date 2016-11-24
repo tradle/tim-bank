@@ -930,8 +930,23 @@ SimpleBank.prototype.shareContext = function (req, res) {
   // TODO:
   // need to check whether this context is theirs to share
 
+  const isEmployee = this._employees.some(e => e[ROOT_HASH] === req.from.permalink)
+  if (isEmployee && req.state.relationshipManager !== req.from.permalink) {
+    return utils.rejectWithHttpError(403, new Error('employee is not authorized to share this context'))
+  }
+
   const props = req.payload.object
   const context = utils.parseObjectId(props.context.id).permalink
+  const cid = calcContextIdentifier({
+    bank: this,
+    context: context,
+    participants: [this.tim.permalink, req.customer],
+  })
+
+  if (!cid) {
+    return utils.rejectWithHttpError(400, new Error('invalid context'))
+  }
+
   const recipients = props.with.map(r => {
     return utils.parseObjectId(r.id).permalink
   })
@@ -940,7 +955,7 @@ SimpleBank.prototype.shareContext = function (req, res) {
   const action = Actions[method](context, recipients)
   req.state = getNextState(req.state, action)
 
-  const customerIdentity = req.from.object
+  let customerIdentityInfo = req.customerIdentityInfo
   const customerProfile = req.state.profile
   const shareMethod = props.revoked ? 'unshare' : 'share'
   const shareWithOne = recipient => {
@@ -955,7 +970,7 @@ SimpleBank.prototype.shareContext = function (req, res) {
         [TYPE]: 'tradle.Introduction',
         profile: customerProfile,
         message: 'introducing...',
-        identity: customerIdentity
+        identity: customerIdentityInfo.object
       }
     })
   }
@@ -963,17 +978,21 @@ SimpleBank.prototype.shareContext = function (req, res) {
   const doShareWith = recipient => {
     // console.log('sharing context: ' + calcContextIdentifier(context, this.tim.permalink, req.customer))
     return this._ctxDB[shareMethod]({
-      context: calcContextIdentifier({
-        bank: this,
-        context: context,
-        participants: [this.tim.permalink, req.customer],
-      }),
+      context: cid,
       recipient,
       seq: props.seq || 0
     })
   }
 
-  return Q.all(recipients.map(shareWithOne))
+  const getCustomerIdentityInfo = customerIdentityInfo && customerIdentityInfo.object
+    ? Q(customerIdentityInfo)
+    : this.tim.lookupIdentity({ permalink: req.customer })
+
+  return getCustomerIdentityInfo
+    .then(identityInfo => {
+      customerIdentityInfo = identityInfo
+      return Q.all(recipients.map(shareWithOne))
+    })
 }
 
 SimpleBank.prototype._handleSharedMessage = function (req) {
