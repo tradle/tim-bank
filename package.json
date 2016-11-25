@@ -10,7 +10,7 @@
   "license": "GPLv3",
   "dependencies": {
     "@tradle/engine": "^3.5.0",
-    "@tradle/message-context": "^1.4.0",
+    "@tradle/message-context": "1.4.1",
     "array-find": "^1.0.0",
     "clone": "^1.0.2",
     "compression": "^1.6.0",
