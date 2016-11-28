@@ -141,37 +141,37 @@ function SimpleBank (opts) {
     }
   })
 
-  bank.use(req => {
-    if (Bank.NO_FORWARDING || !this._employees.length) return
+  // bank.use(req => {
+  //   if (Bank.NO_FORWARDING || !this._employees.length) return
 
-    let type = req.payload.object[TYPE]
-    if (type === IDENTITY_PUBLISH_REQUEST || type === SELF_INTRODUCTION
-        // || type === 'tradle.Message'
-        || type === 'tradle.ShareContext'
-    ) {
-      return
-    }
+  //   let type = req.payload.object[TYPE]
+  //   if (type === IDENTITY_PUBLISH_REQUEST || type === SELF_INTRODUCTION
+  //       // || type === 'tradle.Message'
+  //       || type === 'tradle.ShareContext'
+  //   ) {
+  //     return
+  //   }
 
-    const from = req.payload.author.permalink
-    const isEmployee = this._employees.some(e => e[ROOT_HASH] === from)
-    if (isEmployee) return
+  //   const from = req.payload.author.permalink
+  //   const isEmployee = this._employees.some(e => e[ROOT_HASH] === from)
+  //   if (isEmployee) return
 
-    const relationshipManager = req.state.relationshipManager
-    if (!relationshipManager) return
+  //   const relationshipManager = req.state.relationshipManager
+  //   if (!relationshipManager) return
 
-    const obj = req.msg.object.object
-    const embeddedType = obj[TYPE] === MESSAGE_TYPE && obj.object[TYPE]
-    const context = req.context
-    const other = context && { context }
-    type = embeddedType || req[TYPE]
-    this._debug(`FORWARDING ${type} FROM ${req.customer} TO RM ${relationshipManager}`)
-    this.tim.send({
-      to: { permalink: relationshipManager },
-      link: req.payload.link,
-      // bad: this creates a duplicate message in the context
-      other: other
-    })
-  })
+  //   const obj = req.msg.object.object
+  //   const embeddedType = obj[TYPE] === MESSAGE_TYPE && obj.object[TYPE]
+  //   const context = req.context
+  //   const other = context && { context }
+  //   type = embeddedType || req[TYPE]
+  //   this._debug(`FORWARDING ${type} FROM ${req.customer} TO RM ${relationshipManager}`)
+  //   this.tim.send({
+  //     to: { permalink: relationshipManager },
+  //     link: req.payload.link,
+  //     // bad: this creates a duplicate message in the context
+  //     other: other
+  //   })
+  // })
 
   bank.use('tradle.Message', this._handleSharedMessage)
   bank.use('tradle.ShareContext', this.shareContext)
@@ -233,13 +233,13 @@ function SimpleBank (opts) {
   //   })
   // })
 
-  this._shareContexts()
   this._plugins = []
 
   // default plugins
   this.use(defaultPlugins)
-
-  // this._forwardConversations()
+  this._shareContexts()
+  this._forwardToCustomer()
+  this._forwardToRelationshipManager()
 }
 
 module.exports = SimpleBank
@@ -275,36 +275,45 @@ SimpleBank.prototype._assignRelationshipManager = function (req) {
   if (isEmployee) return
 
   let relationshipManager = req.state.relationshipManager
-  const rmIsStillEmployed = this._employees.some(e => e[ROOT_HASH] === relationshipManager)
-  if (!rmIsStillEmployed) relationshipManager = null
-
-  if (!Bank.NO_FORWARDING && req.state && !relationshipManager && this._employees.length) {
-    // for now, just assign first employee
-    const idx = Math.floor(Math.random() * this._employees.length)
-    req.state = getNextState(req.state, Actions.assignRelationshipManager(this._employees[idx]))
-    // no need to wait for this to finish
-    // console.log('ASSIGNED RELATIONSHIP MANAGER TO ' + req.customer)
-
-    relationshipManager = req.state.relationshipManager
-    this.tim.signAndSend({
-      to: { permalink: relationshipManager },
-      object: {
-        [TYPE]: 'tradle.Introduction',
-        profile: req.state.profile,
-        name: req.state.profile ? null : 'Customer ' + utils.randomDecimalString(6),
-        message: 'Your new customer',
-        // [TYPE]: 'tradle.Introduction',
-        // relationship: 'customer',
-        identity: req.from.object
-      }
+  const rmIsStillEmployed = relationshipManager && this._employees.some(e => e[ROOT_HASH] === relationshipManager)
+  if (relationshipManager && !rmIsStillEmployed) {
+    this._toggleForwarding({
+      customer: req.customer,
+      employee: relationshipManager,
+      on: false
     })
 
-    // this._forwardDB.share({
-    //   context: getConversationIdentifier(this.tim.permalink, req.customer),
-    //   recipient: relationshipManager,
-    //   seq: 0
-    // })
+    relationshipManager = null
   }
+
+  const needsNewRM = !Bank.NO_FORWARDING && req.state && !relationshipManager && this._employees.length
+  if (!needsNewRM) return
+
+  // for now, just assign first employee
+  const idx = Math.floor(Math.random() * this._employees.length)
+  req.state = getNextState(req.state, Actions.assignRelationshipManager(this._employees[idx]))
+  // no need to wait for this to finish
+  // console.log('ASSIGNED RELATIONSHIP MANAGER TO ' + req.customer)
+
+  relationshipManager = req.state.relationshipManager
+  this.tim.signAndSend({
+    to: { permalink: relationshipManager },
+    object: {
+      [TYPE]: 'tradle.Introduction',
+      profile: req.state.profile,
+      name: req.state.profile ? null : 'Customer ' + utils.randomDecimalString(6),
+      message: 'Your new customer',
+      // [TYPE]: 'tradle.Introduction',
+      // relationship: 'customer',
+      identity: req.from.object
+    }
+  })
+
+  this._toggleForwarding({
+    customer: req.customer,
+    employee: relationshipManager,
+    on: true
+  })
 }
 
 SimpleBank.prototype._wrapInLock = function (locker, fn) {
@@ -1511,6 +1520,8 @@ SimpleBank.prototype._shareContexts = function () {
     db: 'contexts.db',
     getContext: val => {
       if (val.object.context) {
+        // if (val.recipient === this.tim.permalink) return
+
         return calcContextIdentifier({
           bank: this,
           context: val.object.context,
@@ -1518,15 +1529,113 @@ SimpleBank.prototype._shareContexts = function () {
         })
       }
     }
+    // ,
+    // worker: (data, cb) => {
+    //   this.tim.send({
+    //     to: { permalink: data.recipient },
+    //     link: data.permalink
+    //   }, cb)
+    // }
   })
 }
 
-SimpleBank.prototype._forwardConversations = function () {
+SimpleBank.prototype._isEmployee = function (permalink) {
+  return this._employees.some(e => e[PERMALINK] === permalink)
+}
+
+SimpleBank.prototype._forwardToCustomer = function (opts={}) {
+  let unwrap = opts.unwrap
+  if (!unwrap) {
+    unwrap = function (msg) {
+      return true // msg.object.object[TYPE] === VERIFICATION
+    }
+  }
+
+  // forward messages based on forward property
   this._forwardDB = createContextDB({
     node: this.tim,
     db: 'forward.db',
     getContext: val => {
-      return getConversationIdentifier(val.author, val.object.forward || val.recipient)
+      // only forward messages from employees
+      if (val.object.forward && this._isEmployee(val.author)) {
+        return getContextForEmployeeToCustomerChat({
+          from: val.author,
+          to: this.tim.permalink,
+          forward: val.object.forward
+        })
+      }
+    },
+    worker: (data, cb) => {
+      this.tim.objects.get(data.link, (err, msg) => {
+        if (err) return cb(err)
+
+        const { context, object } = msg.object
+        const other = {}
+        if (context) other.context = context
+
+        if (unwrap(msg)) {
+          this.tim.signAndSend({
+            object: tradleUtils.omit(object, SIG),
+            to: { permalink: data.recipient },
+            other: other
+          }, cb)
+        } else {
+          this.tim.send({
+            link: data.link,
+            to: { permalink: data.recipient }
+          }, cb)
+        }
+      })
+    }
+  })
+}
+
+SimpleBank.prototype._forwardToRelationshipManager = function (opts={}) {
+  let unwrap = opts.unwrap
+  if (!unwrap) {
+    unwrap = function (msg) {
+      return true // msg.object.object[TYPE] === VERIFICATION
+    }
+  }
+
+  this._forwardToRMDB = createContextDB({
+    node: this.tim,
+    db: 'forwardToRM.db',
+    getContext: val => {
+      const type = val.objectinfo.type
+      if (type === IDENTITY_PUBLISH_REQUEST
+          || type === SELF_INTRODUCTION
+          // || type === 'tradle.Message'
+          || type === 'tradle.ShareContext'
+      ) {
+        return
+      }
+
+      return getConversationIdentifier(val.author, val.recipient)
+    },
+    worker: (data, cb) => {
+      this.tim.objects.get(data.link, (err, msg) => {
+        if (err) return cb(err)
+
+        const { context, object } = msg.object
+        const other = {}
+        if (context) other.context = context
+
+        if (unwrap(msg)) {
+          // console.log(object)
+          // console.log('forwarding', object[TYPE], 'to RM', data.recipient)
+          this.tim.send({
+            object: object,
+            to: { permalink: data.recipient },
+            other: other
+          }, cb)
+        } else {
+          this.tim.send({
+            link: data.link,
+            to: { permalink: data.recipient }
+          }, cb)
+        }
+      })
     }
   })
 }
@@ -1606,6 +1715,39 @@ SimpleBank.prototype._execBooleanPlugin = function (method, args, fallbackValue)
     })
 }
 
+SimpleBank.prototype._toggleForwarding = function ({ customer, employee, on=true }) {
+  const method = on ? 'share' : 'unshare'
+
+  // convo between employee and customer through bot
+  const bot = this.tim.permalink
+  const cid1 = getContextForEmployeeToCustomerChat({
+    from: employee,
+    to: this.tim.permalink,
+    forward: customer
+  })
+
+  this._forwardDB[method]({
+    context: cid1,
+    recipient: customer,
+    seq: 0
+  })
+
+  // convo between bot and customer
+  const cid2 = getConversationIdentifier(this.tim.permalink, customer)
+  this._forwardToRMDB[method]({
+    context: cid2,
+    recipient: employee,
+    seq: 0
+  })
+
+  // const cid3 = getConversationIdentifier(customer, this.tim.permalink)
+  // this._forwardToRMDB[method]({
+  //   context: cid3,
+  //   recipient: employee,
+  //   seq: 0
+  // })
+}
+
 function getType (obj) {
   if (obj[TYPE]) return obj[TYPE]
   if (!obj.id) return
@@ -1642,8 +1784,8 @@ function alphabetical (a, b) {
   return a < b ? -1 : a === b ? 0 : 1
 }
 
-function getConversationIdentifier (a, b) {
-  return [a, b].sort(alphabetical).join(':')
+function getConversationIdentifier (...participants) {
+  return participants.sort(alphabetical).join(':')
 }
 
 function toError (err) {
@@ -1659,4 +1801,12 @@ function calcContextIdentifier ({ bank, context, participants }) {
   if (rmIsParticipant) return
 
   return context// + ':' + getConversationIdentifier(...participants)
+}
+
+function getContextForCustomerToBotChat ({ bot, customer }) {
+  return bot + customer
+}
+
+function getContextForEmployeeToCustomerChat ({ from, to, forward }) {
+  return getConversationIdentifier(from, to, forward)
 }

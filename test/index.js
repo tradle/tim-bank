@@ -359,6 +359,11 @@ function testForwarding () {
         var banks = setup.banks
         var applicant = setup.applicant
         var bank = banks[0]
+        // console.log('applicant', applicant.permalink)
+        // console.log('banks[0]', banks[0].tim.permalink)
+        // console.log('banks[0].employee', banks[0]._employeeNodes[0].permalink)
+        // console.log('banks[1]', banks[1].tim.permalink)
+        // console.log('banks[1].employee', banks[1]._employeeNodes[0].permalink)
 
         var helpers = getHelpers({
           applicant: applicant,
@@ -377,10 +382,12 @@ function testForwarding () {
           employee.on('message', msg => {
             const obj = msg.object.object
             t.equal(msg.author, bankPermalink)
-            if (obj[TYPE] === 'tradle.Introduction') {
+            switch (obj[TYPE]) {
+            case 'tradle.Introduction':
               t.same(obj.profile, applicant.profile)
               employee.addContactIdentity(obj.identity).done()
-            } else {
+              break
+            case SIMPLE_MESSAGE:
               t.equal(msg.objectinfo.author, applicant.identityInfo.permalink)
               t.equal(obj.message, msgFromApplicant)
 
@@ -395,6 +402,10 @@ function testForwarding () {
                 }
               })
               .done()
+
+              break
+            default:
+              t.equal(msg.objectinfo.author, bank.tim.permalink)
             }
           })
         })
@@ -932,6 +943,7 @@ function testShareContext () {
 
           const type = msg.object.object[TYPE]
           if (type !== SIMPLE_MESSAGE) return
+          if (msg.objectinfo.author !== applicant.permalink) return
 
             // console.log(msg.object.context, helpers[0].getContext())
           employee.signAndSend({
@@ -953,6 +965,7 @@ function testShareContext () {
         if (msg.object.object) {
           // delete msg.object.object._s
           // console.log('RECEIVED SHARED', JSON.stringify(msg.object.object))
+          // console.log('i am', this.tim.permalink)
           t.equal(msg.object.object[TYPE], batch.shift())
           if (!batch.length && !nowLive) {
             nowLive = true
@@ -970,7 +983,6 @@ function testShareContext () {
         // we don't know which employee will be assigned
         let receivedIntro
         employee.on('message', function (msg, from) {
-          // console.log('EMPLOYEE RECEIVEING')
           const fwded = msg.object.object.object
           if (!fwded) {
             return t.equal(msg.object.object[TYPE], 'tradle.Introduction')

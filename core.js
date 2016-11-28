@@ -279,13 +279,13 @@ Bank.prototype._onMessage = function (received, sync) {
     if (fwdTo !== this.tim.permalink && fwdTo !== this.tim.link) {
       // re-sign the object
       // the customer doesn't need to know the identity of the employee
-      const context = msgWrapper.object.context
-      const other = context && { context }
-      this.tim.signAndSend({
-        to: { permalink: fwdTo },
-        object: tutils.omit(obj, SIG),
-        other: other
-      })
+      // const context = msgWrapper.object.context
+      // const other = context && { context }
+      // this.tim.signAndSend({
+      //   to: { permalink: fwdTo },
+      //   object: tutils.omit(obj, SIG),
+      //   other: other
+      // })
 
       if (obj[TYPE] === VERIFICATION) {
         // rewire "from"
