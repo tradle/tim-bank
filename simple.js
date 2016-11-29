@@ -245,6 +245,22 @@ function SimpleBank (opts) {
 module.exports = SimpleBank
 util.inherits(SimpleBank, EventEmitter)
 
+SimpleBank.prototype.autoverify = function (val) {
+  if (typeof val === 'boolean') {
+    this._auto.verify = val
+  }
+
+  return this._auto.verify
+}
+
+SimpleBank.prototype.autoprompt = function (val) {
+  if (typeof val === 'boolean') {
+    this._auto.prompt = val
+  }
+
+  return this._auto.prompt
+}
+
 SimpleBank.prototype.receiveMsg = function (msg, senderInfo, sync) {
   const self = this
   if (Buffer.isBuffer(msg)) msg = tradleUtils.unserializeMessage(msg)
