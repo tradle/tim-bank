@@ -555,7 +555,7 @@ SimpleBank.prototype.handleDocument = function (req, res) {
     return this.shouldSendVerification({
         state,
         application: req.application,
-        form: utils.findFormState(req.application.forms, req.payload.link)
+        form: findFormState(req.application.forms, req.payload)
       })
       .then(should => {
         return should.result && this._sendVerification({
@@ -629,7 +629,9 @@ SimpleBank.prototype._sendVerification = function (opts) {
     return utils.rejectWithHttpError(400, new Error(`application ${appLink} not found`))
   }
 
-  if (!utils.findFormState(application.forms, verifiedItem.link)) {
+  // TODO: revert to this
+  // if (!utils.findFormState(application.forms, verifiedItem.link)) {
+  if (!findFormState(application.forms, verifiedItem )) {
     return utils.rejectWithHttpError(400, new Error('form not found, refusing to send verification'))
   }
 
@@ -1380,8 +1382,8 @@ SimpleBank.prototype.handleVerification = function (req) {
     return Q.resolve()
   }
 
-  const { link } = utils.parseObjectId(req.payload.object.document.id)
-  let verifiedItem = utils.findFormState(pending.forms, link)
+  const verifiedItemInfo = utils.parseObjectId(req.payload.object.document.id)
+  let verifiedItem = findFormState(pending.forms, verifiedItemInfo)
   if (!verifiedItem) {
     return utils.rejectWithHttpError(400, new Error('form not found'))
   }
@@ -1390,7 +1392,7 @@ SimpleBank.prototype.handleVerification = function (req) {
 
   // get updated application and form state
   pending = req.application // dynamically calc'd prop
-  verifiedItem = utils.findFormState(pending.forms, link)
+  verifiedItem = findFormState(pending.forms, verifiedItemInfo)
 
   const opts = {
     state: req.state,
@@ -1628,32 +1630,6 @@ function getType (obj) {
   return utils.parseObjectId(obj.id).type
 }
 
-function assert (statement, errMsg) {
-  if (!statement) {
-    throw new Error(errMsg || 'assertion failed')
-  }
-}
-
-function ensureFormType (state, type) {
-  if (!state.forms[type]) state.forms[type] = []
-
-  return state.forms[type]
-}
-
-function ensureFormState (forms, curHash) {
-  var formState = findFormState(forms, curHash)
-  if (!formState) {
-    formState = { [CUR_HASH]: curHash }
-    forms.push(formState)
-  }
-
-  return formState
-}
-
-function newApplicationState (type) {
-  { type }
-}
-
 function alphabetical (a, b) {
   return a < b ? -1 : a === b ? 0 : 1
 }
@@ -1675,4 +1651,17 @@ function calcContextIdentifier ({ bank, context, participants }) {
   if (rmIsParticipant) return
 
   return context// + ':' + getConversationIdentifier(...participants)
+}
+
+function findFormState (forms, formInfo) {
+  // temporary solution, using lenient matching
+  // to prevent simple clients from getting confused
+  // when no verifications get sent/forwarded because verifications
+  // are issued for older versions of forms
+  //
+  // obviously bad
+  //
+  // TODO: revert to this
+  // return utils.findFormState(pending.forms, { link: formInfo.link })
+  return utils.findFormStateLenient(forms, formInfo)
 }
