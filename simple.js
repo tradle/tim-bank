@@ -712,15 +712,15 @@ SimpleBank.prototype.requestEdit = function (req, errs) {
     message = 'Importing...' + message[0].toLowerCase() + message.slice(1)
   }
 
-  return this.send({
-    req: req,
-    msg: {
-      [TYPE]: 'tradle.FormError',
-      prefill: prefill,
-      message: message,
-      errors: errs.errors
-    }
-  })
+  const editRequest = {
+    [TYPE]: 'tradle.FormError',
+    prefill: prefill,
+    message: message,
+    errors: errs.errors
+  }
+
+  return this.willRequestEdit({ req, state: req.state, editRequest })
+    .then(() => this.send({ req, msg: editRequest }))
 }
 
 SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
@@ -1575,6 +1575,10 @@ SimpleBank.prototype._execPlugins = function (method, args) {
 
 SimpleBank.prototype.willSend = function ({ req, msg }) {
   return this._execPlugins('willSend', arguments)
+}
+
+SimpleBank.prototype.willRequestEdit = function ({ req, state, editRequest }) {
+  return this._execPlugins('willRequestEdit', arguments)
 }
 
 SimpleBank.prototype.willRequestForm = function ({ state, application, form, formRequest }) {
