@@ -1044,10 +1044,6 @@ SimpleBank.prototype._handleSharedMessage = function (req) {
 //   req.state = getNextState(req.state, action)
 // }
 
-SimpleBank.prototype.models = function () {
-  return this.models
-}
-
 SimpleBank.prototype.getCustomerState = function (customerHash) {
   return this.bank._getCustomerState(customerHash)
 }
