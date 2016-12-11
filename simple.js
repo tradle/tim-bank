@@ -648,6 +648,7 @@ SimpleBank.prototype._sendVerification = function (opts) {
       let action = Actions.sentVerification(verifiedItem, verification, sentVerification.object)
       req.state = getNextState(req.state, action)
       this.tim.seal({ link: sentVerification.object.link })
+      return sentVerification
     })
 }
 
@@ -663,32 +664,38 @@ SimpleBank.prototype.sendVerification = function (opts) {
 
   let verifiedItem
   let req
+  let sentVerification
+  let customer
   return lookup
     .then(_verifiedItem => {
       verifiedItem = _verifiedItem
+      if (typeof verifiedItem.author === 'string') {
+        verifiedItem.author = { permalink: verifiedItem.author }
+      }
+
       req = new RequestState(null, verifiedItem)
       req.context = opts.application
-      return this.bank._lock(verifiedItem.author)
+      customer = verifiedItem.author.permalink
+      return this.bank._lock(customer)
     })
     .then(() => {
-      return this.getCustomerState(verifiedItem.author)
+      return this.getCustomerState(customer)
     })
     .then(state => {
       req.state = state
-      return this._sendVerification({
-        req: req,
-        verifiedItem: verifiedItem
-      })
+      return this._sendVerification({ req, verifiedItem })
     })
-    .then(() => {
+    .then(verification => {
+      sentVerification = verification
       return this.bank._setCustomerState(req)
     })
     .finally(() => req && req.end())
     .finally(() => {
-      if (verifiedItem && verifiedItem.author) {
-        return this.bank._unlock(verifiedItem.author)
+      if (customer) {
+        return this.bank._unlock(customer)
       }
     })
+    .then(() => sentVerification)
 }
 
 SimpleBank.prototype.requestEdit = function (req, errs) {
@@ -712,15 +719,15 @@ SimpleBank.prototype.requestEdit = function (req, errs) {
     message = 'Importing...' + message[0].toLowerCase() + message.slice(1)
   }
 
-  const editRequest = {
-    [TYPE]: 'tradle.FormError',
-    prefill: prefill,
-    message: message,
-    errors: errs.errors
-  }
-
-  return this.willRequestEdit({ req, state: req.state, editRequest })
-    .then(() => this.send({ req, msg: editRequest }))
+  return this.send({
+    req: req,
+    msg: {
+      [TYPE]: 'tradle.FormError',
+      prefill: prefill,
+      message: message,
+      errors: errs.errors
+    }
+  })
 }
 
 SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
@@ -896,6 +903,7 @@ SimpleBank.prototype.approveProduct = function (opts) {
   let application
   // return this._simulateReq(opts.customer)
 
+  let result
   return this._simulateReq(opts)
     .then(updatedOpts => {
       req = updatedOpts.req
@@ -913,8 +921,12 @@ SimpleBank.prototype.approveProduct = function (opts) {
       req.context = appLink
       return this._approveProduct({ req, application })
     })
-    .then(() => this.bank._setCustomerState(req))
+    .then(_result => {
+      result = _result
+      return this.bank._setCustomerState(req)
+    })
     .finally(() => this._endRequest(opts))
+    .then(() => result)
 }
 
 SimpleBank.prototype.getProducts = function (opts) {
@@ -1044,8 +1056,17 @@ SimpleBank.prototype._handleSharedMessage = function (req) {
 //   req.state = getNextState(req.state, action)
 // }
 
+SimpleBank.prototype.models = function () {
+  return this.models
+}
+
 SimpleBank.prototype.getCustomerState = function (customerHash) {
   return this.bank._getCustomerState(customerHash)
+}
+
+SimpleBank.prototype.getCustomerWithApplication = function (applicationHash) {
+  return this.bank._getCustomerForContext(applicationHash)
+    .then(this.getCustomerState)
 }
 
 SimpleBank.prototype._revokeProduct = function (opts) {
