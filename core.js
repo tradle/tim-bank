@@ -12,11 +12,13 @@ var typeforce = require('typeforce')
 var collect = require('stream-collector')
 // var tutils = require('@tradle/utils')
 var utils = require('./lib/utils')
-var Q = require('q')
+var Q = require('bluebird-q')
+var co = Q.async
 var tradle = require('@tradle/engine')
 var constants = tradle.constants
 var tutils = tradle.utils
 var elistener = require('elistener')
+var once = require('once')
 var RequestState = require('./lib/requestState')
 var getNewState = require('./lib/reducers')
 var Actions = require('./lib/actionCreators')
@@ -106,40 +108,63 @@ function Bank (options) {
   this._middles = utils.middles()
 }
 
-Bank.prototype._lock = function (customerHash, reason) {
+Bank.prototype.lock = function (id, reason="") {
   const self = this
-  this._debug(`locking ${customerHash}: ${reason}`)
-  const lock = this._locks[customerHash] = this._locks[customerHash] || mutexify()
-  const defer = Q.defer()
-  let release
-  let released
-
-  lock(_release => {
-    this._debug(`locked ${customerHash}: ${reason}`)
-    release = () => {
-      clearTimeout(timeout)
-      if (!released) {
-        released = true
-        _release()
-      }
-    }
-
-    var timeout = setTimeout(release, 10000)
-    self._manualReleases[customerHash] = release
-    defer.resolve()
-  })
-
-  return defer.promise
-}
-
-Bank.prototype._unlock = function (customerHash) {
-  const release = this._manualReleases[customerHash]
-  if (release) {
-    this._debug(`unlocking ${customerHash}`)
-    delete this._manualReleases[customerHash]
-    release()
+  if (!this._locks[id]) {
+    this._locks[id] = mutexify()
   }
+
+  const lock = this._locks[id]
+  this._debug(`locking ${id}: ${reason}`)
+  return new Promise(function (resolve, reject) {
+    lock(function (_release) {
+      self._debug(`locked ${id}: ${reason}`)
+      const release = once(function () {
+        clearTimeout(timeout)
+        self._debug(`unlocked ${id}: ${reason}`)
+        _release.apply(this, arguments)
+      })
+
+      resolve(release)
+      const timeout = setTimeout(release, 10000)
+    })
+  })
 }
+
+// Bank.prototype._lock = function (customerHash, reason) {
+//   const self = this
+//   this._debug(`locking ${customerHash}: ${reason}`)
+//   const lock = this._locks[customerHash] = this._locks[customerHash] || mutexify()
+//   const defer = Q.defer()
+//   let release
+//   let released
+
+//   lock(_release => {
+//     this._debug(`locked ${customerHash}: ${reason}`)
+//     release = () => {
+//       clearTimeout(timeout)
+//       if (!released) {
+//         released = true
+//         _release()
+//       }
+//     }
+
+//     var timeout = setTimeout(release, 10000)
+//     self._manualReleases[customerHash] = release
+//     defer.resolve()
+//   })
+
+//   return defer.promise
+// }
+
+// Bank.prototype._unlock = function (customerHash) {
+//   const release = this._manualReleases[customerHash]
+//   if (release) {
+//     this._debug(`unlocking ${customerHash}`)
+//     delete this._manualReleases[customerHash]
+//     release()
+//   }
+// }
 
 /**
  * plugin-based msg processing
@@ -229,7 +254,7 @@ Bank.prototype.forgetCustomer = function (req) {
 
 Bank.prototype._saveParsedMsg = function (req) {
   const objWrapper = req.payload
-  this._setResource(objWrapper.object[TYPE], objWrapper.link, {
+  return this._setResource(objWrapper.object[TYPE], objWrapper.link, {
     txId: req.txId,
     body: objWrapper.object
   })
@@ -241,21 +266,18 @@ Bank.prototype._debug = function () {
   return debug.apply(null, args)
 }
 
-Bank.prototype.receiveMsg = function (msg, senderInfo, sync) {
-  var self = this
-  return this.tim.receive(msg, senderInfo)
-    .then(received => self._onMessage(received, sync))
-}
+Bank.prototype.receiveMsg = co(function* (msg, senderInfo, sync) {
+  const received = yield this.tim.receive(msg, senderInfo)
+  return this._onMessage(received, sync)
+})
 
 Bank.prototype.setEmployees = function (employees) {
   this._employees = employees
 }
 
-Bank.prototype._onMessage = function (received, sync) {
-  var self = this
-  if (!this._ready) {
-    return this._readyPromise.then(() => this._onMessage(received, sync))
-  }
+Bank.prototype._onMessage = co(function* (received, sync) {
+  const self = this
+  yield this._readyPromise
 
   const msgWrapper = received.message
   const objWrapper = received.object
@@ -310,67 +332,61 @@ Bank.prototype._onMessage = function (received, sync) {
   req.customer = customer
 
   if (appLink) {
-    return this._getCustomerForContext(appLink)
-      .then(customer => {
-        req.customer = customer
-        return this.tim.addressBook.lookupIdentity({ permalink: customer })
-      }, err => {
-        this._debug('customer not found for context', appLink)
-      })
-      .then(identityInfo => {
-        req.customerIdentityInfo = identityInfo
-        return this._handleRequest(req)
-      })
+    try {
+      customer = req.customer = yield this._getCustomerForContext(appLink)
+      req.customerIdentityInfo = yield this.tim.addressBook.lookupIdentity({ permalink: customer })
+    } catch (err) {
+      this._debug('customer not found for context', appLink, err)
+    }
   }
 
-  return this._handleRequest(req)
-}
+  const unlock = yield this.lock(customer, 'process incoming message')
+  try {
+    return yield this._handleRequest(req)
+  } finally {
+    unlock()
+  }
+})
 
-Bank.prototype._handleRequest = function (req) {
+Bank.prototype._handleRequest = co(function* (req) {
   const self = this
   const customer = req.customer
   const from = req.from
 
   var res = {}
   this._debug(`received ${req[TYPE]} from ${from}`)
-  return this._lock(customer, 'process incoming message')
-    .then(() => this._getCustomerState(customer))
-    .catch(function (err) {
-      if (!err.notFound) throw err
+  let state
+  try {
+    state = yield this._getCustomerState(customer)
+  } catch (err) {
+    if (!err.notFound) throw err
 
-      req.state = getNewState(null, Actions.newCustomer({ permalink: customer }))
-      return self._setCustomerState(req)
-      // return newCustomerState(req)
-    })
-    .then(function (state) {
-      req.state = state
-      return self._middles.exec(req, res)
-    })
-    .then(function () {
-      return self._setCustomerState(req)
-    })
-    .then(function () {
-      if (self.shouldChainReceivedMessage(req)) {
-        self._debug('queuing chain-seal for received msg', req[TYPE])
-        self._chainReceivedMessage(req)
-          .catch(function (err) {
-            debug('failed to chain received msg', err)
-          })
-      }
+    state =getNewState(null, Actions.newCustomer({ permalink: customer }))
+    yield self._setCustomerState(req)
+  }
 
-      self._saveParsedMsg(req)
-      return req.end()
-    })
-    .catch(err => {
-      // end() either way otherwise the customer
-      // won't be able to make more requests
-      req.end()
-      throw err
-    })
-    .finally(() => {
-      this._unlock(customer)
-    })
-}
+  req.state = state
+
+  try {
+    yield self._middles.exec(req, res)
+    yield self._setCustomerState(req)
+    if (self.shouldChainReceivedMessage(req)) {
+      self._debug('queuing chain-seal for received msg', req[TYPE])
+      // don't wait for this
+      self._chainReceivedMessage(req)
+        .catch(function (err) {
+          debug('failed to chain received msg', err)
+        })
+    }
+
+    yield self._saveParsedMsg(req)
+  } catch (err) {
+    this._debug('experienced error while processing request', err)
+    throw err
+  } finally {
+    yield req.end()
+  }
+})
 
 // Bank.prototype.createOrUpdateCustomer = function (customer) {
 //   if (typeof customer === 'string') {
@@ -379,7 +395,7 @@ Bank.prototype._handleRequest = function (req) {
 
 //   let getNewState
 //   const clink = customer.permalink
-//   return this._lock(clink, 'update or create customer')
+//   return this.lock(clink, 'update or create customer')
 //     .then(() => this._getCustomerState(clink))
 //     .then(state => {
 //       return getNewState(state, Actions.updateCustomer(customer))
@@ -456,8 +472,7 @@ Bank.prototype.createCustomerStream = function (opts) {
  * @param  {?RequestState} opts.req
  * @return {Promise}
  */
-Bank.prototype.send = function (opts) {
-  const self = this
+Bank.prototype.send = co(function* (opts) {
   // typeforce('RequestState', req)
   // typeforce('Object', resp)
 
@@ -470,34 +485,28 @@ Bank.prototype.send = function (opts) {
   const recipient = req.from
   this._debug(`sending ${msg[TYPE]} to ${recipient.permalink}`)
 
-  let maybeSign
-  if (!(constants.SIG in msg)) {
-    maybeSign = this.tim.sign({ object: msg })
+  let signed
+  if (constants.SIG in msg) {
+    signed = msg
   } else {
-    maybeSign = Q(msg)
+    signed = yield this.tim.sign({ object: msg })
   }
 
-  let result
   const context = req.context
-  return maybeSign
-    .then(function (signed) {
-      return self.tim.send({
-        to: recipient,
-        object: signed.object,
-        other: context && { context }
-      })
-    })
-    .then(function (_result) {
-      result = _result
-      if (req && req.sync) {
-        var getSent = utils.waitForEvent(self.tim, 'sent', result.message.link)
-        req.promise(getSent)
-      }
+  const result = yield this.tim.send({
+    to: recipient,
+    object: signed.object,
+    other: context && { context }
+  })
 
-      return self._setResource(msg[TYPE], result.object.permalink, result.object.object)
-    })
-    .then(() => result)
-}
+  if (req && req.sync) {
+    var getSent = utils.waitForEvent(this.tim, 'sent', result.message.link)
+    req.promise(getSent)
+  }
+
+  yield this._setResource(msg[TYPE], result.object.permalink, result.object.object)
+  return result
+})
 
 Bank.prototype.destroy = function () {
   if (this._destroyPromise) return this._destroyPromise

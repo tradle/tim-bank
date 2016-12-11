@@ -4,7 +4,7 @@
   "description": "tradle bank server",
   "main": "./index.js",
   "scripts": {
-    "test": "node test"
+    "test": "BLUEBIRD_DEBUG=1 node test"
   },
   "author": "Mark Vayngrib <mark.vayngrib@lablz.com> (http://github.com/mvayngrib)",
   "license": "GPLv3",
@@ -12,6 +12,7 @@
     "@tradle/engine": "^3.5.0",
     "@tradle/message-context": "1.4.2",
     "array-find": "^1.0.0",
+    "bluebird-q": "github:mvayngrib/bluebird-q",
     "clone": "^1.0.2",
     "compression": "^1.6.0",
     "concat-stream": "^1.5.1",

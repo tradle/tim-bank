@@ -7,7 +7,8 @@ const typeforce = require('typeforce')
 const extend = require('xtend')
 const mutableExtend = require('xtend/mutable')
 const collect = require('stream-collector')
-const Q = require('q')
+const Q = require('bluebird-q')
+const co = Q.async
 const clone = require('clone')
 const tradle = require('@tradle/engine')
 const protocol = tradle.protocol
@@ -261,7 +262,7 @@ SimpleBank.prototype.autoprompt = function (val) {
   return this._auto.prompt
 }
 
-SimpleBank.prototype.receiveMsg = function (msg, senderInfo, sync) {
+SimpleBank.prototype.receiveMsg = co(function* (msg, senderInfo, sync) {
   const self = this
   if (Buffer.isBuffer(msg)) msg = tradleUtils.unserializeMessage(msg)
 
@@ -270,19 +271,18 @@ SimpleBank.prototype.receiveMsg = function (msg, senderInfo, sync) {
   this._debug('receiving ' + type)
 
   const from = senderInfo.permalink || senderInfo.fingerprint || senderInfo.pubKey
-  return this._ready.then(() => {
-    if (type === SELF_INTRODUCTION || type === IDENTITY_PUBLISH_REQUEST) {
-      return this._wrapInLock(from, () => this.tim.addContactIdentity(obj.identity))
-        .then(receivePrivate)
-    } else {
-      return receivePrivate()
+  yield this._ready
+  if (type === SELF_INTRODUCTION || type === IDENTITY_PUBLISH_REQUEST) {
+    const unlock = yield this.lock(from)
+    try {
+      yield this.tim.addContactIdentity(obj.identity)
+    } finally {
+      unlock()
     }
-  })
-
-  function receivePrivate () {
-    return self.receivePrivateMsg(msg, senderInfo, sync)
   }
-}
+
+  return this.receivePrivateMsg(msg, senderInfo, sync)
+})
 
 SimpleBank.prototype._assignRelationshipManager = function (req) {
   // assign relationship manager if none is assigned
@@ -323,51 +323,50 @@ SimpleBank.prototype._assignRelationshipManager = function (req) {
   }
 }
 
-SimpleBank.prototype._wrapInLock = function (locker, fn) {
-  return this.bank._lock(locker)
-    .then(() => fn())
-    .finally(() => this.bank._unlock(locker))
+SimpleBank.prototype.lock = function (id, reason) {
+  return this.bank.lock(id, reason)
 }
+
+SimpleBank.prototype._wrapInLock = co(function* (locker, fn) {
+  const unlock = yield this.lock(locker)
+  try {
+    return fn()
+  } finally {
+    unlock()
+  }
+})
 
 SimpleBank.prototype._setEmployees = function (employees) {
   this._employees = employees
   this.bank.setEmployees(employees)
 }
 
-SimpleBank.prototype._ensureEmployees = function (employees) {
+SimpleBank.prototype._ensureEmployees = co(function* (employees) {
   var self = this
-  return (employees ? Q(employees) : getEmployees())
-    .then(this._setEmployees)
-
-  function getEmployees () {
-    let employees
-    return self.getMyEmployees()
-      .then(_employees => {
-        employees = _employees
-        return Q.all(employees.map(e => {
-          return self.tim.addressBook.byPermalink(e.object.customer)
-        }))
-      })
-      .then(identities => {
-        return identities.map(function (identityInfo, i) {
-          const e = employees[i]
-          const pass = e.object
-          return {
-            [ROOT_HASH]: e.object.customer,
-            pub: identityInfo.object,
-            profile: {
-              name: utils.pick(pass, 'firstName', 'lastName')
-            },
-            // txId: e.to.txId
-          }
-        })
-      })
-      .catch(err => {
-        debugger
-        throw err
-      })
+  if (employees) {
+    return this._setEmployees(employees)
   }
-}
+
+  const employeePasses = yield this.getMyEmployees()
+  const identities = yield Q.all(employeePasses.map(e => {
+    return self.tim.addressBook.byPermalink(e.object.customer)
+  }))
+
+  employees = identities.map(function (identityInfo, i) {
+    const e = employees[i]
+    const pass = e.object
+    return {
+      [ROOT_HASH]: e.object.customer,
+      pub: identityInfo.object,
+      profile: {
+        name: utils.pick(pass, 'firstName', 'lastName')
+      },
+      // txId: e.to.txId
+    }
+  })
+
+  return this._setEmployees(employees)
+})
 
 SimpleBank.prototype._setProfile = function (req, res) {
   const profile = req.payload.object.profile
@@ -377,32 +376,27 @@ SimpleBank.prototype._setProfile = function (req, res) {
   req.state = getNextState(req.state, action)
 }
 
-SimpleBank.prototype.getMyEmployees = function () {
+SimpleBank.prototype.getMyEmployees = co(function* () {
   const self = this
-  return Q.nfcall(collect, this.tim.objects.type('tradle.MyEmployeeOnboarding'))
-    .then(employees => {
-      return employees.filter(e => {
-      // issued by "me" (the bank bot)
-        return e.author === self.tim.permalink && !e.object.revoked
-      })
-    })
-}
+  const passes = yield Q.nfcall(collect, this.tim.objects.type('tradle.MyEmployeeOnboarding'))
+  return employees.filter(e => {
+  // issued by "me" (the bank bot)
+    return e.author === self.tim.permalink && !e.object.revoked
+  })
+})
 
-SimpleBank.prototype.receivePrivateMsg = function (msg, senderInfo, sync) {
-  return this.tim.addressBook.lookupIdentity(senderInfo)
-    .then(
-      them => {
-        return this.bank.receiveMsg(msg, them, sync)
-      },
-      err => {
-        const req = new RequestState({ author: senderInfo })
-        return this.replyNotFound(req)
-      }
-    )
-}
+SimpleBank.prototype.receivePrivateMsg = co(function* (msg, senderInfo, sync) {
+  try {
+    var them = yield this.tim.addressBook.lookupIdentity(senderInfo)
+    return this.bank.receiveMsg(msg, them, sync)
+  } catch (err) {
+    const req = new RequestState({ author: senderInfo })
+    return this.replyNotFound(req)
+  }
+})
 
-SimpleBank.prototype.replyNotFound = function (req, whatWasntFound) {
-  return this.send({
+SimpleBank.prototype.replyNotFound = co(function* (req, whatWasntFound) {
+  yield this.send({
     req: req,
     msg: {
       [TYPE]: 'tradle.NotFound',
@@ -410,13 +404,12 @@ SimpleBank.prototype.replyNotFound = function (req, whatWasntFound) {
     },
     public: true
   })
-  .then(() => {
-    return req.end()
-  })
+
+  return req.end()
 
   // public=true because not knowing their identity,
   // we don't know how to encrypt messages for them
-}
+})
 
 SimpleBank.prototype.sendProductList = function (req) {
   var bank = this.bank
@@ -456,61 +449,47 @@ SimpleBank.prototype.sendProductList = function (req) {
   })
 }
 
-SimpleBank.prototype.publishCustomerIdentity = function (req) {
+SimpleBank.prototype.publishCustomerIdentity = co(function* (req) {
   // TODO: verify that sig of identityPublishRequest comes from sign/update key
   // of attached identity. Need to factor this out of @tradle/verifier
-  var self = this
   var bank = this.bank
   var identity = req.payload.object.identity
   var tim = this.tim
-  var rootHash
-  var wasAlreadyPublished
-  var curHash = protocol.linkString(identity)
-  var rootHash = identity[ROOT_HASH] || curHash
-  tim.objects.get(curHash)
-    .catch(noop)
-    .then(function (obj) {
-      // if obj is queued to be chained
-      // assume it's on its way to be published
-      if (obj && 'sealstatus' in obj) {
-        // may not be published yet, but def queued
-        var resp = utils.buildSimpleMsg('already published', types.IDENTITY)
-        return bank.send({
-          req: req,
-          msg: resp
-        })
-      } else {
-        return publish()
-      }
-    })
-    // .then(() => this.sendProductList(req))
-    .then(function () {
-      return req
-    })
-
-  function publish () {
-    if (!Bank.ALLOW_CHAINING) {
-      if (process.env.NODE_ENV === 'test') return notifyPublished()
-
-      self._debug('not chaining identity. To enable chaining, set Bank.ALLOW_CHAINING=true', curHash)
-      return
+  var curLink = protocol.linkString(identity)
+  var rootHash = identity[ROOT_HASH] || curLink
+  try {
+    const obj = yield tim.objects.get(curLink)
+    // if obj is queued to be chained
+    // assume it's on its way to be published
+    if (obj && 'sealstatus' in obj) {
+      // may not be published yet, but def queued
+      return bank.send({
+        req: req,
+        msg: utils.buildSimpleMsg('already published', types.IDENTITY)
+      })
     }
-
-    self._debug('sealing customer identity with rootHash: ' + curHash)
-    return tim.seal({ link: curHash })
-      .then(notifyPublished)
+  } catch (err) {
   }
 
-  function notifyPublished () {
-    var resp = {}
-    resp[TYPE] = 'tradle.IdentityPublished'
-    resp.identity = curHash
-    return bank.send({
-      req: req,
-      msg: resp
-    })
+  if (!Bank.ALLOW_CHAINING) {
+    if (process.env.NODE_ENV === 'test') return notifyPublished()
+
+    this._debug('not chaining identity. To enable chaining, set Bank.ALLOW_CHAINING=true', curLink)
+    return
   }
-}
+
+  this._debug('sealing customer identity with rootHash: ' + curLink)
+  yield tim.seal({ link: curLink })
+  const resp = {
+    [TYPE]: 'tradle.IdentityPublished',
+    identity: curLink
+  }
+
+  return bank.send({
+    req: req,
+    msg: resp
+  })
+})
 
 SimpleBank.prototype.handleNewApplication = function (req, res) {
   typeforce({
@@ -530,7 +509,7 @@ SimpleBank.prototype.handleNewApplication = function (req, res) {
   return this.sendNextFormOrApprove({req})
 }
 
-SimpleBank.prototype.handleDocument = function (req, res) {
+SimpleBank.prototype.handleDocument = co(function* (req, res) {
   const appLink = req.context
   const application = req.application
   if (!application || application.isProduct) {
@@ -539,52 +518,38 @@ SimpleBank.prototype.handleDocument = function (req, res) {
   }
 
   let state = req.state
-  const next = () => {
-    req.state = state = getNextState(req.state, Actions.receivedForm(req.payload, appLink))
-
-    if (!utils.isVerifiableForm(this.models[req.type])) {
-      return
-    }
-
-    const prefilledVerification = utils.getImportedVerification(state, req.payload.object)
-    if (!prefilledVerification && !this._auto.verify) {
-      return
-    }
-
-    // get updated application state
-    return this.shouldSendVerification({
-        state,
-        application: req.application,
-        form: findFormState(req.application.forms, req.payload)
-      })
-      .then(should => {
-        return should.result && this._sendVerification({
-          req: req,
-          verifiedItem: req.payload
-        })
-      })
-
-    // .then(() => {
-    //   req.state = getNextState(req.state, Actions.sentVerification(msg))
-    // })
+  const next = () => this.sendNextFormOrApprove({req})
+  const invalid = this.validateDocument(req)
+  if (invalid) {
+    req.nochain = true
+    return this.requestEdit(req, invalid)
   }
 
-  let valid = true
-  return this.validateDocument(req)
-    .then(
-      next,
-      errs => {
-        valid = false
-        req.nochain = true
-        return this.requestEdit(req, errs)
-      }
-    )
-    .then(() => {
-      if (valid) {
-        return this.sendNextFormOrApprove({req})
-      }
+  req.state = state = getNextState(req.state, Actions.receivedForm(req.payload, appLink))
+  if (!utils.isVerifiableForm(this.models[req.type])) {
+    return next()
+  }
+
+  const prefilledVerification = utils.getImportedVerification(state, req.payload.object)
+  if (!prefilledVerification && !this._auto.verify) {
+    return next()
+  }
+
+  const should = yield this.shouldSendVerification({
+    state,
+    application: req.application,
+    form: findFormState(req.application.forms, req.payload)
+  })
+
+  if (should.result) {
+    yield this._sendVerification({
+      req: req,
+      verifiedItem: req.payload
     })
-}
+  }
+
+  return next()
+})
 
 SimpleBank.prototype.onNextFormRequest = function (req, res) {
   req.state = getNextState(req.state, Actions.skipForm(this.models, req.payload.object.after))
@@ -611,10 +576,10 @@ SimpleBank.prototype.validateDocument = function (req) {
     }
   }
 
-  return err ? Q.reject(err) : Q()
+  return err
 }
 
-SimpleBank.prototype._sendVerification = function (opts) {
+SimpleBank.prototype._sendVerification = co(function* (opts) {
   typeforce({
     req: 'RequestState',
     verifiedItem: 'Object'
@@ -639,20 +604,18 @@ SimpleBank.prototype._sendVerification = function (opts) {
   req.state = getNextState(req.state, action)
   const updatedApp = req.application || req.product // dynamically calc'c prop
   const verification = utils.lastVerificationFor(updatedApp.forms, verifiedItem.link)
+  const sentVerification = yield this.send({
+    req: req,
+    msg: verification.body
+  })
 
-  return this.send({
-      req: req,
-      msg: verification.body
-    })
-    .then(sentVerification => {
-      let action = Actions.sentVerification(verifiedItem, verification, sentVerification.object)
-      req.state = getNextState(req.state, action)
-      this.tim.seal({ link: sentVerification.object.link })
-      return sentVerification
-    })
-}
+  action = Actions.sentVerification(verifiedItem, verification, sentVerification.object)
+  req.state = getNextState(req.state, action)
+  this.tim.seal({ link: sentVerification.object.link })
+  return sentVerification
+})
 
-SimpleBank.prototype.sendVerification = function (opts) {
+SimpleBank.prototype.sendVerification = co(function* (opts) {
   typeforce({
     verifiedItem: typeforce.oneOf('String', 'Object'),
     application: typeforce.String
@@ -662,41 +625,29 @@ SimpleBank.prototype.sendVerification = function (opts) {
     ? this.tim.objects.get(opts.verifiedItem)
     : opts.verifiedItem
 
-  let verifiedItem
-  let req
-  let sentVerification
   let customer
-  return lookup
-    .then(_verifiedItem => {
-      verifiedItem = _verifiedItem
-      if (typeof verifiedItem.author === 'string') {
-        verifiedItem.author = { permalink: verifiedItem.author }
-      }
+  let verifiedItem = yield lookup
+  if (typeof verifiedItem.author === 'string') {
+    verifiedItem.author = { permalink: verifiedItem.author }
+  }
 
-      req = new RequestState(null, verifiedItem)
-      req.context = opts.application
-      customer = verifiedItem.author.permalink
-      return this.bank._lock(customer)
-    })
-    .then(() => {
-      return this.getCustomerState(customer)
-    })
-    .then(state => {
-      req.state = state
-      return this._sendVerification({ req, verifiedItem })
-    })
-    .then(verification => {
-      sentVerification = verification
-      return this.bank._setCustomerState(req)
-    })
-    .finally(() => req && req.end())
-    .finally(() => {
-      if (customer) {
-        return this.bank._unlock(customer)
-      }
-    })
-    .then(() => sentVerification)
-}
+  const req = new RequestState(null, verifiedItem)
+  req.context = opts.application
+  customer = verifiedItem.author.permalink
+  const unlock = yield this.lock(customer)
+  try {
+    const state = req.state = yield this.getCustomerState(customer)
+    const verification = yield this._sendVerification({ req, verifiedItem })
+    yield this.bank._setCustomerState(req)
+    return verification
+  } finally {
+    try {
+      yield req.end()
+    } finally {
+      unlock()
+    }
+  }
+})
 
 SimpleBank.prototype.requestEdit = function (req, errs) {
   typeforce({
@@ -730,7 +681,7 @@ SimpleBank.prototype.requestEdit = function (req, errs) {
   })
 }
 
-SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
+SimpleBank.prototype.sendNextFormOrApprove = co(function* (opts) {
   if (!(this._auto.prompt || this._auto.verify)) return Q()
 
   typeforce({
@@ -746,14 +697,14 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
   const application = utils.getApplication(state, context)
   if (!application) {
     this._debug(`pending application ${context} not found`)
-    return Q()
+    return
   }
 
   const productType = application.type
   const isRemediation = productType === REMEDIATION
   const productModel = isRemediation ? REMEDIATION_MODEL : this.models[productType]
   if (!productModel) {
-    return utils.rejectWithHttpError(400, 'no such product model: ' + productType)
+    throw utils.httpError(400, 'no such product model: ' + productType)
   }
 
   const thisProduct = state.products[productType]
@@ -788,7 +739,7 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
   })
 
   if (missing) {
-    if (!this._auto.prompt) return Q()
+    if (!this._auto.prompt) return
 
     const isMultiEntry = multiEntryForms.indexOf(missing) !== -1
     let prefilled = !isMultiEntry && utils.findFilledForm(state, missing)
@@ -857,77 +808,78 @@ SimpleBank.prototype.sendNextFormOrApprove = function (opts) {
 
   if (!this._auto.verify || productType === 'tradle.EmployeeOnboarding') {
     // 'application' event ugly side-effect
-    return (req.continue || Q())
-      .then(() => this.onApplicationFormsCollected({ req, application }))
+    if (req.continue) {
+      yield req.continue
+    }
+
+    return this.onApplicationFormsCollected({ req, application })
   }
 
-  return this.shouldIssueProduct({ state: req.state, application })
-    .then(should => {
-      return should.result && this._approveProduct({
-        application: application,
-        req: req
-      })
+  const should = yield this.shouldIssueProduct({ state: req.state, application })
+  if (should.result) {
+    return this._approveProduct({
+      application: application,
+      req: req
     })
-}
+  }
+})
 
-SimpleBank.prototype._simulateReq = function (opts) {
-  let req
+SimpleBank.prototype._simulateReq = co(function* (opts) {
   const customerHash = opts.customer
-  return this.getCustomerState(customerHash)
-    .then(state => {
-      req = new RequestState({
-        state: state,
-        author: {
-          permalink: customerHash
-        }
-      })
+  const state = yield this.getCustomerState(customerHash)
+  const req = new RequestState({
+    state: state,
+    author: {
+      permalink: customerHash
+    }
+  })
 
-      return this.bank._lock(customerHash)
-    })
-    .then(() => extend(opts, { req }))
-}
+  req.unlock = yield this.lock(customerHash)
+  return extend(opts, { req })
+})
 
-SimpleBank.prototype._endRequest = function (opts) {
-  return (opts.req ? opts.req.end() : Q())
-    .finally(() => this.bank._unlock(opts.customer))
-}
+SimpleBank.prototype._endRequest = co(function* (req) {
+  try {
+    req.end()
+  } finally {
+    if (req.unlock) req.unlock()
+  }
+})
 
-SimpleBank.prototype.approveProduct = function (opts) {
+SimpleBank.prototype.approveProduct = co(function* (opts) {
   typeforce({
     customer: typeforce.String,
     productType: typeforce.maybe(typeforce.String),
     application: typeforce.maybe(typeforce.String)
   }, opts)
 
-  let req
-  let application
   // return this._simulateReq(opts.customer)
 
-  let result
-  return this._simulateReq(opts)
-    .then(updatedOpts => {
-      req = updatedOpts.req
-      let appLink = opts.application
-      application = appLink && utils.getApplication(req.state, appLink)
+  const updatedOpts = yield this._simulateReq(opts)
+  const req = updatedOpts.req
+  try {
+    let appLink = opts.application
+    let application = appLink && utils.getApplication(req.state, appLink)
+    if (!application) {
+      application = find(req.state.pendingApplications || [], app => app.type === opts.productType)
       if (!application) {
-        application = find(req.state.pendingApplications || [], app => app.type === opts.productType)
-        if (!application) {
-          throw new Error(`pending application ${appLink} not found`)
-        } else {
-          appLink = application.permalink
-        }
+        throw new Error(`pending application ${appLink} not found`)
+      } else {
+        appLink = application.permalink
       }
+    }
 
-      req.context = appLink
-      return this._approveProduct({ req, application })
-    })
-    .then(_result => {
-      result = _result
-      return this.bank._setCustomerState(req)
-    })
-    .finally(() => this._endRequest(opts))
-    .then(() => result)
-}
+    req.context = appLink
+    const result = yield this._approveProduct({ req, application })
+    yield this.bank._setCustomerState(req)
+    return result
+  } catch (err) {
+    this._debug('approveProduct failed', err)
+    throw err
+  } finally {
+    this._endRequest(req)
+  }
+})
 
 SimpleBank.prototype.getProducts = function (opts) {
   typeforce({
@@ -938,7 +890,7 @@ SimpleBank.prototype.getProducts = function (opts) {
     .then(state => state.products)
 }
 
-SimpleBank.prototype.revokeProduct = function (opts) {
+SimpleBank.prototype.revokeProduct = co(function* (opts) {
   typeforce({
     customer: typeforce.String,
     product: typeforce.String
@@ -947,19 +899,20 @@ SimpleBank.prototype.revokeProduct = function (opts) {
   // return this._simulateReq(opts.customer)
   const customerHash = opts.customer
   const productPermalink = opts.product
-  return this._simulateReq(opts)
-    .then(updatedOpts => {
-      opts = updatedOpts
-      return this._revokeProduct(opts)
-    })
-    .then(() => this.bank._setCustomerState(opts.req))
-    .finally(() => this._endRequest(opts))
-}
+  opts = yield this._simulateReq(opts)
+  const req = opts.req
+  try {
+    yield this._revokeProduct(opts)
+    yield this.bank._setCustomerState(opts.req)
+  } finally {
+    this._endRequest(req)
+  }
+})
 
-SimpleBank.prototype.shareContext = function (req, res) {
+SimpleBank.prototype.shareContext = co(function* (req, res) {
   // TODO:
   // need to check whether this context is theirs to share
-
+  const self = this
   const isEmployee = this._employees.some(e => e[ROOT_HASH] === req.from.permalink)
   if (isEmployee && req.state.relationshipManager !== req.from.permalink) {
     return utils.rejectWithHttpError(403, new Error('employee is not authorized to share this context'))
@@ -988,42 +941,31 @@ SimpleBank.prototype.shareContext = function (req, res) {
   let customerIdentityInfo = req.customerIdentityInfo
   const customerProfile = req.state.profile
   const shareMethod = props.revoked ? 'unshare' : 'share'
-  const shareWithOne = recipient => {
-    const intro = props.revoked ? Q.resolve() : introduceCustomerTo(recipient)
-    return intro.then(() => doShareWith(recipient))
+
+  if (!(customerIdentityInfo && customerIdentityInfo.object)) {
+    customerIdentityInfo = yield this.tim.lookupIdentity({ permalink: req.customer })
   }
 
-  const introduceCustomerTo = recipient => {
-    return this.tim.signAndSend({
-      to: { permalink: recipient },
-      object: {
-        [TYPE]: 'tradle.Introduction',
-        profile: customerProfile,
-        message: 'introducing...',
-        identity: customerIdentityInfo.object
-      }
-    })
-  }
+  return Q.all(recipients.map(co(function* (recipient) {
+    if (!props.revoked) {
+      yield self.tim.signAndSend({
+        to: { permalink: recipient },
+        object: {
+          [TYPE]: 'tradle.Introduction',
+          profile: customerProfile,
+          message: 'introducing...',
+          identity: customerIdentityInfo.object
+        }
+      })
+    }
 
-  const doShareWith = recipient => {
-    // console.log('sharing context: ' + calcContextIdentifier(context, this.tim.permalink, req.customer))
-    return this._ctxDB[shareMethod]({
+    return self._ctxDB[shareMethod]({
       context: cid,
       recipient,
       seq: props.seq || 0
     })
-  }
-
-  const getCustomerIdentityInfo = customerIdentityInfo && customerIdentityInfo.object
-    ? Q(customerIdentityInfo)
-    : this.tim.lookupIdentity({ permalink: req.customer })
-
-  return getCustomerIdentityInfo
-    .then(identityInfo => {
-      customerIdentityInfo = identityInfo
-      return Q.all(recipients.map(shareWithOne))
-    })
-}
+  })))
+})
 
 SimpleBank.prototype._handleSharedMessage = function (req) {
   // const embeddedMsgAuthor = req.payload.author.permalink
@@ -1069,7 +1011,7 @@ SimpleBank.prototype.getCustomerWithApplication = function (applicationHash) {
     .then(this.getCustomerState)
 }
 
-SimpleBank.prototype._revokeProduct = function (opts) {
+SimpleBank.prototype._revokeProduct = co(function* (opts) {
   // TODO: minimize code repeat with sendNextFormOrApprove
   const req = opts.req
   const newState = getNextState(req.state, Actions.revokeProduct(opts.product))
@@ -1080,31 +1022,28 @@ SimpleBank.prototype._revokeProduct = function (opts) {
 
   req.state = newState
   let isEmployeePass
-  return this.tim.objects.get(opts.product)
-    .then(wrapper => {
-      // revoke product and send
-      const product = wrapper.object
-      delete product.message
-      delete product[SIG]
-      product.revoked = true
-      product[PREVLINK] = wrapper.link
-      product[PERMALINK] = wrapper.permalink
-      isEmployeePass = product[TYPE] === 'tradle.MyEmployeeOnboarding'
-      return this.send({
-        req: req,
-        msg: product
-      })
-    })
-    .then(result => {
-      if (isEmployeePass) {
-        this._ensureEmployees()
-      }
+  const wrapper = yield this.tim.objects.get(opts.product)
+  // revoke product and send
+  const product = wrapper.object
+  delete product.message
+  delete product[SIG]
+  product.revoked = true
+  product[PREVLINK] = wrapper.link
+  product[PERMALINK] = wrapper.permalink
+  isEmployeePass = product[TYPE] === 'tradle.MyEmployeeOnboarding'
+  const result = yield this.send({
+    req: req,
+    msg: product
+  })
 
-      return result
-    })
-}
+  if (isEmployeePass) {
+    this._ensureEmployees()
+  }
 
-SimpleBank.prototype._approveProduct = function ({ req, application }) {
+  return result
+})
+
+SimpleBank.prototype._approveProduct = co(function* ({ req, application }) {
   // TODO: minimize code repeat with sendNextFormOrApprove
   const appLink = req.context
   const productType = application.type
@@ -1126,20 +1065,19 @@ SimpleBank.prototype._approveProduct = function ({ req, application }) {
   req.state = state = getNextState(state, Actions.approveProduct(appLink))
   const confirmation = this._newProductConfirmation(state, application)
 
-  return this.send({
+  const result = yield this.send({
     req: req,
     msg: confirmation
   })
-  .then(result => {
-    if (productType === 'tradle.EmployeeOnboarding') {
-      this._ensureEmployees()
-    }
 
-    const pOfType = state.products[productType]
-    req.state = state = getNextState(state, Actions.approvedProduct(appLink, productType, result.object.permalink))
-    return result
-  })
-}
+  if (productType === 'tradle.EmployeeOnboarding') {
+    this._ensureEmployees()
+  }
+
+  const pOfType = state.products[productType]
+  req.state = state = getNextState(state, Actions.approvedProduct(appLink, productType, result.object.permalink))
+  return result
+})
 
 SimpleBank.prototype._newProductRevocation = function (opts) {
   return {
@@ -1238,12 +1176,12 @@ SimpleBank.prototype._newProductConfirmation = function (state, application) {
 }
 
 
-SimpleBank.prototype.send = function ({ req, msg }) {
-  return this.willSend({ req, msg })
-    .then(() => this.bank.send({ req, msg }))
-}
+SimpleBank.prototype.send = co(function* ({ req, msg }) {
+  yield this.willSend({ req, msg })
+  return this.bank.send({ req, msg })
+})
 
-SimpleBank.prototype.requestForm = function (opts) {
+SimpleBank.prototype.requestForm = co(function* (opts) {
   typeforce({
     req: 'RequestState',
     form: 'String',
@@ -1268,21 +1206,20 @@ SimpleBank.prototype.requestForm = function (opts) {
     form: form
   }
 
-  return this.willRequestForm({
-      state: req.state,
-      application: req.application,
-      form,
-      // allow the developer to modify this
-      formRequest
-    })
-    .then(() => {
-      debug('requesting form', form)
-      return this.send({
-        req: req,
-        msg: formRequest
-      })
-    })
-}
+  yield this.willRequestForm({
+    state: req.state,
+    application: req.application,
+    form,
+    // allow the developer to modify this
+    formRequest
+  })
+
+  debug('requesting form', form)
+  return this.send({
+    req: req,
+    msg: formRequest
+  })
+})
 
 SimpleBank.prototype._getRelevantPending = function (pending, reqState) {
   var docType = reqState[TYPE] === VERIFICATION ? getType(reqState.payload.object.document)
@@ -1386,7 +1323,7 @@ SimpleBank.prototype.getEmployee = function (req) {
   })
 }
 
-SimpleBank.prototype.handleVerification = function (req) {
+SimpleBank.prototype.handleVerification = co(function* (req) {
   // dangerous if verification is malformed
   const appLink = req.context
   let pending = req.application
@@ -1417,34 +1354,34 @@ SimpleBank.prototype.handleVerification = function (req) {
     form: verifiedItem
   }
 
-  return this.shouldSendVerification(opts)
-    .then(should => {
-      return should.result && this._sendVerification({
-        req: req,
-        verifiedItem: {
-          author: req.from,
-          object: verifiedItem.form.body,
-          link: verifiedItem.form.link,
-          permalink: verifiedItem.form.permalink
-        }
-      })
+  const should = yield this.shouldSendVerification(opts)
+  if (should.result) {
+    yield this._sendVerification({
+      req: req,
+      verifiedItem: {
+        author: req.from,
+        object: verifiedItem.form.body,
+        link: verifiedItem.form.link,
+        permalink: verifiedItem.form.permalink
+      }
     })
-    .then(() => this.sendNextFormOrApprove({req}))
-}
+  }
 
-SimpleBank.prototype.forgetMe = function (req) {
+  return this.sendNextFormOrApprove({req})
+})
+
+SimpleBank.prototype.forgetMe = co(function* (req) {
   var bank = this.bank
-  return bank.forgetCustomer(req)
-    .then(function () {
-      var forgotYou = {}
-      forgotYou[TYPE] = FORGOT_YOU
-      return bank.send({
-        req: req,
-        msg: forgotYou,
-        chain: true
-      })
-    })
-}
+  yield bank.forgetCustomer(req)
+
+  var forgotYou = {}
+  forgotYou[TYPE] = FORGOT_YOU
+  return bank.send({
+    req: req,
+    msg: forgotYou,
+    chain: true
+  })
+})
 
 SimpleBank.prototype.destroy = function () {
   this._destroyed = true
@@ -1461,59 +1398,54 @@ SimpleBank.prototype.storeGuestSession = function (hash, data) {
   return this.bank._setResource(GUEST_SESSION, hash, data)
 }
 
-SimpleBank.prototype.importSession = function (req) {
+SimpleBank.prototype.importSession = co(function* (req) {
   const bank = this.bank
   const hash = req.payload.object.session
   const customerHash = req.payload.author.permalink
   const state = req.state
   const msg = req.msg
-  let applications
-  let session
-  return this.bank._getResource(GUEST_SESSION, hash)
-    .then(_session => {
-      session = _session
-      req.state = getNextState(req.state, Actions.importSession(session, this.models))
-      // confirmations = session.map(data => {
-      //   return data[TYPE].indexOf('Confirmation') !== -1
-      // })
+  let session = yield this.bank._getResource(GUEST_SESSION, hash)
+  req.state = getNextState(req.state, Actions.importSession(session, this.models))
+  // confirmations = session.map(data => {
+  //   return data[TYPE].indexOf('Confirmation') !== -1
+  // })
 
-      // confirmations.forEach(c => {
-      // })
+  // confirmations.forEach(c => {
+  // })
 
-      // save now just in case
-      return this.bank._setCustomerState(req)
-    })
-    .then(() => {
-      // async, no need to wait for this
-      // this.bank._delResource(GUEST_SESSION, hash)
+  // save now just in case
+  yield this.bank._setCustomerState(req)
+  // async, no need to wait for this
+  // this.bank._delResource(GUEST_SESSION, hash)
 
-      const applications = session.map(data => {
-        if (data[TYPE] !== SIMPLE_MESSAGE) return
+  const applications = session.map(data => {
+    if (data[TYPE] !== SIMPLE_MESSAGE) return
 
-        const productType = utils.parseSimpleMsg(data.message).type
-        if (productType && this._productList.indexOf(productType) !== -1) {
-          return productType
-        }
-      })
-      .filter(obj => obj) // filter out nulls}
+    const productType = utils.parseSimpleMsg(data.message).type
+    if (productType && this._productList.indexOf(productType) !== -1) {
+      return productType
+    }
+  })
+  .filter(obj => obj) // filter out nulls}
 
-      if (applications.length) {
-        // TODO: queue up all the products
-        req.productType = applications[0]
-        const productModel = this.models[req.productType]
-        const instructionalMsg = req.productType === REMEDIATION
-          ? 'Please check and correct the following data'
-          : `Let's get this ${this.models[req.productType].title} Application on the road!`
+  if (applications.length) {
+    // TODO: queue up all the products
+    req.productType = applications[0]
+    const productModel = this.models[req.productType]
+    const instructionalMsg = req.productType === REMEDIATION
+      ? 'Please check and correct the following data'
+      : `Let's get this ${this.models[req.productType].title} Application on the road!`
 
-        return this.send({
-          req: req,
-          msg: {
-            [TYPE]: SIMPLE_MESSAGE,
-            message: instructionalMsg
-          }
-        })
-        .then(() => this.handleNewApplication(req))
+    yield this.send({
+      req: req,
+      msg: {
+        [TYPE]: SIMPLE_MESSAGE,
+        message: instructionalMsg
       }
+    })
+
+    return this.handleNewApplication(req)
+  }
 
       // else if (forms.length) {
       //   // TODO: unhack this crap as soon as we scrap `sync`
@@ -1537,8 +1469,7 @@ SimpleBank.prototype.importSession = function (req) {
 
       //   return this.handleDocument(req)
       // }
-    })
-}
+})
 
 SimpleBank.prototype._shareContexts = function () {
   this._ctxDB = createContextDB({
@@ -1580,15 +1511,14 @@ SimpleBank.prototype.use = function (plugin) {
   this._plugins.push(plugin)
 }
 
-SimpleBank.prototype._execPlugins = function (method, args) {
-  return this._plugins
-    .filter(p => p[method])
-    .reduce((promise, plugin) => {
-      return promise.then(() => {
-        return plugin[method].apply(this, args)
-      })
-    }, Q())
-}
+SimpleBank.prototype._execPlugins = co(function* (method, args) {
+  const plugins = this._plugins.filter(p => p[method])
+
+  for (var i = 0; i < plugins.length; i++) {
+    let ret = plugins[i][method].apply(this, args)
+    if (Q.isPromise(ret)) yield ret
+  }
+})
 
 SimpleBank.prototype.willSend = function ({ req, msg }) {
   return this._execPlugins('willSend', arguments)

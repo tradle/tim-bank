@@ -1805,7 +1805,7 @@ function init (bankOpts) {
     //   return bank.tim.addContactIdentity(e.identity)
     // }))
 
-    tims = tims.concat(personnelNodes).map(utils.promisifyNode)
+    tims = tims.concat(personnelNodes).map(tradleUtils.promisifyNode)
     return bank
     // return Q.all([
     //   addBank,

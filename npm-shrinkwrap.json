@@ -254,6 +254,16 @@
         }
       }
     },
+    "bluebird": {
+      "version": "3.4.6",
+      "from": "bluebird@>=3.4.6 <4.0.0",
+      "resolved": "https://registry.npmjs.org/bluebird/-/bluebird-3.4.6.tgz"
+    },
+    "bluebird-q": {
+      "version": "2.1.1",
+      "from": "git://github.com/mvayngrib/bluebird-q.git#873999afec15fb3f5212b8eb593f45c429a50ec9",
+      "resolved": "git://github.com/mvayngrib/bluebird-q.git#873999afec15fb3f5212b8eb593f45c429a50ec9"
+    },
     "bn.js": {
       "version": "4.11.6",
       "from": "bn.js@>=4.4.0 <5.0.0",
@@ -786,6 +796,11 @@
       "from": "flatten@>=1.0.2 <2.0.0",
       "resolved": "https://registry.npmjs.org/flatten/-/flatten-1.0.2.tgz"
     },
+    "for-each": {
+      "version": "0.3.2",
+      "from": "for-each@>=0.3.2 <0.4.0",
+      "resolved": "https://registry.npmjs.org/for-each/-/for-each-0.3.2.tgz"
+    },
     "foreach": {
       "version": "2.0.5",
       "from": "foreach@>=2.0.5 <3.0.0",
@@ -982,6 +997,11 @@
       "from": "ieee754@>=1.1.4 <2.0.0",
       "resolved": "https://registry.npmjs.org/ieee754/-/ieee754-1.1.8.tgz"
     },
+    "immediate": {
+      "version": "3.2.3",
+      "from": "immediate@>=3.2.3 <4.0.0",
+      "resolved": "https://registry.npmjs.org/immediate/-/immediate-3.2.3.tgz"
+    },
     "imurmurhash": {
       "version": "0.1.4",
       "from": "imurmurhash@>=0.1.4 <0.2.0",
@@ -1021,6 +1041,11 @@
       "version": "1.0.0",
       "from": "is-file@>=1.0.0 <2.0.0",
       "resolved": "https://registry.npmjs.org/is-file/-/is-file-1.0.0.tgz"
+    },
+    "is-function": {
+      "version": "1.0.1",
+      "from": "is-function@>=1.0.0 <1.1.0",
+      "resolved": "https://registry.npmjs.org/is-function/-/is-function-1.0.1.tgz"
     },
     "is-my-json-valid": {
       "version": "2.13.1",
@@ -1123,23 +1148,6 @@
       "version": "1.0.3",
       "from": "junk@>=1.0.1 <2.0.0",
       "resolved": "https://registry.npmjs.org/junk/-/junk-1.0.3.tgz"
-    },
-    "key-encoder": {
-      "version": "1.1.6",
-      "from": "mvayngrib/key-encoder-js",
-      "resolved": "git://github.com/mvayngrib/key-encoder-js.git#9811b1d85ded6f6d8eb6b48389d80ed17df550ff",
-      "dependencies": {
-        "bn.js": {
-          "version": "3.3.0",
-          "from": "bn.js@>=3.1.2 <4.0.0",
-          "resolved": "https://registry.npmjs.org/bn.js/-/bn.js-3.3.0.tgz"
-        },
-        "elliptic": {
-          "version": "5.2.1",
-          "from": "elliptic@>=5.1.0 <6.0.0",
-          "resolved": "https://registry.npmjs.org/elliptic/-/elliptic-5.2.1.tgz"
-        }
-      }
     },
     "level-change-processor": {
       "version": "1.0.0",
