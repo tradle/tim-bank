@@ -379,7 +379,7 @@ SimpleBank.prototype._setProfile = function (req, res) {
 SimpleBank.prototype.getMyEmployees = co(function* () {
   const self = this
   const passes = yield Q.nfcall(collect, this.tim.objects.type('tradle.MyEmployeeOnboarding'))
-  return employees.filter(e => {
+  return passes.filter(e => {
   // issued by "me" (the bank bot)
     return e.author === self.tim.permalink && !e.object.revoked
   })
@@ -1333,7 +1333,7 @@ SimpleBank.prototype.handleVerification = co(function* (req) {
     }
 
     req.state = getNextState(req.state, Actions.receivedVerification(req.payload, appLink))
-    return Q.resolve()
+    return
   }
 
   const verifiedItemInfo = utils.parseObjectId(req.payload.object.document.id)
