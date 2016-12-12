@@ -386,6 +386,8 @@ Bank.prototype._handleRequest = co(function* (req) {
   } finally {
     yield req.end()
   }
+
+  return req
 })
 
 // Bank.prototype.createOrUpdateCustomer = function (customer) {

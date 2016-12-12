@@ -270,13 +270,16 @@ SimpleBank.prototype.autoprompt = function (val) {
 }
 
 SimpleBank.prototype.receiveMsg = co(function* (msg, senderInfo, sync) {
-  const self = this
   if (Buffer.isBuffer(msg)) msg = tradleUtils.unserializeMessage(msg)
 
   yield this._ready
   yield this.willReceive(msg, senderInfo)
-  yield this.receivePrivateMsg(msg, senderInfo, sync)
-  yield this.didReceive(msg, senderInfo)
+  const req = yield this.receivePrivateMsg(msg, senderInfo, sync)
+  if (req) {
+    yield this.didReceive({ req, msg: req.msg })
+  }
+
+  return req
 })
 
 SimpleBank.prototype._assignRelationshipManager = function (req) {
@@ -383,11 +386,13 @@ SimpleBank.prototype.getMyEmployees = co(function* () {
 SimpleBank.prototype.receivePrivateMsg = co(function* (msg, senderInfo, sync) {
   try {
     var them = yield this.tim.addressBook.lookupIdentity(senderInfo)
-    return this.bank.receiveMsg(msg, them, sync)
   } catch (err) {
     const req = new RequestState({ author: senderInfo })
-    return this.replyNotFound(req)
+    yield this.replyNotFound(req)
+    return
   }
+
+  return yield this.bank.receiveMsg(msg, them, sync)
 })
 
 SimpleBank.prototype.replyNotFound = co(function* (req, whatWasntFound) {
@@ -1169,7 +1174,6 @@ SimpleBank.prototype._newProductConfirmation = function (state, application) {
   // }
 
 }
-
 
 SimpleBank.prototype.send = co(function* ({ req, msg }) {
   yield this.willSend({ req, msg })
