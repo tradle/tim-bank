@@ -351,10 +351,9 @@ SimpleBank.prototype._ensureEmployees = co(function* (employees) {
   }))
 
   employees = identities.map(function (identityInfo, i) {
-    const e = employees[i]
-    const pass = e.object
+    const pass = employeePasses[i].object
     return {
-      [ROOT_HASH]: e.object.customer,
+      [PERMALINK]: pass.customer,
       pub: identityInfo.object,
       profile: {
         name: utils.pick(pass, 'firstName', 'lastName')
