@@ -357,7 +357,7 @@ SimpleBank.prototype._ensureEmployees = co(function* (employees) {
       pub: identityInfo.object,
       profile: {
         name: utils.pick(pass, 'firstName', 'lastName')
-      },
+      }
       // txId: e.to.txId
     }
   })
@@ -1177,7 +1177,7 @@ SimpleBank.prototype._newProductConfirmation = function (state, application) {
 SimpleBank.prototype.send = co(function* ({ req, msg }) {
   yield this.willSend({ req, msg })
   const ret = yield this.bank.send({ req, msg })
-  yield this.didSend({ req, msg })
+  yield this.didSend({ req, msg: ret.message })
   return ret
 })
 

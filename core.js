@@ -361,7 +361,7 @@ Bank.prototype._handleRequest = co(function* (req) {
   } catch (err) {
     if (!err.notFound) throw err
 
-    state =getNewState(null, Actions.newCustomer({ permalink: customer }))
+    state = getNewState(null, Actions.newCustomer({ permalink: customer }))
     yield self._setCustomerState(req)
   }
 
