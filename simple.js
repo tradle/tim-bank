@@ -33,27 +33,34 @@ const RequestState = require('./lib/requestState')
 const getNextState = require('./lib/reducers')
 const defaultPlugins = require('./lib/defaultPlugins')
 const debug = require('./debug')
-const ROOT_HASH = constants.ROOT_HASH
-const CUR_HASH = constants.CUR_HASH
-const SIG = constants.SIG
-const SIGNEE = constants.SIGNEE
-const TYPE = constants.TYPE
-const PREVLINK = constants.PREVLINK
-const PERMALINK = constants.PERMALINK
-const MESSAGE_TYPE = constants.TYPES.MESSAGE
-const types = require('./lib/types')
-const GUEST_SESSION_PROOF = types.GUEST_SESSION_PROOF
-const FORGET_ME = types.FORGET_ME
-const FORGOT_YOU = types.FORGOT_YOU
-const VERIFICATION = types.VERIFICATION
-const CUSTOMER_WAITING = types.CUSTOMER_WAITING
-const SIMPLE_MESSAGE = types.SIMPLE_MESSAGE
-const NEXT_FORM_REQUEST = types.NEXT_FORM_REQUEST
+const {
+  ROOT_HASH,
+  CUR_HASH,
+  SIG,
+  SIGNEE,
+  TYPE,
+  PREVLINK,
+  PERMALINK,
+  TYPES
+} = constants
+const MESSAGE_TYPE = TYPES
 const GUEST_SESSION = 'guestsession'
-const REMEDIATION = types.REMEDIATION
-const PRODUCT_APPLICATION = types.PRODUCT_APPLICATION
-const IDENTITY_PUBLISH_REQUEST = types.IDENTITY_PUBLISH_REQUEST
-const SELF_INTRODUCTION = 'tradle.SelfIntroduction'
+const {
+  REMEDIATION,
+  PRODUCT_APPLICATION,
+  PRODUCT_LIST,
+  IDENTITY,
+  IDENTITY_PUBLISH_REQUEST,
+  SELF_INTRODUCTION,
+  GUEST_SESSION_PROOF,
+  FORGET_ME,
+  FORGOT_YOU,
+  VERIFICATION,
+  CUSTOMER_WAITING,
+  SIMPLE_MESSAGE,
+  NEXT_FORM_REQUEST
+} = require('./lib/types')
+
 const REMEDIATION_MODEL = {
   [TYPE]: 'tradle.Model',
   id: REMEDIATION,
@@ -266,22 +273,10 @@ SimpleBank.prototype.receiveMsg = co(function* (msg, senderInfo, sync) {
   const self = this
   if (Buffer.isBuffer(msg)) msg = tradleUtils.unserializeMessage(msg)
 
-  const obj = msg.object
-  const type = obj[TYPE]
-  this._debug('receiving ' + type)
-
-  const from = senderInfo.permalink || senderInfo.fingerprint || senderInfo.pubKey
   yield this._ready
-  if (type === SELF_INTRODUCTION || type === IDENTITY_PUBLISH_REQUEST) {
-    const unlock = yield this.lock(from)
-    try {
-      yield this.tim.addContactIdentity(obj.identity)
-    } finally {
-      unlock()
-    }
-  }
-
-  return this.receivePrivateMsg(msg, senderInfo, sync)
+  yield this.willReceive(msg, senderInfo)
+  yield this.receivePrivateMsg(msg, senderInfo, sync)
+  yield this.didReceive(msg, senderInfo)
 })
 
 SimpleBank.prototype._assignRelationshipManager = function (req) {
@@ -440,7 +435,7 @@ SimpleBank.prototype.sendProductList = function (req) {
   return bank.send({
     req: req,
     msg: {
-      [TYPE]: types.PRODUCT_LIST,
+      [TYPE]: PRODUCT_LIST,
       welcome: true,
       // message: '[Hello! It very nice to meet you](Please choose the product)',
       message: `[${greeting}](Click for a list of products)`,
@@ -465,7 +460,7 @@ SimpleBank.prototype.publishCustomerIdentity = co(function* (req) {
       // may not be published yet, but def queued
       return bank.send({
         req: req,
-        msg: utils.buildSimpleMsg('already published', types.IDENTITY)
+        msg: utils.buildSimpleMsg('already published', IDENTITY)
       })
     }
   } catch (err) {
@@ -1178,7 +1173,9 @@ SimpleBank.prototype._newProductConfirmation = function (state, application) {
 
 SimpleBank.prototype.send = co(function* ({ req, msg }) {
   yield this.willSend({ req, msg })
-  return this.bank.send({ req, msg })
+  const ret = yield this.bank.send({ req, msg })
+  yield this.didSend({ req, msg })
+  return ret
 })
 
 SimpleBank.prototype.requestForm = co(function* (opts) {
@@ -1520,8 +1517,20 @@ SimpleBank.prototype._execPlugins = co(function* (method, args) {
   }
 })
 
+SimpleBank.prototype.didReceive = function ({ req, msg }) {
+  return this._execPlugins('didReceive', arguments)
+}
+
+SimpleBank.prototype.willReceive = function ({ msg, senderInfo }) {
+  return this._execPlugins('willReceive', arguments)
+}
+
 SimpleBank.prototype.willSend = function ({ req, msg }) {
   return this._execPlugins('willSend', arguments)
+}
+
+SimpleBank.prototype.didSend = function ({ req, msg }) {
+  return this._execPlugins('didSend', arguments)
 }
 
 SimpleBank.prototype.willRequestEdit = function ({ req, state, editRequest }) {
