@@ -161,7 +161,7 @@ function SimpleBank (opts) {
     }
 
     const from = req.payload.author.permalink
-    const isEmployee = this._employees.some(e => e[ROOT_HASH] === from)
+    const isEmployee = this.isEmployee(from)
     if (isEmployee) return
 
     const relationshipManager = req.state.relationshipManager
@@ -285,11 +285,11 @@ SimpleBank.prototype.receiveMsg = co(function* (msg, senderInfo, sync) {
 SimpleBank.prototype._assignRelationshipManager = function (req) {
   // assign relationship manager if none is assigned
   const from = req.payload.author.permalink
-  const isEmployee = this._employees.some(e => e[ROOT_HASH] === from)
+  const isEmployee = this.isEmployee(from)
   if (isEmployee) return
 
   let relationshipManager = req.state.relationshipManager
-  const rmIsStillEmployed = this._employees.some(e => e[ROOT_HASH] === relationshipManager)
+  const rmIsStillEmployed = this.isEmployee(relationshipManager)
   if (!rmIsStillEmployed) relationshipManager = null
 
   if (!Bank.NO_FORWARDING && req.state && !relationshipManager && this._employees.length) {
@@ -339,6 +339,10 @@ SimpleBank.prototype._setEmployees = function (employees) {
   this.bank.setEmployees(employees)
 }
 
+SimpleBank.prototype.isEmployee = function (permalink) {
+  return this._employees.some(e => e.permalink === permalink)
+}
+
 SimpleBank.prototype._ensureEmployees = co(function* (employees) {
   var self = this
   if (employees) {
@@ -353,7 +357,8 @@ SimpleBank.prototype._ensureEmployees = co(function* (employees) {
   employees = identities.map(function (identityInfo, i) {
     const pass = employeePasses[i].object
     return {
-      [PERMALINK]: pass.customer,
+      [PERMALINK]: pass.customer, // backwards compat
+      permalink: pass.customer,
       pub: identityInfo.object,
       profile: {
         name: utils.pick(pass, 'firstName', 'lastName')
@@ -912,8 +917,9 @@ SimpleBank.prototype.shareContext = co(function* (req, res) {
   // TODO:
   // need to check whether this context is theirs to share
   const self = this
-  const isEmployee = this._employees.some(e => e[ROOT_HASH] === req.from.permalink)
-  if (isEmployee && req.state.relationshipManager !== req.from.permalink) {
+  const from = req.from.permalink
+  const isEmployee = this.isEmployee(from)
+  if (isEmployee && req.state.relationshipManager !== from) {
     return utils.rejectWithHttpError(403, new Error('employee is not authorized to share this context'))
   }
 
@@ -1343,13 +1349,26 @@ SimpleBank.prototype.handleVerification = co(function* (req) {
     return
   }
 
-  const verifiedItemInfo = utils.parseObjectId(req.payload.object.document.id)
+  let verification = req.payload
+  const isByEmployee = this.isEmployee(verification.author.permalink)
+  if (isByEmployee) {
+    verification = yield this.tim.createObject({
+      object: utils.omit(verification.object, SIG)
+    })
+
+    verification.author = {
+      link: this.tim.link,
+      permalink: this.tim.permalink
+    }
+  }
+
+  const verifiedItemInfo = utils.parseObjectId(verification.object.document.id)
   let verifiedItem = findFormState(pending.forms, verifiedItemInfo)
   if (!verifiedItem) {
     return utils.rejectWithHttpError(400, new Error('form not found'))
   }
 
-  req.state = getNextState(req.state, Actions.receivedVerification(req.payload, appLink))
+  req.state = getNextState(req.state, Actions.receivedVerification(verification, appLink))
 
   // get updated application and form state
   pending = req.application // dynamically calc'd prop
@@ -1614,7 +1633,7 @@ function toError (err) {
 
 function calcContextIdentifier ({ bank, context, participants }) {
   const rmIsParticipant = bank.employees()
-    .some(e => participants.indexOf(e[PERMALINK]) !== -1)
+    .some(e => participants.indexOf(e.permalink) !== -1)
 
   // messages from/to an employee get re-written and sent by the bank
   // this ignores the originals

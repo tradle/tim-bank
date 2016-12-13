@@ -299,24 +299,23 @@ Bank.prototype._onMessage = co(function* (received, sync) {
     }
 
     if (fwdTo !== this.tim.permalink && fwdTo !== this.tim.link) {
-      // re-sign the object
-      // the customer doesn't need to know the identity of the employee
-      const context = msgWrapper.object.context
-      const other = context && { context }
-      this.tim.signAndSend({
-        to: { permalink: fwdTo },
-        object: tutils.omit(obj, SIG),
-        other: other
-      })
-
-      if (obj[TYPE] === VERIFICATION) {
-        // rewire "from"
-        // why?
-        customer = fwdTo
-      } else {
+      if (obj[TYPE] !== VERIFICATION) {
+        // re-sign the object
+        // the customer doesn't need to know the identity of the employee
         // forward without processing
+        const context = msgWrapper.object.context
+        const other = context && { context }
+        this.tim.signAndSend({
+          to: { permalink: fwdTo },
+          object: tutils.omit(obj, SIG),
+          other: other
+        })
+
         return
       }
+
+      // set actual customer
+      customer = fwdTo
     }
   }
 

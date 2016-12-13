@@ -89,9 +89,14 @@ var testContexts = require('@tradle/engine/test/contexts')
 var tradle = require('@tradle/engine')
 var protocol = tradle.protocol
 var constants = tradle.constants
-var TYPE = constants.TYPE
-var CUR_HASH = constants.CUR_HASH
-var ROOT_HASH = constants.ROOT_HASH
+var {
+  TYPE,
+  CUR_HASH,
+  ROOT_HASH,
+  PERMALINK,
+  LINK
+} = constants
+
 var tradleUtils = tradle.utils
 tradle.sender.DEFAULT_BACKOFF_OPTS = tradle.sealer.DEFAULT_BACKOFF_OPTS = {
   initialDelay: 100,
@@ -1777,9 +1782,10 @@ function init (bankOpts) {
 
     var bot = personnelNodes[0]
     var employees = personnel.slice(1).map(e => {
-      const props = utils.pick(e, 'identity', 'profile')
-      props[CUR_HASH] = e.link
-      props[ROOT_HASH] = e.identity[ROOT_HASH] || e.link
+      const props = utils.pick(e, 'identity', 'profile', 'link')
+      props.permalink = props.link
+      props[LINK] = e.link
+      props[PERMALINK] = e.identity[ROOT_HASH] || e.link
       return props
     })
 
