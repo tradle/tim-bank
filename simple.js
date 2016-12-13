@@ -1157,6 +1157,13 @@ SimpleBank.prototype._newProductConfirmation = function (state, application) {
         [TYPE]: confirmationType,
         myProductId: utils.randomDecimalString(10),
       })
+
+      if (productType === 'tradle.EmployeeOnboarding' && !confirmation.firstName && confirmation.lastName) {
+        if (state.profile) {
+          mutableExtend(confirmation, utils.pick(state.profile, 'firstName', 'lastName'))
+        }
+      }
+
       return confirmation
     }
 

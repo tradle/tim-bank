@@ -352,19 +352,27 @@ Bank.prototype._handleRequest = co(function* (req) {
   const self = this
   const customer = req.customer
   const from = req.from
+  const type = req.type
 
   var res = {}
-  this._debug(`received ${req[TYPE]} from ${from}`)
+  this._debug(`received ${type} from ${from}`)
   let state
   try {
     state = yield this._getCustomerState(customer)
   } catch (err) {
     if (!err.notFound) throw err
 
-    state = getNewState(null, Actions.newCustomer({
+    const cInfo = {
       permalink: customer,
       identity: from.object
-    }))
+    }
+
+    if (type === 'tradle.IdentityPublishRequest' || type === 'tradle.SelfIntroduction') {
+      const profile = req.payload.object.profile
+      if (profile) cInfo.profile = cInfo
+    }
+
+    state = getNewState(null, Actions.newCustomer(cInfo))
 
     yield self._setCustomerState(req)
   }
