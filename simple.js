@@ -1458,17 +1458,20 @@ SimpleBank.prototype.importSession = co(function* (req) {
     // TODO: queue up all the products
     req.productType = applications[0]
     const productModel = this.models[req.productType]
-    const instructionalMsg = req.productType === REMEDIATION
-      ? 'Please check and correct the following data'
-      : `Let's get this ${this.models[req.productType].title} Application on the road!`
+    if (req.productType !== REMEDIATION) {
+    // const instructionalMsg = req.productType === REMEDIATION
+    //   ? 'Please check and correct the following data'
+    //   : `Let's get this ${this.models[req.productType].title} Application on the road!`
 
-    yield this.send({
-      req: req,
-      msg: {
-        [TYPE]: SIMPLE_MESSAGE,
-        message: instructionalMsg
-      }
-    })
+      const instructionalMsg = `Let's get this ${this.models[req.productType].title} Application on the road!`
+      yield this.send({
+        req: req,
+        msg: {
+          [TYPE]: SIMPLE_MESSAGE,
+          message: instructionalMsg
+        }
+      })
+    }
 
     return this.handleNewApplication(req)
   }
