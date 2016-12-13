@@ -132,7 +132,7 @@ function SimpleBank (opts) {
   // bank.use('tradle.GetMessage', this.lookupAndSend)
   // bank.use('tradle.GetHistory', this.sendHistory)
   bank.use('tradle.GetEmployee', this.getEmployee)
-  bank.use(GUEST_SESSION_PROOF, this.importSession)
+  // bank.use(GUEST_SESSION_PROOF, this.importSession)
   bank.use(FORGET_ME, this.forgetMe)
   bank.use(VERIFICATION, this.handleVerification)
   bank.use(CUSTOMER_WAITING, req => {
@@ -495,12 +495,16 @@ SimpleBank.prototype.publishCustomerIdentity = co(function* (req) {
   })
 })
 
-SimpleBank.prototype.handleNewApplication = function (req, res) {
+SimpleBank.prototype.handleNewApplication = co(function* (req, res) {
   typeforce({
     productType: 'String'
   }, req)
 
-  const productType = req.productType
+  let productType = req.productType
+  if (productType === REMEDIATION) {
+    productType = req.productType = yield this.importSession(req)
+  }
+
   const pendingApp = find(req.state.pendingApplications || [], app => app.type === productType)
   if (pendingApp) {
     req.context = pendingApp.permalink
@@ -511,7 +515,7 @@ SimpleBank.prototype.handleNewApplication = function (req, res) {
   req.state = getNextState(req.state, Actions.newApplication(productType, permalink))
   req.context = permalink
   return this.sendNextFormOrApprove({req})
-}
+})
 
 SimpleBank.prototype.handleDocument = co(function* (req, res) {
   const appLink = req.context
@@ -1456,8 +1460,8 @@ SimpleBank.prototype.importSession = co(function* (req) {
 
   if (applications.length) {
     // TODO: queue up all the products
-    req.productType = applications[0]
-    const productModel = this.models[req.productType]
+    const productType = applications[0]
+    const productModel = this.models[productType]
     if (req.productType !== REMEDIATION) {
     // const instructionalMsg = req.productType === REMEDIATION
     //   ? 'Please check and correct the following data'
@@ -1473,7 +1477,8 @@ SimpleBank.prototype.importSession = co(function* (req) {
       })
     }
 
-    return this.handleNewApplication(req)
+    return productType
+    // return this.handleNewApplication(req)
   }
 
       // else if (forms.length) {

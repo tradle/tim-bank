@@ -1260,8 +1260,9 @@ function getHelpers (opts) {
 
   function sendSessionIdentifier (identifier, waitType) {
     var msg = {
-      [TYPE]: types.GUEST_SESSION_PROOF,
-      session: identifier
+      [TYPE]: PRODUCT_APPLICATION, //types.GUEST_SESSION_PROOF,
+      session: identifier,
+      product: 'tradle.Remediation'
     }
 
     signNSend(msg)
