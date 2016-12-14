@@ -500,7 +500,7 @@ Bank.prototype.send = co(function* (opts) {
 
   let signed
   if (constants.SIG in msg) {
-    signed = msg
+    signed = { object: msg }
   } else {
     signed = yield this.tim.sign({ object: msg })
   }
