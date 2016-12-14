@@ -646,7 +646,7 @@ function testGuestSession () {
         {
           [TYPE]: VERIFICATION,
 //          [NONCE]: '' + (nonce++),
-          time: 10000,
+          dateVerified: 10000,
           document: {
             [TYPE]: YOUR_MONEY
           }
@@ -687,7 +687,7 @@ function testGuestSession () {
             return utils.parseObjectId(v.object.object.document.id).type === YOUR_MONEY
           })
 
-          t.equal(yourMoneyV.object.object.backDated, 10000)
+          t.equal(yourMoneyV.object.object.dateVerified, 10000)
           return teardown(setup)
         })
         .done(function () {
@@ -731,7 +731,7 @@ function testRemediation () {
         {
           [TYPE]: VERIFICATION,
 //          [NONCE]: '' + (nonce++),
-          time: 10000,
+          dateVerified: 10000,
           document: {
             [TYPE]: YOUR_MONEY
           }
@@ -744,7 +744,7 @@ function testRemediation () {
             return utils.parseObjectId(v.object.object.document.id).type === YOUR_MONEY
           })
 
-          t.equal(yourMoneyV.object.object.backDated, 10000)
+          t.equal(yourMoneyV.object.object.dateVerified, 10000)
         })
 
       bank.storeGuestSession(sessionHash, session)
