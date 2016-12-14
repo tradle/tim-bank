@@ -70,6 +70,7 @@ const REMEDIATION_MODEL = {
 }
 
 const noop = function () {}
+const DAY_MILLIS = 24 * 3600 * 1000
 
 function SimpleBank (opts) {
   if (!(this instanceof SimpleBank)) {
@@ -743,7 +744,25 @@ SimpleBank.prototype.sendNextFormOrApprove = co(function* (opts) {
       return application.skip.indexOf(type) === -1
     }
 
-    return !find(application.forms, form => form.type === type)
+    if (find(application.forms, form => form.type === type)) {
+      return
+    }
+
+    // find and use recent if available
+    const recent = utils.findFilledForm(state, type)
+    if (recent && recent.state) {
+      if (Date.now() - recent.state.dateReceived < DAY_MILLIS) {
+        // TODO: stop using 'body' and just use the wrapper that comes
+        // from @tradle/engine
+        const wrapper = utils.pick(recent.state.form, 'link', 'permalink')
+        wrapper.object = recent.state.form.body
+        req.state = state = getNextState(req.state, Actions.receivedForm(wrapper, context))
+        return
+      }
+    }
+
+    // no form found
+    return true
   })
 
   if (missing) {
@@ -764,7 +783,7 @@ SimpleBank.prototype.sendNextFormOrApprove = co(function* (opts) {
         // parsed: {
         //   data: prefilled.form
         // }
-      }, { object: prefilled })
+      }, { object: prefilled.data })
 
       // TODO: figure out how to continue on req
       docReq.promise = req.promise.bind(req)
