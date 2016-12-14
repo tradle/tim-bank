@@ -20,9 +20,8 @@ var tutils = tradle.utils
 var elistener = require('elistener')
 var once = require('once')
 var RequestState = require('./lib/requestState')
-var getNewState = require('./lib/reducers')
-var Actions = require('./lib/actionCreators')
 var debug = require('./debug')
+var BANK_VERSION = require('./package.json').version
 var CUR_HASH = constants.CUR_HASH
 var ROOT_HASH = constants.ROOT_HASH
 var SIG = constants.SIG
@@ -89,17 +88,9 @@ function Bank (options) {
   var readyDefer = Q.defer()
   this._readyPromise = readyDefer.promise.then(() => this._ready = true)
   this._locks = {}
-  this._manualReleases = {}
 
   // don't have any pre-tasks at the moment
   readyDefer.resolve()
-  // this.listenOnce(tim, 'ready', function () {
-  //   self._ready = true
-  //   readyDefer.resolve()
-  //   // printIdentityStatus(tim)
-  //   //   .then(dumpDBs.bind(null, tim))
-  // })
-
   this._db = levelup(options.path, {
     db: options.leveldown,
     valueEncoding: 'json'
@@ -130,41 +121,6 @@ Bank.prototype.lock = function (id, reason="") {
     })
   })
 }
-
-// Bank.prototype._lock = function (customerHash, reason) {
-//   const self = this
-//   this._debug(`locking ${customerHash}: ${reason}`)
-//   const lock = this._locks[customerHash] = this._locks[customerHash] || mutexify()
-//   const defer = Q.defer()
-//   let release
-//   let released
-
-//   lock(_release => {
-//     this._debug(`locked ${customerHash}: ${reason}`)
-//     release = () => {
-//       clearTimeout(timeout)
-//       if (!released) {
-//         released = true
-//         _release()
-//       }
-//     }
-
-//     var timeout = setTimeout(release, 10000)
-//     self._manualReleases[customerHash] = release
-//     defer.resolve()
-//   })
-
-//   return defer.promise
-// }
-
-// Bank.prototype._unlock = function (customerHash) {
-//   const release = this._manualReleases[customerHash]
-//   if (release) {
-//     this._debug(`unlocking ${customerHash}`)
-//     delete this._manualReleases[customerHash]
-//     release()
-//   }
-// }
 
 /**
  * plugin-based msg processing
@@ -243,14 +199,14 @@ Bank.prototype._setCustomerState = function (req) {
  * @return {[type]}     [description]
  */
 Bank.prototype.forgetCustomer = function (req) {
-  var self = this
   var v = req.state.bankVersion
   // clear customer slate
-  var info = Actions.newCustomer(req.state)
-  req.state = getNewState(null, info)
+  req.state = this.newCustomerState(req.state)
   req.state.bankVersion = v // preserve version
   return this.tim.forget(req.from.permalink)
 }
+
+Bank.prototype.newCustomerState = newCustomerState
 
 Bank.prototype._saveParsedMsg = function (req) {
   const objWrapper = req.payload
@@ -371,8 +327,7 @@ Bank.prototype._handleRequest = co(function* (req) {
       if (profile) cInfo.profile = cInfo
     }
 
-    state = getNewState(null, Actions.newCustomer(cInfo))
-
+    state = this.newCustomerState(cInfo)
     yield self._setCustomerState(req)
   }
 
@@ -400,30 +355,6 @@ Bank.prototype._handleRequest = co(function* (req) {
 
   return req
 })
-
-// Bank.prototype.createOrUpdateCustomer = function (customer) {
-//   if (typeof customer === 'string') {
-//     customer = { permalink: customer }
-//   }
-
-//   let getNewState
-//   const clink = customer.permalink
-//   return this.lock(clink, 'update or create customer')
-//     .then(() => this._getCustomerState(clink))
-//     .then(state => {
-//       return getNewState(state, Actions.updateCustomer(customer))
-//     }, err => {
-//       if (!err.notFound) throw err
-
-//       return getNewState(null, Actions.newCustomer(customer))
-//     })
-//     .then(state => {
-//       newState = state
-//       this._setCustomerState({ customer: clink, state })
-//     })
-//     .finally(this._unlock(clink))
-//     .then(() => newState)
-// }
 
 Bank.prototype.shouldChainReceivedMessage = function (req) {
   // override this method
@@ -574,3 +505,14 @@ function unprefixKey (type, key) {
 //       })
 //   })
 // }
+
+function newCustomerState (customer) {
+  return extend({
+    pendingApplications: [],
+    products: {},
+    // forms: [],
+    prefilled: {},
+    bankVersion: BANK_VERSION,
+    contexts: {}
+  }, tutils.pick(customer, 'permalink', 'profile', 'identity'))
+}
