@@ -4,12 +4,12 @@ const util = require('util')
 const EventEmitter = require('events').EventEmitter
 const crypto = require('crypto')
 const typeforce = require('typeforce')
-const extend = require('xtend')
-const mutableExtend = require('xtend/mutable')
+const clone = require('xtend')
+const extend = require('xtend/mutable')
 const Q = require('bluebird-q')
 const co = Q.async
 const collect = Q.denodeify(require('stream-collector'))
-const clone = require('clone')
+const deepClone = require('clone')
 const tradle = require('@tradle/engine')
 const protocol = tradle.protocol
 const tradleUtils = tradle.utils
@@ -66,6 +66,7 @@ const REMEDIATION_MODEL = {
   forms: []
 }
 
+const BANK_VERSION = require('./package.json').version
 const noop = function () {}
 const DAY_MILLIS = 24 * 3600 * 1000
 
@@ -78,7 +79,7 @@ function SimpleBank (opts) {
   EventEmitter.call(this)
 
   this._validate = opts.validate !== false
-  this._auto = extend({
+  this._auto = clone({
     // approve: true,
     prompt: true,
     verify: true
@@ -97,7 +98,10 @@ function SimpleBank (opts) {
 
   // this._employees = opts.employees
   this.tim = this.node = opts.node
-  var bank = this.bank = new Bank(opts)
+  const bank = this.bank = new Bank(extend({
+    newCustomerState: newCustomerState
+  }, opts))
+
   this._ready = this._ensureEmployees(opts.employees)
 
   // TODO: plugin-ize
@@ -621,7 +625,7 @@ SimpleBank.prototype.requestEdit = function (req, errs) {
     errors: '?Array'
   }, errs)
 
-  const prefill = clone(req.payload.object)
+  const prefill = deepClone(req.payload.object)
   if (prefill) {
     // clean prefilled data
     for (let p in prefill) {
@@ -711,7 +715,7 @@ SimpleBank.prototype.sendNextFormOrApprove = co(function* (opts) {
       if (Date.now() - recent.state.dateReceived < DAY_MILLIS) {
         // TODO: stop using 'body' and just use the wrapper that comes
         // from @tradle/engine
-        updateWithReceivedForm(application, clone(recent.state.form))
+        updateWithReceivedForm(application, deepClone(recent.state.form))
         return
       }
     }
@@ -817,7 +821,7 @@ SimpleBank.prototype._simulateReq = co(function* (opts) {
   })
 
   req.unlock = yield this.lock(customerHash)
-  return extend(opts, { req })
+  return clone(opts, { req })
 })
 
 SimpleBank.prototype._endRequest = co(function* (req) {
@@ -1077,14 +1081,14 @@ SimpleBank.prototype._newProductConfirmation = function (state, application) {
     if (guessedMyProductModel && guessedMyProductModel.subClassOf === 'tradle.MyProduct') {
       confirmation[TYPE] = confirmationType = guessedMyProductModel.id
       copyProperties(confirmation, confirmationType)
-      mutableExtend(confirmation, {
+      extend(confirmation, {
         [TYPE]: confirmationType,
         myProductId: utils.randomDecimalString(10),
       })
 
       if (productType === EMPLOYEE_ONBOARDING && !confirmation.firstName && confirmation.lastName) {
         if (state.profile) {
-          mutableExtend(confirmation, utils.pick(state.profile, 'firstName', 'lastName'))
+          extend(confirmation, utils.pick(state.profile, 'firstName', 'lastName'))
         }
       }
 
@@ -1242,7 +1246,7 @@ SimpleBank.prototype.handleVerification = co(function* (req) {
   if (should.result) {
     yield this._sendVerification({
       req: req,
-      verifiedItem: mutableExtend({
+      verifiedItem: extend({
         author: req.from
       }, verifiedItem.form)
     })
@@ -1252,15 +1256,17 @@ SimpleBank.prototype.handleVerification = co(function* (req) {
 })
 
 SimpleBank.prototype.forgetMe = co(function* (req) {
-  var bank = this.bank
-  yield bank.forgetCustomer(req)
+  const version = req.state.bankVersion
+  // clear customer slate
+  req.state = newCustomerState(req.state)
+  req.state.bankVersion = version // preserve version
+  yield this.tim.forget(req.from.permalink)
 
-  var forgotYou = {}
+  const forgotYou = {}
   forgotYou[TYPE] = FORGOT_YOU
-  return bank.send({
+  return this.send({
     req: req,
-    msg: forgotYou,
-    chain: true
+    msg: forgotYou
   })
 })
 
@@ -1571,7 +1577,7 @@ function updateWithReceivedForm (application, formWrapper) {
   }
 
   if (existing) {
-    mutableExtend(existing.form, form)
+    extend(existing.form, form)
     existing.dateReceived = newFormObj.dateReceived
   } else {
     application.forms.push(newFormObj)
@@ -1608,4 +1614,17 @@ function newVerificationFor (customerState, formState, identity) {
   }
 
   return verification
+}
+
+function newCustomerState (customer) {
+  return extend({
+    documents: {},
+    forms: {},
+    pendingApplications: [],
+    products: {},
+    // forms: [],
+    prefilled: {},
+    bankVersion: BANK_VERSION,
+    contexts: {}
+  }, tradleUtils.pick(customer, 'permalink', 'profile', 'identity'))
 }

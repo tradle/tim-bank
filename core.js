@@ -21,7 +21,6 @@ var elistener = require('elistener')
 var once = require('once')
 var RequestState = require('./lib/requestState')
 var debug = require('./debug')
-var BANK_VERSION = require('./package.json').version
 var CUR_HASH = constants.CUR_HASH
 var ROOT_HASH = constants.ROOT_HASH
 var SIG = constants.SIG
@@ -47,7 +46,8 @@ function Bank (options) {
     path: 'String',
     leveldown: 'Function',
     name: '?String',
-    manual: '?Boolean'
+    manual: '?Boolean',
+    newCustomerState: 'Function'
   }, options)
 
   tutils.bindFunctions(this)
@@ -63,6 +63,7 @@ function Bank (options) {
   })
 
   this._name = options.name || tim.name
+  this.newCustomerState = options.newCustomerState
   this.listenTo(tim, 'error', function (err) {
     self._debug('error', err)
   })
@@ -193,21 +194,6 @@ Bank.prototype._setCustomerState = function (req) {
   return Q.all(promises).spread(customerState => customerState)
 }
 
-/**
- * Delete customer state and customer data from keeper
- * @param  {[type]} req [description]
- * @return {[type]}     [description]
- */
-Bank.prototype.forgetCustomer = function (req) {
-  var v = req.state.bankVersion
-  // clear customer slate
-  req.state = this.newCustomerState(req.state)
-  req.state.bankVersion = v // preserve version
-  return this.tim.forget(req.from.permalink)
-}
-
-Bank.prototype.newCustomerState = newCustomerState
-
 Bank.prototype._saveParsedMsg = function (req) {
   const objWrapper = req.payload
   return this._setResource(objWrapper.object[TYPE], objWrapper.link, {
@@ -309,7 +295,7 @@ Bank.prototype._handleRequest = co(function* (req) {
   const from = req.from
   const type = req.type
 
-  var res = {}
+  const res = {}
   this._debug(`received ${type} from ${from}`)
   let state
   try {
@@ -505,14 +491,3 @@ function unprefixKey (type, key) {
 //       })
 //   })
 // }
-
-function newCustomerState (customer) {
-  return extend({
-    pendingApplications: [],
-    products: {},
-    // forms: [],
-    prefilled: {},
-    bankVersion: BANK_VERSION,
-    contexts: {}
-  }, tutils.pick(customer, 'permalink', 'profile', 'identity'))
-}
