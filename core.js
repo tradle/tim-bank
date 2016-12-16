@@ -299,20 +299,18 @@ Bank.prototype._onMessage = co(function* (received, sync) {
     }
 
     if (fwdTo !== this.tim.permalink && fwdTo !== this.tim.link) {
-      if (obj[TYPE] !== VERIFICATION) {
-        // re-sign the object
-        // the customer doesn't need to know the identity of the employee
-        // forward without processing
-        const context = msgWrapper.object.context
-        const other = context && { context }
-        this.tim.signAndSend({
-          to: { permalink: fwdTo },
-          object: tutils.omit(obj, SIG),
-          other: other
-        })
+      // re-sign the object
+      // the customer doesn't need to know the identity of the employee
+      // forward without processing
+      const context = msgWrapper.object.context
+      const other = context && { context }
+      this.tim.signAndSend({
+        to: { permalink: fwdTo },
+        object: tutils.omit(obj, SIG),
+        other: other
+      })
 
-        return
-      }
+      if (obj[TYPE] !== VERIFICATION) return
 
       // set actual customer
       customer = fwdTo
