@@ -408,10 +408,6 @@ Bank.prototype.send = co(function* (opts) {
 
   const req = opts.req
   const msg = opts.msg
-  if (!('time' in msg)) {
-    msg.time = Date.now()
-  }
-
   const recipient = req.from
   this._debug(`sending ${msg[TYPE]} to ${recipient.permalink}`)
 
@@ -419,6 +415,10 @@ Bank.prototype.send = co(function* (opts) {
   if (constants.SIG in msg) {
     signed = { object: msg }
   } else {
+    if (!('time' in msg)) {
+      msg.time = Date.now()
+    }
+
     signed = yield this.tim.sign({ object: msg })
   }
 

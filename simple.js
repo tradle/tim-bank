@@ -493,7 +493,7 @@ SimpleBank.prototype.handleDocument = co(function* (req, res) {
   })
 
   if (should.result) {
-    yield this._sendVerification({
+    yield this._createAndSendVerification({
       req: req,
       verifiedItem: formWrapper
     })
@@ -540,14 +540,19 @@ SimpleBank.prototype.validateDocument = function (req) {
   return err
 }
 
-SimpleBank.prototype._sendVerification = co(function* (opts) {
+SimpleBank.prototype._createAndSendVerification = co(function* (opts) {
+  const { req, verifiedItem } = opts
+  const { link } = yield this._createVerification(opts)
+  return this._sendVerification({ req, link })
+})
+
+SimpleBank.prototype._createVerification = co(function* (opts) {
   typeforce({
     req: 'RequestState',
     verifiedItem: 'Object'
   }, opts)
 
-  const verifiedItem = opts.verifiedItem
-  const req = opts.req
+  const { req, verifiedItem } = opts
   const appLink = req.context
   const pending = req.application
   const product = req.product
@@ -565,24 +570,35 @@ SimpleBank.prototype._sendVerification = co(function* (opts) {
 
   const identityInfo = this.tim.identityInfo
   const form = findFormState(application.forms, verifiedItem)
-  const verification = newVerificationFor(req.state, form, identityInfo.object)
-  const sentVerification = yield this.send({
-    req: req,
-    msg: verification
+  const verification = yield this.tim.createObject({
+    object: newVerificationFor(req.state, form, identityInfo.object)
   })
 
-  const vWrapper = sentVerification.object
-  vWrapper.body = vWrapper.object // backwards compat
-  vWrapper.author = tradleUtils.pick(identityInfo, 'link', 'permalink')
-
+  verification.body = verification.object
   const verifications = form.issuedVerifications || []
-  verifications.push(vWrapper)
+  verifications.push(verification)
   form.issuedVerifications = verifications
 
   // run async, don't wait
-  this.tim.seal({ link: sentVerification.object.link })
+  this.tim.seal({ link: verification.link })
 
-  return sentVerification
+  return verification
+})
+
+SimpleBank.prototype._sendVerification = co(function* (opts) {
+  typeforce({
+    req: typeforce.Object,
+    link: typeforce.String
+  }, opts)
+
+  const { req, link } = opts
+  const verification = findVerification(req.state, link)
+  if (!verification) throw new Error(`verification ${link} not found`)
+
+  return this.send({
+    req: req,
+    msg: verification.object
+  })
 })
 
 SimpleBank.prototype.sendVerification = co(function* (opts) {
@@ -607,7 +623,7 @@ SimpleBank.prototype.sendVerification = co(function* (opts) {
   const unlock = yield this.lock(customer)
   try {
     const state = req.state = yield this.getCustomerState(customer)
-    const verification = yield this._sendVerification({ req, verifiedItem })
+    const verification = yield this._createAndSendVerification({ req, verifiedItem })
     yield this.bank._setCustomerState(req)
     return verification
   } finally {
@@ -1244,7 +1260,7 @@ SimpleBank.prototype.handleVerification = co(function* (req) {
   })
 
   if (should.result) {
-    yield this._sendVerification({
+    yield this._createAndSendVerification({
       req: req,
       verifiedItem: extend({
         author: req.from
@@ -1627,4 +1643,25 @@ function newCustomerState (customer) {
     bankVersion: BANK_VERSION,
     contexts: {}
   }, tradleUtils.pick(customer, 'permalink', 'profile', 'identity'))
+}
+
+function findVerification (state, link) {
+  let verification
+  getAllApplications(state).find(application => {
+    return application.forms.find(form => {
+      return verification = form.issuedVerifications.find(v => {
+        return v.link === link
+      })
+    })
+  })
+
+  return verification
+}
+
+function getAllApplications (state) {
+  const products = Object.keys(state.products).reduce(function (all, productType) {
+    return all.concat(state.products[productType])
+  }, [])
+
+  return state.pendingApplications.concat(products)
 }
