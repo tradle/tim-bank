@@ -98,9 +98,7 @@ function SimpleBank (opts) {
 
   // this._employees = opts.employees
   this.tim = this.node = opts.node
-  const bank = this.bank = new Bank(extend({
-    newCustomerState: newCustomerState
-  }, opts))
+  const bank = this.bank = new Bank(opts)
 
   this._ready = this._ensureEmployees(opts.employees)
 
@@ -109,6 +107,26 @@ function SimpleBank (opts) {
     return msg[TYPE] === VERIFICATION ||
       this.models.docs.indexOf(msg[TYPE]) !== -1
   }
+
+  // create new customer
+  bank.use(req => {
+    if (req.state) return
+
+    const { customer, type, from, payload } = req
+    const cInfo = {
+      permalink: customer,
+      identity: from.object
+    }
+
+    if (type === 'tradle.IdentityPublishRequest' || type === 'tradle.SelfIntroduction') {
+      const profile = payload.object.profile
+      if (profile) cInfo.profile = cInfo
+    }
+
+    req.state = newCustomerState(cInfo)
+    this._onNewCustomer({ req })
+    // yield self._setCustomerState(req)
+  })
 
   bank.use((req, res) => {
     if (this.models.docs.indexOf(req.type) !== -1) {
@@ -136,7 +154,7 @@ function SimpleBank (opts) {
   bank.use('tradle.GetEmployee', this.getEmployee)
   // bank.use(GUEST_SESSION_PROOF, this.importSession)
   bank.use(FORGET_ME, this.forgetMe)
-  bank.use(VERIFICATION, this.handleVerification)
+  bank.use(VERIFICATION, this._handleVerification)
   bank.use(CUSTOMER_WAITING, req => {
     if (!req.context) return this.sendProductList(req)
   })
@@ -1221,7 +1239,22 @@ SimpleBank.prototype.getEmployee = function (req) {
   })
 }
 
-SimpleBank.prototype.handleVerification = co(function* (req) {
+SimpleBank.prototype.receiveVerification = co(function* ({ customer, verification }) {
+  const { req } = yield this._simulateReq({ customer })
+  const verifiedItemInfo = utils.parseObjectId(verification.document.id)
+  const application = getAllApplications(req.state).find(application => {
+    return findFormState(application, verifiedItemInfo)
+  })
+
+  if (!application) {
+    throw utils.httpError(400, new Error(`application not found for verification ${verification}`))
+  }
+
+  req.context = application.permalink
+  return this._handleVerification(req)
+})
+
+SimpleBank.prototype._handleVerification = co(function* (req) {
   // dangerous if verification is malformed
   const appLink = req.context
   const pending = req.application
@@ -1444,6 +1477,10 @@ SimpleBank.prototype._execPlugins = co(function* (method, args) {
     if (Q.isPromise(ret)) yield ret
   }
 })
+
+SimpleBank.prototype._onNewCustomer = function ({ req }) {
+  return this._execPlugins('newCustomer', arguments)
+}
 
 SimpleBank.prototype.didReceive = function ({ req, msg }) {
   return this._execPlugins('didReceive', arguments)

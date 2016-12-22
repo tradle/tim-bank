@@ -46,8 +46,7 @@ function Bank (options) {
     path: 'String',
     leveldown: 'Function',
     name: '?String',
-    manual: '?Boolean',
-    newCustomerState: 'Function'
+    manual: '?Boolean'
   }, options)
 
   tutils.bindFunctions(this)
@@ -63,7 +62,6 @@ function Bank (options) {
   })
 
   this._name = options.name || tim.name
-  this.newCustomerState = options.newCustomerState
   this.listenTo(tim, 'error', function (err) {
     self._debug('error', err)
   })
@@ -299,25 +297,10 @@ Bank.prototype._handleRequest = co(function* (req) {
   this._debug(`received ${type} from ${from}`)
   let state
   try {
-    state = yield this._getCustomerState(customer)
+    state = req.state = yield this._getCustomerState(customer)
   } catch (err) {
     if (!err.notFound) throw err
-
-    const cInfo = {
-      permalink: customer,
-      identity: from.object
-    }
-
-    if (type === 'tradle.IdentityPublishRequest' || type === 'tradle.SelfIntroduction') {
-      const profile = req.payload.object.profile
-      if (profile) cInfo.profile = cInfo
-    }
-
-    state = this.newCustomerState(cInfo)
-    yield self._setCustomerState(req)
   }
-
-  req.state = state
 
   try {
     yield self._middles.exec(req, res)
