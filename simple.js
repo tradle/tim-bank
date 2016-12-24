@@ -488,7 +488,7 @@ SimpleBank.prototype.handleDocument = co(function* (req, res) {
   const application = req.application
   if (!application || application.isProduct) {
     // TODO: save in prefilled documents
-    return utils.rejectWithHttpError(400, new Error(`application ${appLink} not found`))
+    throw utils.httpError(400, `application ${appLink} not found`)
   }
 
   let state = req.state
@@ -545,7 +545,7 @@ SimpleBank.prototype.validateDocument = function (req) {
   const doc = req.payload.object
   const type = doc[TYPE]
   const model = this.models[type]
-  if (!model) throw new Error(`unknown type ${type}`)
+  if (!model) throw utils.httpError(400, `unknown type ${type}`)
 
   let err
   if (this._validate) {
@@ -584,13 +584,13 @@ SimpleBank.prototype._createVerification = co(function* (opts) {
   const application = pending || product
   if (!application) {
     // TODO: save in prefilled verifications
-    return utils.rejectWithHttpError(400, new Error(`application ${appLink} not found`))
+    throw utils.httpError(400, `application ${appLink} not found`)
   }
 
   // TODO: revert to this
   // if (!utils.findFormState(application.forms, verifiedItem.link)) {
   if (!findFormState(application.forms, verifiedItem )) {
-    return utils.rejectWithHttpError(400, new Error('form not found, refusing to send verification'))
+    throw utils.httpError(400, 'form not found, refusing to send verification')
   }
 
   const identityInfo = this.tim.identityInfo
@@ -623,7 +623,7 @@ SimpleBank.prototype._sendVerification = co(function* (opts) {
 
   const { req, link } = opts
   const verification = findVerification(req.state, link)
-  if (!verification) throw new Error(`verification ${link} not found`)
+  if (!verification) throw utils.httpError(400, `verification ${link} not found`)
 
   return this.send({
     req: req,
@@ -897,7 +897,7 @@ SimpleBank.prototype.approveProduct = co(function* (opts) {
     if (!application) {
       application = find(req.state.pendingApplications || [], app => app.type === opts.productType)
       if (!application) {
-        throw new Error(`pending application ${appLink} not found`)
+        throw utils.httpError(400, `pending application ${appLink} not found`)
       } else {
         appLink = application.permalink
       }
@@ -950,7 +950,7 @@ SimpleBank.prototype.shareContext = co(function* (req, res) {
   const from = req.from.permalink
   const isEmployee = this.isEmployee(from)
   if (isEmployee && req.state.relationshipManager !== from) {
-    return utils.rejectWithHttpError(403, new Error('employee is not authorized to share this context'))
+    throw utils.httpError(403, 'employee is not authorized to share this context')
   }
 
   const props = req.payload.object
@@ -962,7 +962,7 @@ SimpleBank.prototype.shareContext = co(function* (req, res) {
   })
 
   if (!cid) {
-    return utils.rejectWithHttpError(400, new Error('invalid context'))
+    throw utils.httpError(400, 'invalid context')
   }
 
   const recipients = props.with.map(r => {
@@ -1040,7 +1040,7 @@ SimpleBank.prototype._revokeProduct = co(function* (opts) {
 
   if (!product) {
     // state didn't change
-    throw new Error('product not found')
+    throw utils.httpError(400, 'product not found')
   }
 
   product.revoked = true
@@ -1268,14 +1268,13 @@ SimpleBank.prototype.receiveVerification = co(function* ({ customer, verificatio
   })
 
   if (!application) {
-    throw utils.httpError(400, new Error(`application not found for verification ${verification}`))
+    throw utils.httpError(400, `application not found for verification ${verification}`)
   }
 
   try {
     const getSaved = this.tim.objects.get(tradleUtils.hexLink(verification))
     const doSave = this.tim.saveObject({ object: verification })
     let saved
-    debugger
     try {
       saved = yield getSaved
     } catch (err) {
@@ -1302,7 +1301,7 @@ SimpleBank.prototype._handleVerification = co(function* (req) {
   const product = req.product
   const application = pending || product
   if (!application) {
-    return utils.rejectWithHttpError(400, new Error(`application ${appLink} not found`))
+    throw utils.httpError(400, `application ${appLink} not found`)
   }
 
   const verification = req.payload
@@ -1321,7 +1320,7 @@ SimpleBank.prototype._handleVerification = co(function* (req) {
   const verifiedItemInfo = utils.parseObjectId(verification.object.document.id)
   const verifiedItem = findFormState(application.forms, verifiedItemInfo)
   if (!verifiedItem) {
-    return utils.rejectWithHttpError(400, new Error('form not found'))
+    throw utils.httpError(400, 'form not found')
   }
 
   verification.body = verification.object // backwards compat
@@ -1386,7 +1385,7 @@ SimpleBank.prototype.importSession = co(function* (req) {
   })
 
   if (hasUnknownType) {
-    throw new Error(`unknown type ${hasUnknownType[TYPE]}`)
+    throw utils.httpError(400, `unknown type ${hasUnknownType[TYPE]}`)
   }
 
   const forms = session.filter(data => {
@@ -1606,10 +1605,6 @@ function alphabetical (a, b) {
 
 function getConversationIdentifier (a, b) {
   return [a, b].sort(alphabetical).join(':')
-}
-
-function toError (err) {
-  return new Error(err.message || err)
 }
 
 function calcContextIdentifier ({ bank, context, participants }) {
