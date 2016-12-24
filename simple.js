@@ -261,17 +261,23 @@ SimpleBank.prototype._assignRelationshipManager = function (req) {
     relationshipManager = req.state.relationshipManager = this._employees[idx].permalink
     // no need to wait for this to finish
     // console.log('ASSIGNED RELATIONSHIP MANAGER TO ' + req.customer)
+    const intro = {
+      [TYPE]: 'tradle.Introduction',
+      message: 'Your new customer',
+      // [TYPE]: 'tradle.Introduction',
+      // relationship: 'customer',
+      identity: req.from.object
+    }
+
+    if (req.state.profile) {
+      intro.profile = req.state.profile
+    } else {
+      intro.name = 'Customer ' + utils.randomDecimalString(6)
+    }
+
     this.tim.signAndSend({
       to: { permalink: relationshipManager },
-      object: {
-        [TYPE]: 'tradle.Introduction',
-        profile: req.state.profile,
-        name: req.state.profile ? null : 'Customer ' + utils.randomDecimalString(6),
-        message: 'Your new customer',
-        // [TYPE]: 'tradle.Introduction',
-        // relationship: 'customer',
-        identity: req.from.object
-      }
+      object: intro
     })
 
     // this._forwardDB.share({
@@ -980,14 +986,17 @@ SimpleBank.prototype.shareContext = co(function* (req, res) {
 
   return Q.all(recipients.map(co(function* (recipient) {
     if (!props.revoked) {
+      const intro = {
+        [TYPE]: 'tradle.Introduction',
+        message: 'introducing...',
+        identity: customerIdentityInfo.object
+      }
+
+      if (customerProfile) intro.profile = customerProfile
+
       yield self.tim.signAndSend({
         to: { permalink: recipient },
-        object: {
-          [TYPE]: 'tradle.Introduction',
-          profile: customerProfile,
-          message: 'introducing...',
-          identity: customerIdentityInfo.object
-        }
+        object: intro
       })
     }
 

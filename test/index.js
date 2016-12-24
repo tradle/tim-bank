@@ -1872,9 +1872,8 @@ function newFakeData (model) {
   if (!model) throw new Error('model not found')
 
   const type = model.id
-  const data = {
-    [TYPE]: type
-  }
+  const data = {}
+  if (type) data[TYPE] = type
 
   const props = model.required || Object.keys(model.properties)
   props.forEach(name => {
