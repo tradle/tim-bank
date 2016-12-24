@@ -573,7 +573,8 @@ SimpleBank.prototype._createAndSendVerification = co(function* (opts) {
 SimpleBank.prototype._createVerification = co(function* (opts) {
   typeforce({
     req: 'RequestState',
-    verifiedItem: 'Object'
+    verifiedItem: typeforce.Object,
+    verification: typeforce.maybe(typeforce.Object)
   }, opts)
 
   const { req, verifiedItem } = opts
@@ -595,7 +596,12 @@ SimpleBank.prototype._createVerification = co(function* (opts) {
   const identityInfo = this.tim.identityInfo
   const form = findFormState(application.forms, verifiedItem)
   const verification = yield this.tim.createObject({
-    object: newVerificationFor(req.state, form, identityInfo.object)
+    object: newVerificationFor({
+      state: req.state,
+      form,
+      identity: identityInfo.object,
+      verification: opts.verification
+    })
   })
 
   verification.body = verification.object
@@ -866,7 +872,9 @@ SimpleBank.prototype._simulateReq = co(function* (opts) {
 
 SimpleBank.prototype._endRequest = co(function* (req) {
   try {
-    req.end()
+    yield req.end()
+  } catch (err) {
+    this._debug('request ended badly', err)
   } finally {
     if (req.unlock) req.unlock()
   }
@@ -921,7 +929,6 @@ SimpleBank.prototype.revokeProduct = co(function* (opts) {
     customer: typeforce.String,
     product: typeforce.String
   }, opts)
-
 
   // return this._simulateReq(opts.customer)
   const customerHash = opts.customer
@@ -1248,19 +1255,44 @@ SimpleBank.prototype.getEmployee = function (req) {
   })
 }
 
+// SimpleBank.prototype.createVerification = co(function* ({ customer, verification }) {
+//   const { req } = yield this._simulateReq({ customer })
+//   yield this.bank._getCustomerState(customer)
+// })
+
 SimpleBank.prototype.receiveVerification = co(function* ({ customer, verification }) {
   const { req } = yield this._simulateReq({ customer })
   const verifiedItemInfo = utils.parseObjectId(verification.document.id)
   const application = getAllApplications(req.state).find(application => {
-    return findFormState(application, verifiedItemInfo)
+    return findFormState(application.forms, verifiedItemInfo)
   })
 
   if (!application) {
     throw utils.httpError(400, new Error(`application not found for verification ${verification}`))
   }
 
-  req.context = application.permalink
-  return this._handleVerification(req)
+  try {
+    const getSaved = this.tim.objects.get(tradleUtils.hexLink(verification))
+    const doSave = this.tim.saveObject({ object: verification })
+    let saved
+    debugger
+    try {
+      saved = yield getSaved
+    } catch (err) {
+    }
+
+    if (!saved) saved = yield doSave
+
+    req.context = application.permalink
+    req.payload = saved
+    req.payload.author = { permalink: saved.author }
+    return yield this._handleVerification(req)
+  } catch (err) {
+    this._debug('failed to receive verification', err)
+    throw err
+  } finally {
+    this._endRequest(req)
+  }
 })
 
 SimpleBank.prototype._handleVerification = co(function* (req) {
@@ -1648,11 +1680,14 @@ function updateWithReceivedForm (application, formWrapper) {
   return existing || newFormObj
 }
 
-function newVerificationFor (customerState, formState, identity) {
+function newVerificationFor (opts) {
+  const customerState = opts.state
+  const formState = opts.form
+  const identity = opts.identity
   const formInfo = formState.form
   const verifications = formState.verifications
   const doc = formInfo.object || formInfo.body
-  const verification = utils.getImportedVerification(customerState, doc) || {}
+  const verification = opts.verification || utils.getImportedVerification(customerState, doc) || {}
   if (!verification.dateVerified) verification.dateVerified = Date.now()
 
   verification.document = {
