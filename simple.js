@@ -1514,7 +1514,7 @@ SimpleBank.prototype._execPlugins = co(function* (method, args) {
 
   for (var i = 0; i < plugins.length; i++) {
     let ret = plugins[i][method].apply(this, args)
-    if (Q.isPromise(ret)) yield ret
+    if (utils.isPromise(ret)) yield ret
   }
 })
 
@@ -1574,7 +1574,7 @@ SimpleBank.prototype._execBooleanPlugin = co(function* (method, args, fallbackVa
     let ret
     try {
       ret = plugin[method].apply(this, args)
-      if (Q.isPromise(ret)) ret = yield ret
+      if (utils.isPromise(ret)) ret = yield ret
     } catch (err) {
       return {
         result: false,

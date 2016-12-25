@@ -1666,6 +1666,7 @@ function getHelpers (opts) {
 }
 
 function runSetup (init) {
+  memdown.clearGlobalStore()
   const defer = Q.defer()
   initCount++
   let result

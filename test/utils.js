@@ -3,7 +3,7 @@
 var crypto = require('crypto')
 var extend = require('xtend')
 var typeforce = require('typeforce')
-var leveldown = require('leveldown')
+var leveldown = require('memdown')
 var levelup = require('levelup')
 // var Blockchain = require('@tradle/cb-blockr')
 // var tradleUtils = require('@tradle/utils')
