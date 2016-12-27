@@ -698,7 +698,7 @@ SimpleBank.prototype.requestEdit = function (req, errs) {
 }
 
 SimpleBank.prototype.sendNextFormOrApprove = co(function* (opts) {
-  if (!(this._auto.prompt || this._auto.verify)) return Q()
+  if (!(this._auto.prompt || this._auto.verify)) return
 
   typeforce({
     state: '?Object',
@@ -738,7 +738,7 @@ SimpleBank.prototype.sendNextFormOrApprove = co(function* (opts) {
   //   state.products[productType] = []
   // }
 
-  if (req.type === VERIFICATION) return Q()
+  if (req.type === VERIFICATION) return
 
   const isFormOrVerification = req[TYPE] === VERIFICATION || this.models.docs.indexOf(req[TYPE]) !== -1
   const reqdForms = isRemediation
