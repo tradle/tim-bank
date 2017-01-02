@@ -238,7 +238,11 @@ SimpleBank.prototype.receiveMsg = co(function* (msg, senderInfo, sync) {
   yield this.willReceive(msg, senderInfo)
   const req = yield this.receivePrivateMsg(msg, senderInfo, sync)
   if (req) {
-    yield this.didReceive({ req, msg: req.msg })
+    try {
+      yield this.didReceive({ req, msg: req.msg })
+    } catch (err) {
+      this._debug('experienced error in didReceive', err)
+    }
   }
 
   return req
