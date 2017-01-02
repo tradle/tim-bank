@@ -8,9 +8,9 @@
       "resolved": "https://registry.npmjs.org/@tradle/bitcoinjs-lib/-/bitcoinjs-lib-1.6.0.tgz"
     },
     "@tradle/engine": {
-      "version": "3.8.4",
-      "from": "@tradle/engine@>=3.8.0 <3.9.0",
-      "resolved": "https://registry.npmjs.org/@tradle/engine/-/engine-3.8.4.tgz",
+      "version": "3.9.0",
+      "from": "@tradle/engine@latest",
+      "resolved": "https://registry.npmjs.org/@tradle/engine/-/engine-3.9.0.tgz",
       "dependencies": {
         "clone": {
           "version": "2.1.0",
@@ -104,9 +104,9 @@
       }
     },
     "async": {
-      "version": "2.0.1",
+      "version": "2.1.4",
       "from": "async@>=2.0.0-rc.4 <3.0.0",
-      "resolved": "https://registry.npmjs.org/async/-/async-2.0.1.tgz"
+      "resolved": "https://registry.npmjs.org/async/-/async-2.1.4.tgz"
     },
     "backoff": {
       "version": "2.5.0",
@@ -645,6 +645,11 @@
       "from": "generate-object-property@>=1.2.0 <2.0.0",
       "resolved": "https://registry.npmjs.org/generate-object-property/-/generate-object-property-1.2.0.tgz"
     },
+    "glob": {
+      "version": "7.1.1",
+      "from": "glob@>=7.1.1 <7.2.0",
+      "resolved": "https://registry.npmjs.org/glob/-/glob-7.1.1.tgz"
+    },
     "graceful-fs": {
       "version": "4.1.6",
       "from": "graceful-fs@>=4.1.2 <5.0.0",
@@ -871,9 +876,9 @@
       "resolved": "https://registry.npmjs.org/lexicographic-integer/-/lexicographic-integer-1.1.0.tgz"
     },
     "lodash": {
-      "version": "4.15.0",
-      "from": "lodash@>=4.8.0 <5.0.0",
-      "resolved": "https://registry.npmjs.org/lodash/-/lodash-4.15.0.tgz"
+      "version": "4.17.4",
+      "from": "lodash@>=4.14.0 <5.0.0",
+      "resolved": "https://registry.npmjs.org/lodash/-/lodash-4.17.4.tgz"
     },
     "looper": {
       "version": "2.0.0",
@@ -927,7 +932,14 @@
     "merkle-tree-stream": {
       "version": "3.0.3",
       "from": "git+https://github.com/mvayngrib/merkle-tree-stream.git#ef1abd6b566a410f8cdc7190f0966b97f403e290",
-      "resolved": "git+https://github.com/mvayngrib/merkle-tree-stream.git#ef1abd6b566a410f8cdc7190f0966b97f403e290"
+      "resolved": "git+https://github.com/mvayngrib/merkle-tree-stream.git#ef1abd6b566a410f8cdc7190f0966b97f403e290",
+      "dependencies": {
+        "readable-stream": {
+          "version": "2.2.2",
+          "from": "readable-stream@>=2.0.5 <3.0.0",
+          "resolved": "https://registry.npmjs.org/readable-stream/-/readable-stream-2.2.2.tgz"
+        }
+      }
     },
     "methods": {
       "version": "1.1.2",
@@ -1472,6 +1484,11 @@
       "version": "0.6.6",
       "from": "traverse@>=0.6.6 <0.7.0",
       "resolved": "https://registry.npmjs.org/traverse/-/traverse-0.6.6.tgz"
+    },
+    "tweetnacl": {
+      "version": "0.14.5",
+      "from": "tweetnacl@>=0.14.3 <0.15.0",
+      "resolved": "https://registry.npmjs.org/tweetnacl/-/tweetnacl-0.14.5.tgz"
     },
     "type-is": {
       "version": "1.6.13",
