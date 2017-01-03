@@ -8,9 +8,9 @@
       "resolved": "https://registry.npmjs.org/@tradle/bitcoinjs-lib/-/bitcoinjs-lib-1.6.0.tgz"
     },
     "@tradle/engine": {
-      "version": "3.9.0",
-      "from": "@tradle/engine@latest",
-      "resolved": "https://registry.npmjs.org/@tradle/engine/-/engine-3.9.0.tgz",
+      "version": "3.9.3",
+      "from": "@tradle/engine@>=3.9.0 <3.10.0",
+      "resolved": "https://registry.npmjs.org/@tradle/engine/-/engine-3.9.3.tgz",
       "dependencies": {
         "clone": {
           "version": "2.1.0",
