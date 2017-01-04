@@ -12,27 +12,18 @@ var crypto = require('crypto')
 
 // overwrite models for tests
 var MODELS = require('@tradle/models')
-if (MODELS.every(m => m.id !== 'tradle.NextFormRequest')) {
-  MODELS.push({
-    "id": "tradle.NextFormRequest",
-    "type": "tradle.Model",
-    "title": "Next Form Request",
-    "interfaces": [
-      "tradle.Message"
-    ],
-    "properties": {
-      "_t": {
-        "type": "string",
-        "readOnly": true
-      },
-      "after": {
-        "type": "string",
-        "readOnly": true,
-        "displayName": true
-      }
+var additionalModels = require('./fixtures/models')
+additionalModels.forEach(additional => {
+  for (var i = 0; i < MODELS.length; i++) {
+    let model = MODELS[i]
+    if (model.id === additional.id) {
+      MODELS[i] = additional
+      return
     }
-  })
-}
+  }
+
+  MODELS.push(additional)
+})
 
 var MODELS_BY_ID = {}
 MODELS.forEach(function (m) {
@@ -196,7 +187,7 @@ test('disable forwarding', function (t) {
 
 testMultiEntry()
 // testCustomProductConfirmation()
-testGuestSession()
+// testGuestSession()
 testRemediation()
 testManualMode()
 testContinue()
@@ -609,93 +600,93 @@ function testCustomProductConfirmation () {
   })
 }
 
-function testGuestSession () {
-  test('import guest session', function (t) {
-    runSetup(init).then(setup => {
-      const banks = setup.banks
-      const applicant = setup.applicant
-      var bank = banks[0]
-      var bankCoords = getCoords(bank.tim)
-      var product = 'tradle.CurrentAccount'
-      var forms = {}
-      var helpers = getHelpers({
-        applicant: applicant,
-        bank: bank,
-        banks: banks,
-        forms: forms,
-        verifications: {},
-        setup: setup,
-        t: t
-      })
+// function testGuestSession () {
+//   test.only('import guest session', function (t) {
+//     runSetup(init).then(setup => {
+//       const banks = setup.banks
+//       const applicant = setup.applicant
+//       var bank = banks[0]
+//       var bankCoords = getCoords(bank.tim)
+//       var product = 'tradle.CurrentAccount'
+//       var forms = {}
+//       var helpers = getHelpers({
+//         applicant: applicant,
+//         bank: bank,
+//         banks: banks,
+//         forms: forms,
+//         verifications: {},
+//         setup: setup,
+//         t: t
+//       })
 
-      var sessionHash = 'blah'
-      var incompleteAboutYou = newFakeData(ABOUT_YOU)
-      var missing = 'photos'
-      var missingVal = incompleteAboutYou[missing]
-      delete incompleteAboutYou[missing]
-      var yourMoney = newFakeData(YOUR_MONEY)
-      var license = newFakeData(LICENSE)
-      var session = [
-        utils.buildSimpleMsg(
-          'application for',
-          product
-        ),
-        incompleteAboutYou,
-        yourMoney,
-        license,
-        {
-          [TYPE]: VERIFICATION,
-//          [NONCE]: '' + (nonce++),
-          dateVerified: 10000,
-          document: {
-            [TYPE]: YOUR_MONEY
-          }
-        }
-      ]
+//       var sessionHash = 'blah'
+//       var incompleteAboutYou = newFakeData(ABOUT_YOU)
+//       var missing = 'photos'
+//       var missingVal = incompleteAboutYou[missing]
+//       delete incompleteAboutYou[missing]
+//       var yourMoney = newFakeData(YOUR_MONEY)
+//       var license = newFakeData(LICENSE)
+//       var session = [
+//         utils.buildSimpleMsg(
+//           'application for',
+//           product
+//         ),
+//         incompleteAboutYou,
+//         yourMoney,
+//         license,
+//         {
+//           [TYPE]: VERIFICATION,
+// //          [NONCE]: '' + (nonce++),
+//           dateVerified: 10000,
+//           document: {
+//             [TYPE]: YOUR_MONEY
+//           }
+//         }
+//       ]
 
-      bank.storeGuestSession(sessionHash, session)
-        .then(() => helpers.sendIdentity({ awaitUnchained: true }))
-        .then(() => helpers.sendSessionIdentifier(sessionHash, 'tradle.FormError'))
-        .then(wrapper => {
-          helpers.setContext(wrapper.object.context)
-          const errors = wrapper.object.object.errors
-          t.ok(errors.some(e => e.name === missing))
-          incompleteAboutYou[missing] = missingVal
-          helpers.signNSend(incompleteAboutYou)
-          return helpers.awaitType('tradle.FormError')
-        })
-        .then(wrapper => {
-          const message = wrapper.object.object.message
-          t.ok(/review/.test(message))
-          helpers.signNSend(yourMoney)
-          return helpers.awaitType('tradle.FormError')
-        })
-        .then(wrapper => {
-          const message = wrapper.object.object.message
-          t.ok(/review/.test(message))
-          helpers.signNSend(license)
-          return helpers.awaitConfirmation()
-        })
-        .done()
+//       bank.storeGuestSession(sessionHash, session)
+//         .then(() => helpers.sendIdentity({ awaitUnchained: true }))
+//         .then(() => helpers.sendSessionIdentifier(sessionHash, 'tradle.FormError'))
+//         .then(wrapper => {
+//           helpers.setContext(wrapper.object.context)
+//           const errors = wrapper.object.object.errors
+//           t.ok(errors.some(e => e.name === missing))
+//           incompleteAboutYou[missing] = missingVal
+//           helpers.signNSend(incompleteAboutYou)
+//           return helpers.awaitType('tradle.FormError')
+//         })
+//         .then(wrapper => {
+//           const message = wrapper.object.object.message
+//           t.ok(/review/.test(message))
+//           helpers.signNSend(yourMoney)
+//           return helpers.awaitType('tradle.FormError')
+//         })
+//         .then(wrapper => {
+//           const message = wrapper.object.object.message
+//           t.ok(/review/.test(message))
+//           helpers.signNSend(license)
+//           return helpers.awaitConfirmation()
+//         })
+//         .done()
 
-      Q.all([
-          helpers.awaitVerification(3),
-          helpers.awaitConfirmation()
-        ])
-        .spread(verifications => {
-          const yourMoneyV = find(verifications, v => {
-            return utils.parseObjectId(v.object.object.document.id).type === YOUR_MONEY
-          })
+//       Q.all([
+//           helpers.awaitVerification(3),
+//           helpers.awaitConfirmation()
+//         ])
+//         .spread(verifications => {
+//           const yourMoneyV = find(verifications, v => {
+//             return utils.parseObjectId(v.object.object.document.id).type === YOUR_MONEY
+//           })
 
-          t.equal(yourMoneyV.object.object.dateVerified, 10000)
-          return teardown(setup)
-        })
-        .done(function () {
-          t.end()
-        })
-    })
-  })
-}
+//           t.equal(yourMoneyV.object.object.dateVerified, 10000)
+//           return teardown(setup)
+//         })
+//         .done(function () {
+//           t.end()
+//         })
+//     })
+//   })
+// }
 
 function testRemediation () {
   test('import remediation', function (t) {
@@ -721,21 +712,20 @@ function testRemediation () {
       var yourMoney = newFakeData(YOUR_MONEY)
       var license = newFakeData(LICENSE)
       var session = [
-        utils.buildSimpleMsg(
-          'application for',
-          product
-        ),
         aboutYou,
-        yourMoney,
-        license,
         {
-          [TYPE]: VERIFICATION,
-//          [NONCE]: '' + (nonce++),
-          dateVerified: 10000,
-          document: {
-            [TYPE]: YOUR_MONEY
+          [TYPE]: 'tradle.VerifiedItem',
+          item: yourMoney,
+          verification: {
+            [TYPE]: VERIFICATION,
+  //          [NONCE]: '' + (nonce++),
+            dateVerified: 10000,
+            document: {
+              [TYPE]: YOUR_MONEY
+            }
           }
-        }
+        },
+        license
       ]
 
       const verified = helpers.awaitVerification(3)
@@ -760,6 +750,11 @@ function testRemediation () {
         .then(wrapper => {
           const message = wrapper.object.object.message
           t.ok(/review/.test(message))
+          return helpers.sendSessionIdentifier(sessionHash, types.FORM_ERROR)
+        })
+        .then(wrapper => {
+          // console.log(wrapper.object)
+          t.equal(wrapper.object.object.prefill[TYPE], YOUR_MONEY)
           helpers.signNSend(yourMoney)
           return helpers.awaitType(types.FORM_ERROR)
         })
