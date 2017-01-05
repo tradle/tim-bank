@@ -480,13 +480,13 @@ SimpleBank.prototype.handleNewApplication = co(function* (req, res) {
   const pendingApp = find(req.state.pendingApplications || [], app => app.type === productType)
   if (pendingApp) {
     req.context = pendingApp.permalink
-    return this.sendNextFormOrApprove({req})
+    return this.continueProductApplication({req})
   }
 
   const permalink = req.payload.permalink
   req.state.pendingApplications.push(newApplicationState(productType, permalink))
   req.context = permalink
-  return this.sendNextFormOrApprove({req})
+  return this.continueProductApplication({req})
 })
 
 SimpleBank.prototype.handleDocument = co(function* (req, res) {
@@ -498,7 +498,7 @@ SimpleBank.prototype.handleDocument = co(function* (req, res) {
   }
 
   let state = req.state
-  const next = () => this.sendNextFormOrApprove({req})
+  const next = () => this.continueProductApplication({req})
   const invalid = this.validateDocument(req)
   if (invalid) {
     req.nochain = true
@@ -522,7 +522,7 @@ SimpleBank.prototype.handleDocument = co(function* (req, res) {
           verification: current.verification
         })
 
-        return this.sendNextFormOrApprove({ req })
+        return this.continueProductApplication({ req })
       }
     }
   }
@@ -555,7 +555,7 @@ SimpleBank.prototype.onNextFormRequest = function (req, res) {
   if (!application || application.skip.indexOf(formToSkip) !== -1) return
 
   application.skip.push(formToSkip)
-  return this.sendNextFormOrApprove({req})
+  return this.continueProductApplication({req})
 }
 
 SimpleBank.prototype.validateDocument = function (req) {
@@ -714,14 +714,15 @@ SimpleBank.prototype.requestEdit = function (req, errs) {
   })
 }
 
-SimpleBank.prototype.sendNextFormOrApprove = co(function* (opts) {
+SimpleBank.prototype.continueProductApplication = co(function* (opts) {
   if (!(this._auto.prompt || this._auto.verify)) return
 
   typeforce({
     state: '?Object',
     req: '?RequestState',
     productType: '?String',
-    application: '?String'
+    application: '?String',
+    noNextForm: '?Boolean'
   }, opts)
 
   const req = opts.req
@@ -821,7 +822,7 @@ SimpleBank.prototype.sendNextFormOrApprove = co(function* (opts) {
   })
 
   if (missing) {
-    if (!this._auto.prompt) return
+    if (!this._auto.prompt || opts.noNextForm) return
 
     return this.requestForm({
       req: req,
@@ -1031,10 +1032,6 @@ SimpleBank.prototype.shareContext = co(function* (req, res) {
   })))
 })
 
-SimpleBank.prototype.models = function () {
-  return this.models
-}
-
 SimpleBank.prototype.getCustomerState = function (customerHash) {
   return this.bank._getCustomerState(customerHash)
 }
@@ -1045,7 +1042,7 @@ SimpleBank.prototype.getCustomerWithApplication = function (applicationHash) {
 }
 
 SimpleBank.prototype._revokeProduct = co(function* (opts) {
-  // TODO: minimize code repeat with sendNextFormOrApprove
+  // TODO: minimize code repeat with continueProductApplication
   const req = opts.req
   const productPermalink = opts.product
   const products = req.state.products
@@ -1082,7 +1079,7 @@ SimpleBank.prototype._revokeProduct = co(function* (opts) {
 })
 
 SimpleBank.prototype._approveProduct = co(function* ({ req, application }) {
-  // TODO: minimize code repeat with sendNextFormOrApprove
+  // TODO: minimize code repeat with continueProductApplication
   const productType = application.type
   const state = req.state
 
@@ -1271,11 +1268,9 @@ SimpleBank.prototype.getEmployee = function (req) {
   })
 }
 
-// SimpleBank.prototype.createVerification = co(function* ({ customer, verification }) {
-//   const { req } = yield this._simulateReq({ customer })
-//   yield this.bank._getCustomerState(customer)
-// })
-
+/**
+ * Artificially receive a verification (as opposed to one being sent by the customer in a message)
+ */
 SimpleBank.prototype.receiveVerification = co(function* ({ customer, verification }) {
   const { req } = yield this._simulateReq({ customer })
   const verifiedItemInfo = utils.parseObjectId(verification.document.id)
@@ -1301,7 +1296,7 @@ SimpleBank.prototype.receiveVerification = co(function* ({ customer, verificatio
     req.context = application.permalink
     req.payload = saved
     req.payload.author = { permalink: saved.author }
-    return yield this._handleVerification(req)
+    return yield this._handleVerification(req, { noNextForm: true })
   } catch (err) {
     this._debug('failed to receive verification', err)
     throw err
@@ -1310,7 +1305,7 @@ SimpleBank.prototype.receiveVerification = co(function* ({ customer, verificatio
   }
 })
 
-SimpleBank.prototype._handleVerification = co(function* (req) {
+SimpleBank.prototype._handleVerification = co(function* (req, opts={}) {
   // dangerous if verification is malformed
   const appLink = req.context
   const pending = req.application
@@ -1357,7 +1352,7 @@ SimpleBank.prototype._handleVerification = co(function* (req) {
     })
   }
 
-  return this.sendNextFormOrApprove({req})
+  return this.continueProductApplication(clone({ req }, opts))
 })
 
 SimpleBank.prototype.forgetMe = co(function* (req) {
@@ -1404,7 +1399,7 @@ SimpleBank.prototype.importSession = co(function* (req) {
   }
 
   req.context = state.imported[sessionId]
-  return this.sendNextFormOrApprove({ req })
+  return this.continueProductApplication({ req })
 })
 
 // SimpleBank.prototype.importSession = co(function* (req) {
