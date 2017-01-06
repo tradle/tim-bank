@@ -514,16 +514,32 @@ SimpleBank.prototype.handleDocument = co(function* (req, res) {
   const imported = state.imported[req.context]
   if (imported) {
     const current = imported.shift()
-    if (current[TYPE] === 'tradle.VerifiedItem') {
-      if (utils.formsEqual(current.item, req.payload.object)) {
-        yield this._createAndSendVerification({
-          req,
-          verifiedItem: req.payload,
-          verification: current.verification
-        })
+    if (current[TYPE] === 'tradle.VerifiedItem' && utils.formsEqual(current.item, formWrapper.object)) {
+      const verification = current.verification
+      const sources = verification.sources
+      if (sources) {
+        const signed = yield Q.all(sources.map(v => {
+          if (v[SIG]) {
+            throw new Error('verifications can\'t be pre-signed')
+          }
 
-        return this.continueProductApplication({ req })
+          return this._createVerification({
+            req,
+            verifiedItem: req.payload,
+            verification: v
+          })
+        }))
+
+        verification.sources = signed.map(v => v.object)
       }
+
+      yield this._createAndSendVerification({
+        req,
+        verifiedItem: req.payload,
+        verification: current.verification
+      })
+
+      return this.continueProductApplication({ req })
     }
   }
 
@@ -1271,8 +1287,13 @@ SimpleBank.prototype.getEmployee = function (req) {
 /**
  * Artificially receive a verification (as opposed to one being sent by the customer in a message)
  */
-SimpleBank.prototype.receiveVerification = co(function* ({ customer, verification }) {
-  const { req } = yield this._simulateReq({ customer })
+SimpleBank.prototype.receiveVerification = co(function* (opts) {
+  let { customer, verification, req } = opts
+  if (!req) {
+    const sim = yield this._simulateReq({ customer })
+    req = sim.req
+  }
+
   const verifiedItemInfo = utils.parseObjectId(verification.document.id)
   const application = getAllApplications(req.state).find(application => {
     return findFormState(application.forms, verifiedItemInfo)
@@ -1301,7 +1322,7 @@ SimpleBank.prototype.receiveVerification = co(function* ({ customer, verificatio
     this._debug('failed to receive verification', err)
     throw err
   } finally {
-    this._endRequest(req)
+    if (!opts.req) this._endRequest(req)
   }
 })
 
@@ -1352,7 +1373,8 @@ SimpleBank.prototype._handleVerification = co(function* (req, opts={}) {
     })
   }
 
-  return this.continueProductApplication(clone({ req }, opts))
+  yield this.continueProductApplication(clone({ req }, opts))
+  return verification
 })
 
 SimpleBank.prototype.forgetMe = co(function* (req) {

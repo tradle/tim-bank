@@ -85,7 +85,8 @@ var {
   CUR_HASH,
   ROOT_HASH,
   PERMALINK,
-  LINK
+  LINK,
+  SIG
 } = constants
 
 var tradleUtils = tradle.utils
@@ -711,6 +712,11 @@ function testRemediation () {
       var aboutYou = newFakeData(ABOUT_YOU)
       var yourMoney = newFakeData(YOUR_MONEY)
       var license = newFakeData(LICENSE)
+      var document = {
+        [TYPE]: YOUR_MONEY,
+        id: `${YOUR_MONEY}_b_c`
+      }
+
       var session = [
         aboutYou,
         {
@@ -720,9 +726,22 @@ function testRemediation () {
             [TYPE]: VERIFICATION,
   //          [NONCE]: '' + (nonce++),
             dateVerified: 10000,
-            document: {
-              [TYPE]: YOUR_MONEY
-            }
+            document,
+            sources: [
+              {
+                [TYPE]: VERIFICATION,
+      //          [NONCE]: '' + (nonce++),
+                dateVerified: 10000,
+                method: {
+                  [TYPE]: 'tradle.APIBasedVerificationMethod',
+                  api: {
+                    name: 'onfido'
+                  },
+                  aspect: 'authenticity'
+                },
+                document
+              }
+            ]
           }
         },
         license
@@ -734,6 +753,7 @@ function testRemediation () {
             return utils.parseObjectId(v.object.object.document.id).type === YOUR_MONEY
           })
 
+          t.equal(yourMoneyV.object.object.sources.length, 1)
           t.equal(yourMoneyV.object.object.dateVerified, 10000)
         })
 
