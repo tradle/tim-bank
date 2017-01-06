@@ -1322,7 +1322,9 @@ SimpleBank.prototype.receiveVerification = co(function* (opts) {
     req.context = application.permalink
     req.payload = saved
     req.payload.author = { permalink: saved.author }
-    return yield this._handleVerification(req, { noNextForm: true })
+    const ret = yield this._handleVerification(req, { noNextForm: true })
+    yield this.bank._setCustomerState(req)
+    return ret
   } catch (err) {
     this._debug('failed to receive verification', err)
     throw err
