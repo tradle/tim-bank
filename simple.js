@@ -511,6 +511,8 @@ SimpleBank.prototype.handleDocument = co(function* (req, res) {
     return next()
   }
 
+  if (!state.imported) state.imported = {}
+
   const imported = state.imported[req.context]
   if (imported && imported.length) {
     const current = imported.shift()
