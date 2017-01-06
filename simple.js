@@ -161,6 +161,7 @@ function SimpleBank (opts) {
 
   bank.use(PRODUCT_APPLICATION, (req) => {
     var product = req.payload.object.product
+    req.productType = product
     if (product === 'tradle.Remediation') {
       return this.importSession(req)
     }
@@ -168,7 +169,6 @@ function SimpleBank (opts) {
     if (this._productList.indexOf(product) === -1) {
       return this.replyNotFound(req, product)
     } else {
-      req.productType = product
       return this.handleNewApplication(req)
     }
   })
