@@ -512,8 +512,10 @@ SimpleBank.prototype.handleDocument = co(function* (req, res) {
   }
 
   const imported = state.imported[req.context]
-  if (imported) {
+  if (imported && imported.length) {
     const current = imported.shift()
+    if (!imported.length) delete state.imported[req.context]
+
     if (current[TYPE] === 'tradle.VerifiedItem' && utils.formsEqual(current.item, formWrapper.object)) {
       const verification = current.verification
       const sources = verification.sources
@@ -588,7 +590,7 @@ SimpleBank.prototype.validateDocument = function (req) {
   if (!err) {
     if (!doc[SIG]) {
       err = {
-        message: 'Please take a second to review this data',
+        message: 'Please review',
         errors: []
       }
     }
@@ -715,7 +717,8 @@ SimpleBank.prototype.requestEdit = function (req, errs) {
   }
 
   let message = errs.message
-  if (req.productType === REMEDIATION) {
+  const productType = req.productType || req.application.type
+  if (productType === REMEDIATION) {
     message = 'Importing...' + message[0].toLowerCase() + message.slice(1)
   }
 
@@ -776,7 +779,7 @@ SimpleBank.prototype.continueProductApplication = co(function* (opts) {
 
   if (isRemediation) {
     const session = state.imported[req.context]
-    if (session.length) {
+    if (session && session.length) {
       const next = session[0]
       const form = next[TYPE] === 'tradle.VerifiedItem' ? next.item : next
       const docReq = new RequestState({
