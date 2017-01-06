@@ -494,7 +494,31 @@ SimpleBank.prototype.handleDocument = co(function* (req, res) {
   const application = req.application
   if (!application || application.isProduct) {
     // TODO: save in prefilled documents
-    throw utils.httpError(400, `application ${appLink} not found`)
+
+    if (appLink) {
+      throw utils.httpError(400, `application ${appLink} not found`)
+    }
+
+    // was previously an object,
+    // now it mimicks application.forms
+    if (!Array.isArray(req.state.forms)) {
+      req.state.forms = []
+    }
+
+    const formState = updateWithReceivedForm(req.state, req.payload)
+    const should = yield this.shouldSendVerification({
+      state: req.state,
+      form: formState
+    })
+
+    if (should.result) {
+      yield this._createAndSendVerification({
+        req: req,
+        verifiedItem: req.payload
+      })
+    }
+
+    return
   }
 
   let state = req.state
@@ -618,14 +642,7 @@ SimpleBank.prototype._createVerification = co(function* (opts) {
   const appLink = req.context
   const pending = req.application
   const product = req.product
-  const application = pending || product
-  if (!application) {
-    // TODO: save in prefilled verifications
-    throw utils.httpError(400, `application ${appLink} not found`)
-  }
-
-  // TODO: revert to this
-  // if (!utils.findFormState(application.forms, verifiedItem.link)) {
+  const application = appLink ? pending || product : req.state // productless forms in req.state.forms
   if (!findFormState(application.forms, verifiedItem )) {
     throw utils.httpError(400, 'form not found, refusing to send verification')
   }
@@ -1778,7 +1795,7 @@ function newVerificationFor (opts) {
 function newCustomerState (customer) {
   return extend({
     documents: {},
-    forms: {},
+    forms: [],
     pendingApplications: [],
     products: {},
     // forms: [],
@@ -1807,5 +1824,5 @@ function getAllApplications (state) {
     return all.concat(state.products[productType])
   }, [])
 
-  return state.pendingApplications.concat(products)
+  return state.pendingApplications.concat(products).concat(state)
 }

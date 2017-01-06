@@ -186,6 +186,7 @@ test('disable forwarding', function (t) {
   t.end()
 })
 
+testProductlessForm()
 testMultiEntry()
 // testCustomProductConfirmation()
 // testGuestSession()
@@ -342,6 +343,32 @@ runTests(init)
 //       })
 //   })
 // }
+
+function testProductlessForm () {
+  test('forms without products', function (t) {
+    runSetup(init).then(setup => {
+      const banks = setup.banks
+      const applicant = setup.applicant
+      var bank = banks[0]
+      var bankCoords = getCoords(bank.tim)
+      var forms = {}
+      var helpers = getHelpers({
+        applicant: applicant,
+        bank: bank,
+        banks: banks,
+        forms: forms,
+        verifications: {},
+        setup: setup,
+        t: t
+      })
+
+      helpers.sendIdentity()
+        .then(() => helpers.sendForm({ form: ABOUT_YOU, awaitVerification: true }))
+        .then(() => teardown(setup))
+        .done(() => t.end())
+    })
+  })
+}
 
 function testForwarding () {
   test('forward messages through bot', t => {
