@@ -29,3 +29,4 @@ Q.all(promises)
   .then((users) => {
     fs.writeFile(filePath, JSON.stringify(users, null, 2))
   })
+  .done()

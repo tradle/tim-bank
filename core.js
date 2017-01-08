@@ -1,6 +1,6 @@
 'use strict'
 
-require('@tradle/multiplex-utp')
+// require('@tradle/multiplex-utp')
 
 var assert = require('assert')
 var extend = require('xtend')
@@ -10,26 +10,29 @@ var map = require('map-stream')
 var find = require('array-find')
 var typeforce = require('typeforce')
 var collect = require('stream-collector')
-var tutils = require('@tradle/utils')
-var Builder = require('@tradle/chained-obj').Builder
+// var tutils = require('@tradle/utils')
 var utils = require('./lib/utils')
-var Q = require('q')
-var constants = require('@tradle/constants')
+var Q = require('bluebird-q')
+var co = Q.async
+var tradle = require('@tradle/engine')
+var constants = tradle.constants
+var tutils = tradle.utils
 var elistener = require('elistener')
-var Tim = require('tim')
+var once = require('once')
 var RequestState = require('./lib/requestState')
-var BANK_VERSION = require('./package.json').version
 var debug = require('./debug')
-var EventType = Tim.EventType
 var CUR_HASH = constants.CUR_HASH
 var ROOT_HASH = constants.ROOT_HASH
+var SIG = constants.SIG
 var TYPE = constants.TYPE
 // var OWNER = constants.OWNER
 var NONCE = constants.NONCE
-var types = constants.TYPES
+// var types = constants.TYPES
+var VERIFICATION = 'tradle.Verification'
 var CUSTOMER = 'tradle.Customer'
+var CONTEXT = 'context'
 var noop = function () {}
-// var types = require('./lib/types')
+var types = require('./lib/types')
 
 module.exports = Bank
 elistener(Bank.prototype)
@@ -39,18 +42,18 @@ function Bank (options) {
   var self = this
 
   typeforce({
-    tim: 'Object',
+    node: 'Object',
     path: 'String',
     leveldown: 'Function',
     name: '?String',
     manual: '?Boolean'
   }, options)
 
-  tutils.bindPrototypeFunctions(this)
+  tutils.bindFunctions(this)
 
-  var tim = options.tim
-  tim.on('chained', function (info) {
-    self._debug(`wrote chain-seal for ${info[TYPE]} in tx with id ${info.txId}`)
+  var tim = tutils.promisifyNode(options.node, Q.Promise)
+  tim.on('wroteseal', function (info) {
+    self._debug(`wrote chain-seal for ${info.object[TYPE]} in tx with id ${info.txId}`)
   })
 
   Object.defineProperty(this, 'tim', {
@@ -58,23 +61,13 @@ function Bank (options) {
     writable: false
   })
 
-  this._name = options.name || tim.name()
-  this.wallet = tim.wallet
-
+  this._name = options.name || tim.name
   this.listenTo(tim, 'error', function (err) {
     self._debug('error', err)
   })
 
   if (!options.manual) {
-    this.listenTo(tim, 'message', function (info) {
-      tim.lookupObject(info)
-        .catch(function (err) {
-          self._debug('unable to retrieve object', info)
-          if (!self._destroying) throw err
-        })
-        .then(self._onMessage)
-        .done()
-    })
+    this.listenTo(tim, 'message', this._onMessage)
   }
 
   // ;['chained', 'unchained'].forEach(function (e) {
@@ -92,17 +85,11 @@ function Bank (options) {
   // })
 
   var readyDefer = Q.defer()
-  this._readyPromise = readyDefer.promise
+  this._readyPromise = readyDefer.promise.then(() => this._ready = true)
   this._locks = {}
-  this._manualReleases = {}
 
-  this.listenOnce(tim, 'ready', function () {
-    self._ready = true
-    readyDefer.resolve()
-    // printIdentityStatus(tim)
-    //   .then(dumpDBs.bind(null, tim))
-  })
-
+  // don't have any pre-tasks at the moment
+  readyDefer.resolve()
   this._db = levelup(options.path, {
     db: options.leveldown,
     valueEncoding: 'json'
@@ -111,39 +98,27 @@ function Bank (options) {
   this._middles = utils.middles()
 }
 
-Bank.prototype._lock = function (customerHash, reason) {
+Bank.prototype.lock = function (id, reason="") {
   const self = this
-  this._debug(`locking ${customerHash}: ${reason}`)
-  const lock = this._locks[customerHash] = this._locks[customerHash] || mutexify()
-  const defer = Q.defer()
-  let release
-  let released
-
-  lock(_release => {
-    this._debug(`locked ${customerHash}: ${reason}`)
-    release = () => {
-      clearTimeout(timeout)
-      if (!released) {
-        released = true
-        _release()
-      }
-    }
-
-    var timeout = setTimeout(release, 10000)
-    self._manualReleases[customerHash] = release
-    defer.resolve()
-  })
-
-  return defer.promise
-}
-
-Bank.prototype._unlock = function (customerHash) {
-  const release = this._manualReleases[customerHash]
-  if (release) {
-    this._debug(`unlocking ${customerHash}`)
-    delete this._manualReleases[customerHash]
-    release()
+  if (!this._locks[id]) {
+    this._locks[id] = mutexify()
   }
+
+  const lock = this._locks[id]
+  this._debug(`locking ${id}: ${reason}`)
+  return new Promise(function (resolve, reject) {
+    lock(function (_release) {
+      self._debug(`locked ${id}: ${reason}`)
+      const release = once(function () {
+        clearTimeout(timeout)
+        self._debug(`unlocked ${id}: ${reason}`)
+        _release.apply(this, arguments)
+      })
+
+      resolve(release)
+      const timeout = setTimeout(release, 10000)
+    })
+  })
 }
 
 /**
@@ -200,40 +175,28 @@ Bank.prototype._getCustomerState = function (customerRootHash) {
   return this._getResource(CUSTOMER, customerRootHash)
 }
 
-Bank.prototype._setCustomerState = function (req) {
-  return req.state == null
-    ? this._delResource(CUSTOMER, req.from[ROOT_HASH])
-    : this._setResource(CUSTOMER, req.from[ROOT_HASH], req.state);
+Bank.prototype._getCustomerForContext = function (context) {
+  return this._getResource(CONTEXT, context)
 }
 
-/**
- * Delete customer state and customer data from keeper
- * @param  {[type]} req [description]
- * @return {[type]}     [description]
- */
-Bank.prototype.forgetCustomer = function (req) {
-  var self = this
-  var v = req.state.bankVersion
-  // clear customer slate
-  req.state = newCustomerState()
-  req.state.bankVersion = v // preserve version
-  this.tim.forget(req.from[ROOT_HASH])
-  this.tim.on('forgot', onForgot)
-  var defer = Q.defer()
-  return defer.promise
-
-  function onForgot(who) {
-    if (who === req.from[ROOT_HASH]) {
-      self.tim.removeListener('forgot', onForgot)
-      defer.resolve()
-    }
+Bank.prototype._setCustomerState = function (req) {
+  const promises = []
+  if (req.state == null) {
+    promises.push(this._delResource(CUSTOMER, req.customer))
+    if (req.context) promises.push(this._delResource(CONTEXT, req.context))
+  } else {
+    promises.push(this._setResource(CUSTOMER, req.customer, req.state))
+    if (req.context) promises.push(this._setResource(CONTEXT, req.context, req.customer))
   }
+
+  return Q.all(promises).spread(customerState => customerState)
 }
 
 Bank.prototype._saveParsedMsg = function (req) {
-  this._setResource(req.parsed.data[TYPE], req[ROOT_HASH], {
+  const objWrapper = req.payload
+  return this._setResource(objWrapper.object[TYPE], objWrapper.link, {
     txId: req.txId,
-    body: req.parsed
+    body: objWrapper.object
   })
 }
 
@@ -243,80 +206,124 @@ Bank.prototype._debug = function () {
   return debug.apply(null, args)
 }
 
-Bank.prototype.receiveMsg = function (msgBuf, senderInfo, sync) {
-  var self = this
-  return this.tim.receiveMsg(msgBuf, senderInfo)
-    .then(function (entry) {
-      if (entry.get('type') !== EventType.msg.receivedValid) {
-        self._debug('invalid message:', entry.get('errors').receive)
-        throw new Error('received invalid message:' + msgBuf.toString())
-      }
+Bank.prototype.receiveMsg = co(function* (msg, senderInfo, sync) {
+  const received = yield this.tim.receive(msg, senderInfo)
+  return this._onMessage(received, sync)
+})
 
-      return self.tim.lookupObject(entry.toJSON())
-    })
-    .then(function (msg) {
-      return self._onMessage(msg, sync)
-    })
+Bank.prototype.setEmployees = function (employees) {
+  this._employees = employees
 }
 
-// TODO: lock on sender hash to avoid race conditions
-Bank.prototype._onMessage = function (msg, sync) {
-  var self = this
-  if (!this._ready) {
-    return this._readyPromise.then(this._onMessage.bind(this, msg))
-  }
+Bank.prototype._onMessage = co(function* (received, sync) {
+  const self = this
+  yield this._readyPromise
 
-  if (!msg[TYPE]) {
+  const msgWrapper = received.message
+  const objWrapper = received.object
+  const obj = objWrapper.object
+  if (!obj[TYPE]) {
     return utils.rejectWithHttpError(400, 'message missing ' + TYPE)
   }
 
-  // TODO: move most of this out to implementation (e.g. simple.js)
+  const from = msgWrapper.author.permalink
+  let customer = from
+  const employee = find(this._employees || [], e => {
+    return e[ROOT_HASH] === from
+  })
 
-  var req = new RequestState(msg)
-  req.sync = sync
+  const fwdTo = !Bank.NO_FORWARDING && msgWrapper.object.forward
+  if (fwdTo) {
+    if (!employee) {
+      return utils.rejectWithHttpError(403, 'this bot only forwards message from employees')
+    }
 
-  var res = {}
-  var from = req.from[ROOT_HASH]
-  this._debug(`received ${req[TYPE]} from ${from}`)
+    if (fwdTo !== this.tim.permalink && fwdTo !== this.tim.link) {
+      if (obj[TYPE] !== VERIFICATION) {
+        // re-sign the object
+        // the customer doesn't need to know the identity of the employee
+        // forward without processing
+        const context = msgWrapper.object.context
+        const other = context && { context }
+        this.tim.signAndSend({
+          to: { permalink: fwdTo },
+          object: tutils.omit(obj, SIG),
+          other: other
+        })
 
-  return this._lock(from, 'process incoming message')
-    .then(() => this._getCustomerState(from))
-    .catch(function (err) {
-      if (!err.notFound) throw err
-
-      req.state = newCustomerState(from)
-      return self._setCustomerState(req)
-      // return newCustomerState(req)
-    })
-    .then(function (state) {
-      req.state = state
-      return self._middles.exec(req, res)
-    })
-    .then(function () {
-      return self._setCustomerState(req)
-    })
-    .then(function () {
-      if (self.shouldChainReceivedMessage(req)) {
-        self._debug('queuing chain-seal for received msg', req[TYPE])
-        self._chainReceivedMessage(req)
-          .catch(function (err) {
-            debug('failed to chain received msg', err)
-          })
+        return
       }
 
-      self._saveParsedMsg(req)
-      return req.end()
-    })
-    .catch(err => {
-      // end() either way otherwise the customer
-      // won't be able to make more requests
-      req.end()
-      throw err
-    })
-    .finally(() => {
-      this._unlock(from)
-    })
-}
+      // set actual customer
+      customer = fwdTo
+    }
+  }
+
+  // TODO: move most of this out to implementation (e.g. simple.js)
+  let appLink = msgWrapper.object.context
+  // HACK!
+  if (!appLink && obj[TYPE] === 'tradle.ShareContext') {
+    appLink = utils.parseObjectId(obj.context.id).permalink
+  }
+
+  const req = new RequestState(msgWrapper, objWrapper)
+  req.sync = sync
+  req.customer = customer
+
+  if (appLink) {
+    try {
+      customer = req.customer = yield this._getCustomerForContext(appLink)
+      req.customerIdentityInfo = yield this.tim.addressBook.lookupIdentity({ permalink: customer })
+    } catch (err) {
+      this._debug('customer not found for context', appLink, err)
+    }
+  }
+
+  const unlock = yield this.lock(customer, 'process incoming message')
+  try {
+    return yield this._handleRequest(req)
+  } finally {
+    unlock()
+  }
+})
+
+Bank.prototype._handleRequest = co(function* (req) {
+  const self = this
+  const customer = req.customer
+  const from = req.from
+  const type = req.type
+
+  const res = {}
+  this._debug(`received ${type} from ${from}`)
+  let state
+  try {
+    state = req.state = yield this._getCustomerState(customer)
+  } catch (err) {
+    if (!err.notFound) throw err
+  }
+
+  try {
+    yield self._middles.exec(req, res)
+    yield self._setCustomerState(req)
+    if (self.shouldChainReceivedMessage(req)) {
+      self._debug('queuing chain-seal for received msg', req[TYPE])
+      // don't wait for this
+      self._chainReceivedMessage(req)
+        .catch(function (err) {
+          debug('failed to chain received msg', err)
+        })
+    }
+
+    yield self._saveParsedMsg(req)
+  } catch (err) {
+    this._debug('experienced error while processing request', err)
+    throw err
+  } finally {
+    yield req.end()
+  }
+
+  return req
+})
 
 Bank.prototype.shouldChainReceivedMessage = function (req) {
   // override this method
@@ -335,7 +342,7 @@ Bank.prototype._shouldChainReceivedMessage = function (req) {
 
 Bank.prototype._chainReceivedMessage = function (req) {
   // chain message on behalf of customer
-  return this.tim.chainExisting(req)
+  return this.tim.seal({ link: req.payload.link })
 }
 
 Bank.prototype._setResource = function (type, rootHash, val) {
@@ -352,7 +359,7 @@ Bank.prototype._getResource = function (type, rootHash) {
   typeforce('String', type)
   typeforce('String', rootHash)
   return Q.ninvoke(this._db, 'get', prefixKey(type, rootHash))
-    .then(r => tutils.rebuf(r))
+    // .then(r => tutils.rebuf(r))
 }
 
 Bank.prototype._delResource = function (type, rootHash) {
@@ -361,60 +368,58 @@ Bank.prototype._delResource = function (type, rootHash) {
   return Q.ninvoke(this._db, 'del', prefixKey(type, rootHash))
 };
 
+Bank.prototype.createReadStream = function (type, opts={}) {
+  return this._db.createReadStream(extend({
+    gt: prefixKey(type, ''),
+    lt: prefixKey(type, '\xff')
+  }, opts))
+}
+
+Bank.prototype.createCustomerStream = function (opts) {
+  return this.createReadStream(CUSTOMER, opts)
+}
+
 /**
  * Send message to customer
  * @param  {Object} opts
  * @param  {?RequestState} opts.req
  * @return {Promise}
  */
-Bank.prototype.send = function (opts) {
-  var self = this
+Bank.prototype.send = co(function* (opts) {
   // typeforce('RequestState', req)
   // typeforce('Object', resp)
 
   const req = opts.req
   const msg = opts.msg
-  if (!('time' in msg)) {
-    msg.time = Date.now()
-  }
+  const recipient = req.from
+  this._debug(`sending ${msg[TYPE]} to ${recipient.permalink}`)
 
-  const recipient = msg.to || getSender(req.msg)
-  this._debug(`sending ${msg[TYPE]} to ${JSON.stringify(recipient)}`)
-
-  let maybeSign
-  if (!(constants.SIG in msg)) {
-    maybeSign = this.tim.sign(msg)
+  let signed
+  if (constants.SIG in msg) {
+    signed = { object: msg }
   } else {
-    maybeSign = Q(msg)
+    if (!('time' in msg)) {
+      msg.time = Date.now()
+    }
+
+    signed = yield this.tim.sign({ object: msg })
   }
 
-  return maybeSign
-    .then(function (signed) {
-      var sendOpts = {
-        to: [].concat(recipient), // coerce to array
-        msg: signed,
-        deliver: true,
-        chain: opts.chain,
-        public: opts.public
-      }
+  const context = req.context
+  const result = yield this.tim.send({
+    to: recipient,
+    object: signed.object,
+    other: context && { context }
+  })
 
-      if (!Bank.ALLOW_CHAINING) sendOpts.chain = false
+  if (req && req.sync) {
+    var getSent = utils.waitForEvent(this.tim, 'sent', result.message.link)
+    req.promise(getSent)
+  }
 
-      return self.tim.send(sendOpts)
-    })
-    .then(function (entries) {
-      if (req && req.sync) {
-        entries.forEach(function (e) {
-          var getSent = utils.waitForEvent(self.tim, 'sent', e)
-          req.promise(getSent)
-        })
-      }
-
-      var rh = entries[0].get(ROOT_HASH)
-      self._setResource(msg[TYPE], rh, msg)
-      return entries
-    })
-}
+  yield this._setResource(msg[TYPE], result.object.permalink, result.object.object)
+  return result
+})
 
 Bank.prototype.destroy = function () {
   if (this._destroyPromise) return this._destroyPromise
@@ -434,13 +439,9 @@ Bank.prototype.destroy = function () {
 }
 
 function getSender (msg) {
-  var from = msg.from
-  var identifier = find([ROOT_HASH, CUR_HASH, 'fingerprint'], (key) => {
-    return key in from
-  })
-
+  if (!msg) debugger
   return {
-    [identifier]: from[identifier]
+    permalink: msg.author.permalink
   }
 }
 
@@ -452,37 +453,24 @@ function unprefixKey (type, key) {
   return key.slice(type.length + 1)
 }
 
-function dumpDBs (tim) {
-  var identities = tim.identities()
-  identities.onLive(function () {
-    identities.createValueStream()
-      .on('data', function (result) {
-        // console.log('identity', result.identity.name.firstName)
-        console.log('identity', result.identity)
-      })
-  })
+// function dumpDBs (tim) {
+//   var identities = tim.identities()
+//   identities.onLive(function () {
+//     identities.createValueStream()
+//       .on('data', function (result) {
+//         // console.log('identity', result.identity.name.firstName)
+//         console.log('identity', result.identity)
+//       })
+//   })
 
-  var messages = tim.messages()
-  messages.onLive(function () {
-    messages.createValueStream()
-      .on('data', function (data) {
-        tim.lookupObject(data)
-          .then(function (msg) {
-            console.log('msg', msg[CUR_HASH])
-          })
-      })
-  })
-}
-
-function newCustomerState (customerRootHash) {
-  var state = {
-    pendingApplications: [],
-    products: {},
-    forms: {},
-    prefilled: {},
-    bankVersion: BANK_VERSION
-  }
-
-  state[ROOT_HASH] = customerRootHash
-  return state
-}
+//   var messages = tim.messages()
+//   messages.onLive(function () {
+//     messages.createValueStream()
+//       .on('data', function (data) {
+//         tim.lookupObject(data)
+//           .then(function (msg) {
+//             console.log('msg', msg[CUR_HASH])
+//           })
+//       })
+//   })
+// }

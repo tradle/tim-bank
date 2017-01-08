@@ -1,0 +1,27 @@
+{
+  "id": "tradle.OogaBooga",
+  "type": "tradle.Model",
+  "title": "Ooga Booga",
+  "interfaces": [
+    "tradle.Message"
+  ],
+  "subClassOf": "tradle.FinancialProduct",
+  "forms": [
+    "tradle.AboutYou",
+    "tradle.YourMoney"
+  ],
+  "multiEntryForms": [
+    "tradle.AboutYou"
+  ],
+  "properties": {
+    "_t": {
+      "type": "string",
+      "readOnly": true
+    },
+    "productType": {
+      "type": "string",
+      "readOnly": true,
+      "displayName": true
+    }
+  }
+}

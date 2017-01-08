@@ -33,3 +33,4 @@ conf/
 *.zip
 conf*/
 *.txt
+*.sh
