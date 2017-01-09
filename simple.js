@@ -354,7 +354,7 @@ SimpleBank.prototype._setProfile = function (req, res) {
 
 SimpleBank.prototype.getMyEmployees = co(function* () {
   const self = this
-  const passes = collect(this.tim.objects.type('tradle.MyEmployeeOnboarding'))
+  const passes = yield collect(this.tim.objects.type('tradle.MyEmployeeOnboarding'))
   return passes.filter(e => {
   // issued by "me" (the bank bot)
     return e.author === self.tim.permalink && !e.object.revoked
