@@ -390,6 +390,9 @@ SimpleBank.prototype.replyNotFound = co(function* (req, whatWasntFound) {
 })
 
 SimpleBank.prototype.sendProductList = function (req) {
+  const other = req.msg.object.other
+  if (other && other.disableAutoResponse) return
+
   var bank = this.bank
   var formModels = {}
   var list = this._productList
