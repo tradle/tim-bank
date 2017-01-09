@@ -913,6 +913,7 @@ SimpleBank.prototype.continueProductApplication = co(function* (opts) {
 
 SimpleBank.prototype._simulateReq = co(function* (opts) {
   const customerHash = opts.customer
+  const unlock = yield this.lock(customerHash)
   const state = yield this.getCustomerState(customerHash)
   const req = new RequestState({
     state: state,
@@ -921,7 +922,7 @@ SimpleBank.prototype._simulateReq = co(function* (opts) {
     }
   })
 
-  req.unlock = yield this.lock(customerHash)
+  req.unlock = unlock
   return clone(opts, { req })
 })
 
