@@ -390,8 +390,7 @@ SimpleBank.prototype.replyNotFound = co(function* (req, whatWasntFound) {
 })
 
 SimpleBank.prototype.sendProductList = function (req) {
-  const other = req.msg.object.other
-  if (other && other.disableAutoResponse) return
+  if (autoResponseDisabled(req)) return
 
   var bank = this.bank
   var formModels = {}
@@ -767,6 +766,8 @@ SimpleBank.prototype.continueProductApplication = co(function* (opts) {
   }, opts)
 
   const req = opts.req
+  if (autoResponseDisabled(req)) return
+
   let state = (req || opts).state
   const context = opts.application || req.context
   const application = utils.getApplication(state, context)
@@ -1829,4 +1830,10 @@ function getAllApplications (state) {
   }, [])
 
   return state.pendingApplications.concat(products).concat(state)
+}
+
+function autoResponseDisabled (req) {
+  const msg = req.msg && req.msg.object
+  const other = msg && msg.other
+  return other && other.disableAutoResponse
 }
