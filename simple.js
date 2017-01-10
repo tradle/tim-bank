@@ -533,10 +533,6 @@ SimpleBank.prototype.handleDocument = co(function* (req, res) {
 
   const formWrapper = req.payload
   const formState = updateWithReceivedForm(application, formWrapper)
-  if (!utils.isVerifiableForm(this.models[req.type])) {
-    return next()
-  }
-
   if (!state.imported) state.imported = {}
 
   const imported = state.imported[req.context]
@@ -571,6 +567,10 @@ SimpleBank.prototype.handleDocument = co(function* (req, res) {
 
       return this.continueProductApplication({ req })
     }
+  }
+
+  if (!utils.isVerifiableForm(this.models[req.type])) {
+    return next()
   }
 
   const should = yield this.shouldSendVerification({
