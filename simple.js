@@ -1834,6 +1834,5 @@ function getAllApplications (state) {
 
 function autoResponseDisabled (req) {
   const msg = req.msg && req.msg.object
-  const other = msg && msg.other
-  return other && other.disableAutoResponse
+  return msg && msg.disableAutoResponse
 }
