@@ -1406,10 +1406,7 @@ SimpleBank.prototype._handleVerification = co(function* (req, opts={}) {
       object: utils.omit(verification.object, SIG)
     })
 
-    verification.author = {
-      link: this.tim.link,
-      permalink: this.tim.permalink
-    }
+    verification.author = this.tim.permalink
   }
 
   const verifiedItemInfo = utils.parseObjectId(verification.object.document.id)
