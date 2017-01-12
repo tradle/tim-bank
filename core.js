@@ -391,7 +391,7 @@ Bank.prototype.send = co(function* (opts) {
 
   const req = opts.req
   const msg = opts.msg
-  const recipient = req.from
+  const recipient = req.customer ? { permalink: req.customer } : req.from
   this._debug(`sending ${msg[TYPE]} to ${recipient.permalink}`)
 
   let signed
