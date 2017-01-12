@@ -1399,7 +1399,7 @@ SimpleBank.prototype._handleVerification = co(function* (req, opts={}) {
     throw utils.httpError(400, `application ${appLink} not found`)
   }
 
-  const verification = req.payload
+  let verification = req.payload
   const isByEmployee = this.isEmployee(verification.author.permalink)
   if (isByEmployee) {
     verification = yield this.tim.createObject({
