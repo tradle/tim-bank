@@ -771,7 +771,11 @@ function testRemediation () {
             ]
           }
         },
-        license
+        license,
+        {
+          [TYPE]: 'tradle.MyCurrentAccount',
+          myProductId: 'blah'
+        }
       ]
 
       const verified = helpers.awaitVerification(3)
@@ -809,10 +813,14 @@ function testRemediation () {
           const message = wrapper.object.object.message
           t.ok(/review/.test(message))
           helpers.signNSend(license)
-          return helpers.awaitType(SIMPLE_MESSAGE)
+          return Q.all([
+            helpers.awaitType(SIMPLE_MESSAGE),
+            helpers.awaitType('tradle.MyCurrentAccount')
+          ])
         })
-        .then(msg => {
+        .spread((msg, myProduct) => {
           t.ok(/confirm/.test(msg.object.object.message))
+          t.equal(myProduct.object.object.myProductId, 'blah')
           return verified
         })
         .then(() => teardown(setup))
@@ -961,7 +969,7 @@ function testShareContext () {
       const live = [
         LICENSE,
         VERIFICATION,
-        'tradle.CurrentAccountConfirmation'
+        'tradle.MyCurrentAccount'
       ]
 
       let batch = existing.slice()
@@ -1187,7 +1195,7 @@ function runTests (setupFn, idx) {
 
       // function dumpDBs (bank) {
       //   var lists = CurrentAccount.forms.concat([
-      //     'tradle.CurrentAccountConfirmation',
+      //     'tradle.MyCurrentAccount',
       //     VERIFICATION
       //   ])
 
@@ -1577,7 +1585,7 @@ function getHelpers (opts) {
   }
 
   function awaitConfirmation () {
-    return awaitType('tradle.CurrentAccountConfirmation')
+    return awaitType('tradle.MyCurrentAccount')
       .then(wrapper => {
         t.pass('customer got account')
         return wrapper

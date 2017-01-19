@@ -828,6 +828,24 @@ SimpleBank.prototype.continueProductApplication = co(function* (opts) {
     const session = state.imported[req.context]
     if (session && session.length) {
       const next = session[0]
+      const type = next[TYPE]
+      const model = this.models[type]
+      if (model && model.subClassOf === 'tradle.MyProduct') {
+        const productType = type.replace('.My', '.') // hack
+        const pModel = this.models[productType]
+        const reqdForms = utils.getForms(pModel)
+        const forms = application.forms.filter(f => {
+          return reqdForms.indexOf(f.type) !== -1
+        })
+
+        const fakeApp = newApplicationState(productType, application.permalink)
+        fakeApp.forms = forms
+        req.state.pendingApplications.push(fakeApp)
+        yield this._approveProduct({ req, application: fakeApp, product: next })
+        session.shift()
+        return this.continueProductApplication(opts)
+      }
+
       const form = next[TYPE] === 'tradle.VerifiedItem' ? next.item : next
       const docReq = new RequestState({
         [TYPE]: form[TYPE],
@@ -1145,7 +1163,7 @@ SimpleBank.prototype._revokeProduct = co(function* (opts) {
   return result
 })
 
-SimpleBank.prototype._approveProduct = co(function* ({ req, application }) {
+SimpleBank.prototype._approveProduct = co(function* ({ req, application, product }) {
   // TODO: minimize code repeat with continueProductApplication
   const productType = application.type
   const state = req.state
@@ -1158,7 +1176,7 @@ SimpleBank.prototype._approveProduct = co(function* ({ req, application }) {
   const products = state.products[productType]
   products.push(application)
   state.pendingApplications = state.pendingApplications.filter(app => app !== application)
-  const confirmation = this._newProductConfirmation(state, application)
+  const confirmation = this._newProductConfirmation(state, application, product)
 
   const result = yield this.send({
     req: req,
@@ -1173,7 +1191,7 @@ SimpleBank.prototype._approveProduct = co(function* ({ req, application }) {
   return result
 })
 
-SimpleBank.prototype._newProductConfirmation = function (state, application) {
+SimpleBank.prototype._newProductConfirmation = function (state, application, product={}) {
   const productType = application.type
   const productModel = this.models[productType]
   const forms = application.forms
@@ -1192,7 +1210,7 @@ SimpleBank.prototype._newProductConfirmation = function (state, application) {
     for (let id in forms) {
       const form = forms[id].form.body
       for (let pName in form) {
-        if (pName.charAt[0] === '_') continue
+        if (pName[0] === '_') continue
         if (pName in props) {
           confirmation[pName] = form[pName]
         }
@@ -1202,41 +1220,39 @@ SimpleBank.prototype._newProductConfirmation = function (state, application) {
     return confirmation
   }
 
-  const confirmation = {
+  const confirmation = extend({
     customer: state.permalink
+  }, product)
+
+  let confirmationType = product[TYPE] || productType.replace('.', '.My')
+  const guessedMyProductModel = this.models[confirmationType]
+  if (guessedMyProductModel && guessedMyProductModel.subClassOf === 'tradle.MyProduct') {
+    if (!confirmation[TYPE]) confirmation[TYPE] = guessedMyProductModel.id
+
+    copyProperties(confirmation, confirmation[TYPE])
+    if (!confirmation.myProductId) {
+      confirmation.myProductId = utils.randomDecimalString(10)
+    }
+
+    if (productType === EMPLOYEE_ONBOARDING && !confirmation.firstName && confirmation.lastName) {
+      if (state.profile) {
+        extend(confirmation, utils.pick(state.profile, 'firstName', 'lastName'))
+      }
+    }
+
+    return confirmation
   }
 
-  let confirmationType
-  const guessedMyProductModel = this.models[productType.replace('.', '.My')]
-    if (guessedMyProductModel && guessedMyProductModel.subClassOf === 'tradle.MyProduct') {
-      confirmation[TYPE] = confirmationType = guessedMyProductModel.id
-      copyProperties(confirmation, confirmationType)
-      extend(confirmation, {
-        [TYPE]: confirmationType,
-        myProductId: utils.randomDecimalString(10),
-      })
-
-      if (productType === EMPLOYEE_ONBOARDING && !confirmation.firstName && confirmation.lastName) {
-        if (state.profile) {
-          extend(confirmation, utils.pick(state.profile, 'firstName', 'lastName'))
-        }
-      }
-
-      return confirmation
-    }
-
-    confirmationType = productType + 'Confirmation'
-    const formIds = utils.getFormIds(application.forms)
-    return {
-      [TYPE]: confirmationType,
-      // message: imported
-      //   ? `Imported product: ${productModel.title}`
-      message: `Congratulations! You were approved for: ${productModel.title}`,
-      forms: formIds,
-      application: application.permalink
-    }
-  // }
-
+  confirmation[TYPE] = productType + 'Confirmation'
+  const formIds = utils.getFormIds(application.forms)
+  return {
+    [TYPE]: confirmation[TYPE],
+    // message: imported
+    //   ? `Imported product: ${productModel.title}`
+    message: `Congratulations! You were approved for: ${productModel.title}`,
+    forms: formIds,
+    application: application.permalink
+  }
 }
 
 SimpleBank.prototype.send = co(function* ({ req, msg }) {
