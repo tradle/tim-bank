@@ -62,6 +62,7 @@ var test = require('tape')
 var typeforce = require('typeforce')
 var express = require('express')
 var Q = require('q')
+var co = Q.async
 Q.longStackSupport = true
 Q.onerror = function (err) {
   console.error(err)
@@ -1021,10 +1022,26 @@ function testShareContext () {
       }
 
       const employeeToReceive = existing.concat(live)
+      const mkShare = function (revoke) {
+        return {
+          to: getCoords(banks[0].tim),
+          object: {
+            [TYPE]: 'tradle.ShareContext',
+            revoked: !!revoke,
+            context: { id: `_${helpers[0].getContext()}` },
+            with: [{ id: `_${banks[1].tim.permalink}` }]
+          },
+          other: {
+            context: helpers[0].getContext()
+          }
+        }
+      }
+
+      let unshared = false
       banks[1]._employeeNodes.forEach(employee => {
         // we don't know which employee will be assigned
         let receivedIntro
-        employee.on('message', function (msg, from) {
+        employee.on('message', co(function* (msg, from) {
           // console.log('EMPLOYEE RECEIVEING')
           const fwded = msg.object.object.object
           if (!fwded) {
@@ -1034,10 +1051,26 @@ function testShareContext () {
           // forwarded message
           const type = fwded[TYPE]
           t.equal(type, employeeToReceive.shift())
-          if (!employeeToReceive.length) {
-            return teardown(setup).done(() => t.end())
-          }
-        })
+          t.equal(unshared, false)
+          if (employeeToReceive.length) return
+
+          unshared = true
+          yield b0employee.signAndSend(mkShare(true))
+          yield b0employee.signAndSend({
+            to: getCoords(banks[0].tim),
+            object: {
+              [TYPE]: 'tradle.SimpleMessage',
+              message: 'hey hey'
+            },
+            other: {
+              context: helpers[0].getContext()
+            }
+          })
+
+          yield new Promise(resolve => setTimeout(resolve, 2000))
+          yield teardown(setup)
+          t.end()
+        }))
       })
 
       helpers[0].startApplication(product)
@@ -1050,17 +1083,7 @@ function testShareContext () {
         .then(() => helpers[0].sendForm({ form: YOUR_MONEY, nextForm: LICENSE }))
         .then(() => {
           // ask my employer to share context with banks[1]
-          return b0employee.signAndSend({
-            to: getCoords(banks[0].tim),
-            object: {
-              [TYPE]: 'tradle.ShareContext',
-              context: { id: `_${helpers[0].getContext()}` },
-              with: [{ id: `_${banks[1].tim.permalink}` }]
-            },
-            other: {
-              context: helpers[0].getContext()
-            }
-          })
+          return b0employee.signAndSend(mkShare())
 
           // same thing but customer asks
           // return helpers[0].signNSend({
