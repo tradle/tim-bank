@@ -1649,12 +1649,19 @@ SimpleBank.prototype.onApplicationFormsCollected = function ({ req, state, appli
   return this._execPlugins('onApplicationFormsCollected', arguments)
 }
 
-SimpleBank.prototype.shouldSendVerification = function ({ state, application, form }) {
+SimpleBank.prototype.shouldSendVerification = co(function* ({ state, application, form }) {
+  const { result } = yield this.canVerify.apply(this, arguments)
+  if (result === false) return false
+
   return this._execBooleanPlugin('shouldSendVerification', arguments, true)
-}
+})
 
 SimpleBank.prototype.shouldIssueProduct = function ({ state, application }) {
   return this._execBooleanPlugin('shouldIssueProduct', arguments, true)
+}
+
+SimpleBank.prototype.canVerify = function ({ form }) {
+  return this._execBooleanPlugin('canVerify', arguments, true)
 }
 
 /**
