@@ -538,6 +538,7 @@ SimpleBank.prototype.handleDocument = co(function* (req, res) {
   const session = state.imported[req.context]
   if (session && session.items.length) {
     const current = session.items.shift()
+    session.imported.push(current)
     const type = current[TYPE]
     if (!session.items.length) delete state.imported[req.context]
 
@@ -825,7 +826,7 @@ SimpleBank.prototype.continueProductApplication = co(function* (opts) {
   if (req.type === VERIFICATION) return
 
   if (isRemediation) {
-    return this.continueRemediation(opts)
+    return this.continueRemediation1(opts)
   }
 
   const isFormOrVerification = req[TYPE] === VERIFICATION || this.models.docs.indexOf(req[TYPE]) !== -1
@@ -966,22 +967,56 @@ SimpleBank.prototype.continueRemediation = co(function* (opts) {
 SimpleBank.prototype.continueRemediation1 = co(function* (opts) {
   const { req } = opts
   const { context, application, state, customer, sync, from, to } = req
-  const session = state.imported[context]
-  if (session.items.length !== session.length) return
+  const { imported, items, length } = state.imported[context]
+  const isRemediationReq = req.type === PRODUCT_APPLICATION && req.productType === REMEDIATION
+  if (isRemediationReq || items.length === length) {
+    const forms = imported.concat(items).map(item => {
+      const type = item[TYPE]
+      const model = this.models[type]
+      if (model) {
+        if (model.subClassOf === 'tradle.Form') return item
+        if (model.id === 'tradle.VerifiedItem') return item.item
+      }
+    })
+    .filter(item => item) // filter out nulls
 
-  const items = session.items.filter(item => {
-    const type = item[TYPE]
-    const model = this.models[type]
-    return model && model.subClassOf === 'tradle.Form'
-  })
+    // TODO: separate out photos into "attachments" to avoid sending twice
+    const msg = {
+      [TYPE]: 'tradle.ConfirmPackageRequest',
+      message: 'Importing...please review your data',
+      items: forms
+    }
 
-  // TODO: separate out photos into "attachments" to avoid sending twice
-  const msg = {
-    [type]: 'tradle.ConfirmPackageRequest',
-    items
+    return this.send({ req, msg })
   }
 
-  this.send({ req, msg })
+  if (!items.length) {
+    const msg = utils.buildSimpleMsg(
+      'Thank you for confirming your information with us!'
+    )
+
+    this._debug('finished remediation')
+    return this.send({ req, msg })
+  }
+
+  const next = items[0]
+  const type = next[TYPE]
+  const model = this.models[type]
+  if (model && model.subClassOf === 'tradle.MyProduct') {
+    const productType = type.replace('.My', '.') // hack
+    const pModel = this.models[productType]
+    const reqdForms = utils.getForms(pModel)
+    const forms = application.forms.filter(f => {
+      return reqdForms.indexOf(f.type) !== -1
+    })
+
+    const fakeApp = newApplicationState(productType, application.permalink)
+    fakeApp.forms = forms
+    state.pendingApplications.push(fakeApp)
+    yield this._approveProduct({ req, application: fakeApp, product: next })
+    items.shift()
+    return this.continueProductApplication(opts)
+  }
 })
 
 SimpleBank.prototype._simulateReq = co(function* (opts) {
@@ -1522,7 +1557,8 @@ SimpleBank.prototype.importSession = co(function* (req) {
     state.imported[sessionId] = permalink
     state.imported[permalink] = {
       length: session.length,
-      items: session
+      items: session,
+      imported: []
     }
 
     state.pendingApplications.push(newApplicationState(REMEDIATION, permalink))
