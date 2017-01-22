@@ -1022,7 +1022,7 @@ function testShareContext () {
       }
 
       const employeeToReceive = existing.concat(live)
-      const mkShare = function (revoke) {
+      const mkShare = revoke => {
         return {
           to: getCoords(banks[0].tim),
           object: {
@@ -1042,7 +1042,7 @@ function testShareContext () {
         // we don't know which employee will be assigned
         let receivedIntro
         employee.on('message', co(function* (msg, from) {
-          // console.log('EMPLOYEE RECEIVEING')
+          // console.log('EMPLOYEE RECEIVEING', msg.object.object[TYPE])
           const fwded = msg.object.object.object
           if (!fwded) {
             return t.equal(msg.object.object[TYPE], 'tradle.Introduction')

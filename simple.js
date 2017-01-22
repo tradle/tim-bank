@@ -1105,7 +1105,8 @@ SimpleBank.prototype.shareContext = co(function* (req, res) {
 
       yield self.tim.signAndSend({
         to: { permalink: recipient },
-        object: intro
+        object: intro,
+        other: { forContext: context }
       })
     }
 
