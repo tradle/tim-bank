@@ -535,11 +535,11 @@ SimpleBank.prototype.handleDocument = co(function* (req, res) {
   const formState = updateWithReceivedForm(application, formWrapper)
   if (!state.imported) state.imported = {}
 
-  const imported = state.imported[req.context]
-  if (imported && imported.length) {
-    const current = imported.shift()
+  const session = state.imported[req.context]
+  if (session && session.items.length) {
+    const current = session.items.shift()
     const type = current[TYPE]
-    if (!imported.length) delete state.imported[req.context]
+    if (!session.items.length) delete state.imported[req.context]
 
     if (type === 'tradle.VerifiedItem' && utils.formsEqual(current.item, formWrapper.object)) {
       const verification = current.verification
@@ -825,56 +825,7 @@ SimpleBank.prototype.continueProductApplication = co(function* (opts) {
   if (req.type === VERIFICATION) return
 
   if (isRemediation) {
-    const session = state.imported[req.context]
-    if (session && session.length) {
-      const next = session[0]
-      const type = next[TYPE]
-      const model = this.models[type]
-      if (model && model.subClassOf === 'tradle.MyProduct') {
-        const productType = type.replace('.My', '.') // hack
-        const pModel = this.models[productType]
-        const reqdForms = utils.getForms(pModel)
-        const forms = application.forms.filter(f => {
-          return reqdForms.indexOf(f.type) !== -1
-        })
-
-        const fakeApp = newApplicationState(productType, application.permalink)
-        fakeApp.forms = forms
-        req.state.pendingApplications.push(fakeApp)
-        yield this._approveProduct({ req, application: fakeApp, product: next })
-        session.shift()
-        return this.continueProductApplication(opts)
-      }
-
-      const form = next[TYPE] === 'tradle.VerifiedItem' ? next.item : next
-      const docReq = new RequestState({
-        [TYPE]: form[TYPE],
-        context: context,
-        state: state,
-        author: req.from,
-        to: req.to,
-        sync: req.sync,
-        customer: req.customer,
-        productType: REMEDIATION,
-        // parsed: {
-        //   data: prefilled.form
-        // }
-      }, { object: form })
-
-      // TODO: figure out how to continue on req
-      docReq.promise = req.promise.bind(req)
-      return this.handleDocument(docReq)
-    } else {
-      const msg = utils.buildSimpleMsg(
-        'Thank you for confirming your information with us!'
-      )
-
-      this._debug('finished remediation')
-      return this.send({
-        req: req,
-        msg: msg
-      })
-    }
+    return this.continueRemediation(opts)
   }
 
   const isFormOrVerification = req[TYPE] === VERIFICATION || this.models.docs.indexOf(req[TYPE]) !== -1
@@ -955,6 +906,82 @@ SimpleBank.prototype.continueProductApplication = co(function* (opts) {
       req: req
     })
   }
+})
+
+SimpleBank.prototype.continueRemediation = co(function* (opts) {
+  const { req } = opts
+  const { context, application, state, customer, sync, from, to } = req
+  const session = state.imported[context]
+  if (!(session && session.items.length)) {
+    const msg = utils.buildSimpleMsg(
+      'Thank you for confirming your information with us!'
+    )
+
+    this._debug('finished remediation')
+    return this.send({
+      req: req,
+      msg: msg
+    })
+  }
+
+  const next = session.items[0]
+  const type = next[TYPE]
+  const model = this.models[type]
+  if (model && model.subClassOf === 'tradle.MyProduct') {
+    const productType = type.replace('.My', '.') // hack
+    const pModel = this.models[productType]
+    const reqdForms = utils.getForms(pModel)
+    const forms = application.forms.filter(f => {
+      return reqdForms.indexOf(f.type) !== -1
+    })
+
+    const fakeApp = newApplicationState(productType, application.permalink)
+    fakeApp.forms = forms
+    state.pendingApplications.push(fakeApp)
+    yield this._approveProduct({ req, application: fakeApp, product: next })
+    session.items.shift()
+    return this.continueProductApplication(opts)
+  }
+
+  const form = next[TYPE] === 'tradle.VerifiedItem' ? next.item : next
+  const docReq = new RequestState({
+    [TYPE]: form[TYPE],
+    context,
+    state,
+    author: from,
+    to,
+    sync,
+    customer,
+    productType: REMEDIATION,
+    // parsed: {
+    //   data: prefilled.form
+    // }
+  }, { object: form })
+
+  // TODO: figure out how to continue on req
+  docReq.promise = req.promise.bind(req)
+  return this.handleDocument(docReq)
+})
+
+SimpleBank.prototype.continueRemediation1 = co(function* (opts) {
+  const { req } = opts
+  const { context, application, state, customer, sync, from, to } = req
+  const session = state.imported[context]
+  if (session.items.length !== session.length) return
+
+  const items = session.items.filter(item => {
+    const type = item[TYPE]
+    const model = this.models[type]
+    return model && model.subClassOf === 'tradle.Form'
+  })
+
+  // TODO: separate out photos into "attachments" to avoid sending twice
+  const msg = {
+    [type]: 'tradle.ConfirmPackageRequest',
+    items
+  }
+
+  this.send({ req, msg })
 })
 
 SimpleBank.prototype._simulateReq = co(function* (opts) {
@@ -1493,108 +1520,17 @@ SimpleBank.prototype.importSession = co(function* (req) {
   if (!state.imported[sessionId]) {
     const permalink = req.payload.permalink
     state.imported[sessionId] = permalink
-    state.imported[permalink] = session
+    state.imported[permalink] = {
+      length: session.length,
+      items: session
+    }
+
     state.pendingApplications.push(newApplicationState(REMEDIATION, permalink))
   }
 
   req.context = state.imported[sessionId]
   return this.continueProductApplication({ req })
 })
-
-// SimpleBank.prototype.importSession = co(function* (req) {
-//   const hash = req.payload.object.session
-//   const state = req.state
-//   const session = yield this.bank._getResource(GUEST_SESSION, hash)
-//   const models = this.models
-//   const prefilledForms = state.prefilled
-//   const hasUnknownType = find(session, data => {
-//     return !models[data[TYPE]]
-//   })
-
-//   if (hasUnknownType) {
-//     throw utils.httpError(400, `unknown type ${hasUnknownType[TYPE]}`)
-//   }
-
-//   const forms = session.filter(data => {
-//     return models[data[TYPE]].subClassOf === 'tradle.Form'
-//   })
-
-//   forms.forEach(data => {
-//     prefilledForms[data[TYPE]] = {
-//       form: data
-//     }
-//   })
-
-//   const verifications = session.filter(data => data[TYPE] === VERIFICATION)
-//   verifications.forEach(verification => {
-//     const type = verification.document[TYPE]
-//     const prefilled = prefilledForms[type]
-//     if (prefilled) {
-//       prefilled.verification = verification
-//     }
-//   })
-
-//   // save now just in case
-//   this.bank._setCustomerState(req)
-//   // async, no need to wait for this
-//   // this.bank._delResource(GUEST_SESSION, hash)
-
-//   const applications = session.map(data => {
-//     if (data[TYPE] !== SIMPLE_MESSAGE) return
-
-//     const productType = utils.parseSimpleMsg(data.message).type
-//     if (productType && this._productList.indexOf(productType) !== -1) {
-//       return productType
-//     }
-//   })
-//   .filter(obj => obj) // filter out nulls}
-
-//   if (applications.length) {
-//     // TODO: queue up all the products
-//     const productType = applications[0]
-//     const productModel = this.models[productType]
-//     if (req.productType !== REMEDIATION) {
-//     // const instructionalMsg = req.productType === REMEDIATION
-//     //   ? 'Please check and correct the following data'
-//     //   : `Let's get this ${this.models[req.productType].title} Application on the road!`
-
-//       const instructionalMsg = `Let's get this ${this.models[req.productType].title} Application on the road!`
-//       yield this.send({
-//         req: req,
-//         msg: {
-//           [TYPE]: SIMPLE_MESSAGE,
-//           message: instructionalMsg
-//         }
-//       })
-//     }
-
-//     return productType
-//     // return this.handleNewApplication(req)
-//   }
-
-//       // else if (forms.length) {
-//       //   // TODO: unhack this crap as soon as we scrap `sync`
-//       //   var docReq = new RequestState({
-//       //     from: senderInfo,
-//       //     parsed: {
-//       //       data: forms[0]
-//       //     },
-//       //     // data: msgBuf
-//       //   })
-
-//       //   for (var p in req) {
-//       //     if (!(p in docReq)) delete req[p]
-//       //   }
-
-//       //   for (var p in docReq) {
-//       //     if (typeof docReq[p] !== 'function') {
-//       //       req[p] = docReq[p]
-//       //     }
-//       //   }
-
-//       //   return this.handleDocument(req)
-//       // }
-// })
 
 SimpleBank.prototype._shareContexts = function () {
   this._ctxDB = createContextDB({
