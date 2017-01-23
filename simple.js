@@ -891,22 +891,11 @@ SimpleBank.prototype.continueProductApplication = co(function* (opts) {
     req: this._auto.verify ? null : req
   })
 
-  if (!this._auto.verify || productType === EMPLOYEE_ONBOARDING) {
-    // 'application' event ugly side-effect
-    if (req.continue) {
-      yield req.continue
-    }
-
-    return this.onApplicationFormsCollected({ req, application })
+  if (req.continue) {
+    yield req.continue
   }
 
-  const should = yield this.shouldIssueProduct({ state: req.state, application })
-  if (should.result) {
-    return this._approveProduct({
-      application: application,
-      req: req
-    })
-  }
+  return this.onApplicationFormsCollected({ req, application })
 })
 
 SimpleBank.prototype.continueRemediation = co(function* (opts) {
