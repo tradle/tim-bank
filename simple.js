@@ -193,8 +193,10 @@ function SimpleBank (opts) {
 
     const obj = req.msg.object.object
     const embeddedType = obj[TYPE] === MESSAGE_TYPE && obj.object[TYPE]
-    const context = req.context
-    const other = context && { context }
+    const other = tradleUtils.getMessageCustomProps(req.msg.object)
+    delete other.context
+    if (req.context) other.context = req.context
+
     type = embeddedType || req[TYPE]
     this._debug(`FORWARDING ${type} FROM ${req.customer} TO RM ${relationshipManager}`)
     this.tim.send({
