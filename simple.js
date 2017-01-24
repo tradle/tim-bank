@@ -617,7 +617,7 @@ SimpleBank.prototype.handleDocument = co(function* (req, res) {
 SimpleBank.prototype.onNextFormRequest = function (req, res) {
   const models = this.models
   const formToSkip = req.payload.object.after
-  const application = find(req.state.pendingApplications, application => {
+  const application = req.application || req.state.pendingApplications.find(application => {
     const model = models[application.type]
     const forms = utils.getForms(model)
     return forms.indexOf(formToSkip) !== -1
