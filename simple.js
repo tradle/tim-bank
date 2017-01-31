@@ -538,7 +538,6 @@ SimpleBank.prototype.handleDocument = co(function* (req, res) {
     return this.requestEdit(req, invalid)
   }
 
-  debugger
   const formWrapper = req.payload
   const formState = updateWithReceivedForm(application, formWrapper)
   if (!state.imported) state.imported = {}
