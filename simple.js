@@ -103,9 +103,8 @@ function SimpleBank (opts) {
   this._ready = this._ensureEmployees(opts.employees)
 
   // TODO: plugin-ize
-  bank._shouldChainReceivedMessage = (msg) => {
-    return msg[TYPE] === VERIFICATION ||
-      this.models.docs.indexOf(msg[TYPE]) !== -1
+  bank._shouldChainReceivedMessage = req => {
+    return req.type === VERIFICATION || this._isForm(req.type)
   }
 
   // create new customer
@@ -129,7 +128,7 @@ function SimpleBank (opts) {
   })
 
   bank.use((req, res) => {
-    if (this.models.docs.indexOf(req.type) !== -1) {
+    if (this._isForm(req.type)) {
       return this.handleDocument(req)
     }
   })
@@ -253,6 +252,11 @@ SimpleBank.prototype.receiveMsg = co(function* (msg, senderInfo, sync) {
 
   return req
 })
+
+SimpleBank.prototype._isForm = function (type) {
+  const model = this.models[type]
+  return model && model.subClassOf === 'tradle.Form'
+}
 
 SimpleBank.prototype._assignRelationshipManager = function (req) {
   // assign relationship manager if none is assigned
