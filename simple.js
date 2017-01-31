@@ -1374,21 +1374,6 @@ SimpleBank.prototype.requestForm = co(function* (opts) {
   })
 })
 
-SimpleBank.prototype._getRelevantPending = function (pending, reqState) {
-  var docType = reqState[TYPE] === VERIFICATION ? getType(reqState.payload.object.document)
-    : reqState[TYPE] === 'tradle.NextFormRequest' ? reqState.payload.object.after
-    : reqState[TYPE]
-
-  var state = reqState && reqState.state
-  return find(pending, product => {
-    if (product.type === REMEDIATION) {
-      return state && state.prefilled && state.prefilled[docType]
-    }
-
-    return this.models.docs[product.type].indexOf(docType) !== -1
-  })
-}
-
 SimpleBank.prototype.employees = function () {
   return (this._employees || []).slice()
 }
