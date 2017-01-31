@@ -958,7 +958,8 @@ SimpleBank.prototype.continueRemediation = co(function* (opts) {
 SimpleBank.prototype.continueRemediation1 = co(function* (opts) {
   const { req } = opts
   const { context, application, state, customer, sync, from, to } = req
-  const { imported, items, length } = state.imported[context]
+  const session = state.imported[context]
+  const { imported, items, length } = session
   const isRemediationReq = req.type === PRODUCT_APPLICATION && req.productType === REMEDIATION
   if (isRemediationReq || items.length === length) {
     const forms = imported.concat(items).map(item => {
@@ -982,6 +983,9 @@ SimpleBank.prototype.continueRemediation1 = co(function* (opts) {
   }
 
   if (!items.length) {
+    if (session.done) return
+
+    session.done = true
     const msg = utils.buildSimpleMsg(
       'Thank you for confirming your information with us!'
     )
