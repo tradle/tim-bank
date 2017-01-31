@@ -39,6 +39,7 @@ var ABOUT_YOU = 'tradle.AboutYou'
 var YOUR_MONEY = 'tradle.YourMoney'
 var VERIFICATION = 'tradle.Verification'
 var PRODUCT_APPLICATION = 'tradle.ProductApplication'
+var CONFIRM_PACKAGE_TYPE = 'tradle.ConfirmPackageRequest'
 // var DEFAULT_AWAIT_OPTS = {
 //   awaitVerification: true,
 //   awaitConfirmation: true
@@ -193,6 +194,7 @@ testMultiEntry()
 // testGuestSession()
 // testRemediation()
 testRemediation1()
+testRemediation2()
 testManualMode()
 testContinue()
 
@@ -834,7 +836,6 @@ function testRemediation () {
 }
 
 function testRemediation1 () {
-  const CONFIRM_PACKAGE_TYPE = 'tradle.ConfirmPackageRequest'
   test('import remediation1', co(function* (t) {
     const setup = yield runSetup(init)
     const banks = setup.banks
@@ -924,6 +925,121 @@ function testRemediation1 () {
         t.same(wrapper.object.object.items, items)
       }
     }
+
+    let [msg, myProduct] = yield Q.all([
+      helpers.awaitType(SIMPLE_MESSAGE),
+      helpers.awaitType('tradle.MyCurrentAccount')
+    ])
+
+    t.ok(/confirm/.test(msg.object.object.message))
+    t.equal(myProduct.object.object.myProductId, 'blah')
+    yield verified
+    yield teardown(setup)
+    t.end()
+  }))
+}
+
+function testRemediation2 () {
+  test('import remediation bulk', co(function* (t) {
+    const setup = yield runSetup(init)
+    const banks = setup.banks
+    const applicant = setup.applicant
+    var bank = banks[0]
+    var bankCoords = getCoords(bank.tim)
+    var product = 'tradle.Remediation'
+    var forms = {}
+    var helpers = getHelpers({
+      applicant: applicant,
+      bank: bank,
+      banks: banks,
+      forms: forms,
+      verifications: {},
+      setup: setup,
+      t: t
+    })
+
+    var sessionHash = 'blah'
+    var aboutYou = newFakeData(ABOUT_YOU)
+    var yourMoney = newFakeData(YOUR_MONEY)
+    var license = newFakeData(LICENSE)
+    var document = {
+      [TYPE]: YOUR_MONEY,
+      id: `${YOUR_MONEY}_b_c`
+    }
+
+    var session = [
+      aboutYou,
+      {
+        [TYPE]: 'tradle.VerifiedItem',
+        item: yourMoney,
+        verification: {
+          [TYPE]: VERIFICATION,
+//          [NONCE]: '' + (nonce++),
+          dateVerified: 10000,
+          document,
+          sources: [
+            {
+              [TYPE]: VERIFICATION,
+    //          [NONCE]: '' + (nonce++),
+              dateVerified: 10000,
+              method: {
+                [TYPE]: 'tradle.APIBasedVerificationMethod',
+                api: {
+                  name: 'onfido'
+                },
+                aspect: 'authenticity'
+              },
+              document
+            }
+          ]
+        }
+      },
+      license,
+      {
+        [TYPE]: 'tradle.MyCurrentAccount',
+        myProductId: 'blah'
+      }
+    ]
+
+    const verified = co(function* () {
+      const verifications = yield helpers.awaitVerification(3)
+      const yourMoneyV = find(verifications, v => {
+        return utils.parseObjectId(v.object.object.document.id).type === YOUR_MONEY
+      })
+
+      t.equal(yourMoneyV.object.object.sources.length, 1)
+      t.equal(yourMoneyV.object.object.dateVerified, 10000)
+    })()
+
+    yield bank.storeGuestSession(sessionHash, session)
+    yield helpers.sendIdentity({ awaitUnchained: true })
+    let wrapper = yield helpers.sendSessionIdentifier(sessionHash, CONFIRM_PACKAGE_TYPE)
+    helpers.setContext(wrapper.object.context)
+    let { message, items } = wrapper.object.object
+    t.ok(/review/.test(message))
+
+    for (var i = 0; i < items.length; i++) {
+      let item = items[i]
+      let expected = session[i]
+      t.same(item, expected.item || expected)
+    }
+
+    const toSign = items.map(item => {
+      if (item[TYPE] === 'tradle.VerifiedItem') return item.item
+
+      const model = MODELS_BY_ID[item[TYPE]]
+      if (model.subClassOf === 'tradle.Form') return item
+    })
+    .filter(item => item)
+
+    const signed = yield Q.all(toSign.map(form => {
+      return applicant.createObject({ object: form })
+    }))
+
+    helpers.signNSend({
+      [TYPE]: 'tradle.ConfirmPackageResponse',
+      sigs: signed.map(wrapper => wrapper.object[SIG])
+    })
 
     let [msg, myProduct] = yield Q.all([
       helpers.awaitType(SIMPLE_MESSAGE),

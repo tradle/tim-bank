@@ -152,6 +152,7 @@ function SimpleBank (opts) {
   // bank.use('tradle.GetHistory', this.sendHistory)
   bank.use('tradle.GetEmployee', this.getEmployee)
   // bank.use(GUEST_SESSION_PROOF, this.importSession)
+  bank.use('tradle.ConfirmPackageResponse', this.handleConfirmPackageResponse)
   bank.use(FORGET_ME, this.forgetMe)
   bank.use(VERIFICATION, this._handleVerification)
   bank.use(CUSTOMER_WAITING, req => {
@@ -537,6 +538,7 @@ SimpleBank.prototype.handleDocument = co(function* (req, res) {
     return this.requestEdit(req, invalid)
   }
 
+  debugger
   const formWrapper = req.payload
   const formState = updateWithReceivedForm(application, formWrapper)
   if (!state.imported) state.imported = {}
@@ -957,6 +959,40 @@ SimpleBank.prototype.continueRemediation = co(function* (opts) {
   // TODO: figure out how to continue on req
   docReq.promise = req.promise.bind(req)
   return this.handleDocument(docReq)
+})
+
+SimpleBank.prototype.handleConfirmPackageResponse = co(function* (req) {
+  const self = this
+  const { context, state } = req
+  const session = state.imported[context]
+  const { imported, items, length } = session
+  const forms = items.map(item => {
+    if (item[TYPE] === 'tradle.VerifiedItem') return item.item
+
+    const model = this.models[item[TYPE]]
+    if (model.subClassOf === 'tradle.Form') return item
+  })
+  .filter(item => item)
+
+  const { sigs } = req.payload.object
+
+  // check all sigs
+  const results = yield Q.all(sigs.map(co(function *(sig, i) {
+    const signed = clone(forms[i], { [SIG]: sig })
+    const result = yield self.tim.saveObject({ object: signed })
+    if (result.author !== req.customer) throw new Error('signature doesn\'t match expected author')
+
+    return result
+  })))
+
+  // handle in series
+  for (var i = 0; i < results.length; i++) {
+    let wrapper = results[i]
+    req.payload = wrapper
+    req.type = wrapper.object[TYPE]
+    yield self.handleDocument(req)
+    yield this.continueRemediation1({ req })
+  }
 })
 
 SimpleBank.prototype.continueRemediation1 = co(function* (opts) {
