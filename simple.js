@@ -85,6 +85,8 @@ function SimpleBank (opts) {
     verify: true
   }, opts.auto)
 
+  if (opts.silent) this.silent(opts.silent)
+
   const rawModels = (opts.models || []).concat(REMEDIATION_MODEL)
   this.models = Object.freeze(utils.processModels(rawModels))
 
@@ -221,9 +223,22 @@ function SimpleBank (opts) {
 module.exports = SimpleBank
 util.inherits(SimpleBank, EventEmitter)
 
+SimpleBank.prototype.silent = function (val) {
+  if (typeof val === 'boolean') {
+    this._silent = val
+    if (val) {
+      this.autoverify(false)
+      this.autoprompt(false)
+    }
+  }
+
+  return this._auto.verify
+}
+
 SimpleBank.prototype.autoverify = function (val) {
   if (typeof val === 'boolean') {
     this._auto.verify = val
+    if (val) this.silent(false)
   }
 
   return this._auto.verify
@@ -232,6 +247,7 @@ SimpleBank.prototype.autoverify = function (val) {
 SimpleBank.prototype.autoprompt = function (val) {
   if (typeof val === 'boolean') {
     this._auto.prompt = val
+    if (val) this.silent(false)
   }
 
   return this._auto.prompt
@@ -396,8 +412,12 @@ SimpleBank.prototype.replyNotFound = co(function* (req, whatWasntFound) {
   // we don't know how to encrypt messages for them
 })
 
+SimpleBank.prototype._autoResponseDisabled = function (req) {
+  return this._silent || autoResponseDisabled(req)
+}
+
 SimpleBank.prototype.sendProductList = function (req) {
-  if (autoResponseDisabled(req)) return
+  if (this._autoResponseDisabled(req)) return
 
   var bank = this.bank
   var formModels = {}
@@ -798,7 +818,7 @@ SimpleBank.prototype.continueProductApplication = co(function* (opts) {
   }, opts)
 
   const req = opts.req
-  if (autoResponseDisabled(req)) return
+  if (this._autoResponseDisabled(req)) return
 
   let state = (req || opts).state
   const context = opts.application || req.context
