@@ -1837,12 +1837,16 @@ function newVerificationFor (opts) {
   if (!verification.dateVerified) verification.dateVerified = Date.now()
 
   verification.document = {
-    id: doc[TYPE] + '_' + formInfo.permalink + '_' + formInfo.link,
+    id: utils.resourceId({
+      type: doc[TYPE],
+      permalink: formInfo.permalink,
+      link: formInfo.link
+    }),
     title: doc.title || doc[TYPE]
   }
 
   verification.documentOwner = {
-    id: IDENTITY + '_' + customerState.permalink,
+    id: utils.resourceId({ type: IDENTITY, permalink: customerState.permalink }),
     title: customerState.permalink
   }
 
