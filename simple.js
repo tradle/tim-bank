@@ -1341,7 +1341,13 @@ SimpleBank.prototype._newProductConfirmation = function (state, application, pro
     customer: state.permalink
   }, product)
 
-  let confirmationType = product[TYPE] || productType.replace('.', '.My')
+  let confirmationType = product[TYPE]
+  if (!confirmationType) {
+    const parts = productType.split('.')
+    parts[parts.length - 1] = 'My' + parts[parts.length - 1]
+    confirmationType = parts.join('.')
+  }
+
   const guessedMyProductModel = this.models[confirmationType]
   if (guessedMyProductModel && guessedMyProductModel.subClassOf === 'tradle.MyProduct') {
     if (!confirmation[TYPE]) confirmation[TYPE] = guessedMyProductModel.id
