@@ -130,7 +130,7 @@ function SimpleBank (opts) {
   })
 
   bank.use((req, res) => {
-    if (this._isForm(req.type)) {
+    if (this._isForm(req.type) || this._isMyProduct(req.type)) {
       return this.handleDocument(req)
     }
   })
@@ -273,6 +273,11 @@ SimpleBank.prototype.receiveMsg = co(function* (msg, senderInfo, sync) {
 SimpleBank.prototype._isForm = function (type) {
   const model = this.models[type]
   return model && model.subClassOf === 'tradle.Form'
+}
+
+SimpleBank.prototype._isMyProduct = function (type) {
+  const model = this.models[type]
+  return model && model.subClassOf === 'tradle.MyProduct'
 }
 
 SimpleBank.prototype._assignRelationshipManager = function (req) {
