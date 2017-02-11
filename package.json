@@ -4,7 +4,7 @@
   "description": "tradle bank server",
   "main": "./index.js",
   "scripts": {
-    "test": "NODE_ENV=test BLUEBIRD_DEBUG=1 NODE_ENV=test SEALWATCH_BATCH_SIZE=50 SEALWATCH_SYNC_INTERVAL=100 SEALWATCH_BATCH_TIMEOUT=50 node test",
+    "test": "DEBUG=bank* NODE_ENV=test BLUEBIRD_DEBUG=1 NODE_ENV=test SEALWATCH_BATCH_SIZE=50 SEALWATCH_SYNC_INTERVAL=100 SEALWATCH_BATCH_TIMEOUT=50 node test",
     "test:debug": "NODE_ENV=test BLUEBIRD_DEBUG=1 NODE_ENV=test SEALWATCH_BATCH_SIZE=50 SEALWATCH_SYNC_INTERVAL=100 SEALWATCH_BATCH_TIMEOUT=50 node --debug --inspect --trace-warnings test",
     "test:debug-brk": "NODE_ENV=test BLUEBIRD_DEBUG=1 NODE_ENV=test SEALWATCH_BATCH_SIZE=50 SEALWATCH_SYNC_INTERVAL=100 SEALWATCH_BATCH_TIMEOUT=50 node --debug-brk --inspect --trace-warnings test"
   },

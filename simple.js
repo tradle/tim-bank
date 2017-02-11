@@ -1378,7 +1378,9 @@ SimpleBank.prototype._newProductConfirmation = function (state, application, pro
     // message: imported
     //   ? `Imported product: ${productModel.title}`
     message: `Congratulations! You were approved for: ${productModel.title}`,
-    forms: formIds,
+    forms: formIds.map(id => {
+      return { id }
+    }),
     application: application.permalink
   }
 }
