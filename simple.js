@@ -1305,6 +1305,7 @@ SimpleBank.prototype._approveProduct = co(function* ({ req, application, product
     msg: confirmation
   })
 
+  this.tim.seal({ link: result.object.link })
   application.product = result.object.permalink
   if (productType === EMPLOYEE_ONBOARDING) {
     this._ensureEmployees()
