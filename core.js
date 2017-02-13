@@ -1,45 +1,43 @@
-'use strict'
-
 // require('@tradle/multiplex-utp')
 
-var assert = require('assert')
-var extend = require('xtend')
-var levelup = require('levelup')
-var mutexify = require('mutexify')
-var map = require('map-stream')
-var find = require('array-find')
-var typeforce = require('typeforce')
-var collect = require('stream-collector')
-// var tutils = require('@tradle/utils')
-var utils = require('./lib/utils')
-var Q = require('bluebird-q')
-var co = Q.async
-var tradle = require('@tradle/engine')
-var constants = tradle.constants
-var tutils = tradle.utils
-var elistener = require('elistener')
-var once = require('once')
-var RequestState = require('./lib/requestState')
-var debug = require('./debug')
-var CUR_HASH = constants.CUR_HASH
-var ROOT_HASH = constants.ROOT_HASH
-var SIG = constants.SIG
-var TYPE = constants.TYPE
-// var OWNER = constants.OWNER
-var NONCE = constants.NONCE
-// var types = constants.TYPES
-var VERIFICATION = 'tradle.Verification'
-var CUSTOMER = 'tradle.Customer'
-var CONTEXT = 'context'
-var noop = function () {}
-var types = require('./lib/types')
+const assert = require('assert')
+const extend = require('xtend')
+const levelup = require('levelup')
+const mutexify = require('mutexify')
+const map = require('map-stream')
+const find = require('array-find')
+const typeforce = require('typeforce')
+const collect = require('stream-collector')
+// const tutils = require('@tradle/utils')
+const utils = require('./lib/utils')
+const Q = require('bluebird-q')
+const co = Q.async
+const tradle = require('@tradle/engine')
+const constants = tradle.constants
+const tutils = tradle.utils
+const elistener = require('elistener')
+const once = require('once')
+const RequestState = require('./lib/requestState')
+const debug = require('./debug')
+const CUR_HASH = constants.CUR_HASH
+const ROOT_HASH = constants.ROOT_HASH
+const SIG = constants.SIG
+const TYPE = constants.TYPE
+// const OWNER = constants.OWNER
+const NONCE = constants.NONCE
+// const types = constants.TYPES
+const VERIFICATION = 'tradle.Verification'
+const CUSTOMER = 'tradle.Customer'
+const CONTEXT = 'context'
+const noop = function () {}
+const types = require('./lib/types')
 
 module.exports = Bank
 elistener(Bank.prototype)
 Bank.ALLOW_CHAINING = true
 
 function Bank (options) {
-  var self = this
+  const self = this
 
   typeforce({
     node: 'Object',
@@ -51,7 +49,7 @@ function Bank (options) {
 
   tutils.bindFunctions(this)
 
-  var tim = tutils.promisifyNode(options.node, Q.Promise)
+  const tim = tutils.promisifyNode(options.node, Q.Promise)
   tim.on('wroteseal', function (info) {
     self._debug(`wrote chain-seal for ${info.object[TYPE]} in tx with id ${info.txId}`)
   })
@@ -84,7 +82,7 @@ function Bank (options) {
   //   })
   // })
 
-  var readyDefer = Q.defer()
+  const readyDefer = Q.defer()
   this._readyPromise = readyDefer.promise.then(() => this._ready = true)
   this._locks = {}
 
@@ -134,7 +132,7 @@ Bank.prototype.use = function (type, fn) {
 
   if (!type) throw new Error('invalid type')
 
-  var handler = fn
+  let handler = fn
   if (type !== '*') {
     handler = function (req) {
       if (req.type === type) {
@@ -148,8 +146,8 @@ Bank.prototype.use = function (type, fn) {
 }
 
 Bank.prototype.list = function (type) {
-  var start = prefixKey(type, '')
-  var stream = this._db.createReadStream({
+  const start = prefixKey(type, '')
+  const stream = this._db.createReadStream({
       start: start,
       end: start + '\xff'
     })
@@ -201,7 +199,7 @@ Bank.prototype._saveParsedMsg = function (req) {
 }
 
 Bank.prototype._debug = function () {
-  var args = [].slice.call(arguments)
+  const args = [].slice.call(arguments)
   args.unshift(this._name)
   return debug.apply(null, args)
 }
@@ -238,19 +236,19 @@ Bank.prototype._onMessage = co(function* (received, sync) {
       return utils.rejectWithHttpError(403, 'this bot only forwards message from employees')
     }
 
-    // forward without processing
-    const context = msgWrapper.object.context
-    const other = context && { context }
-    this.tim.signAndSend({
-      to: { permalink: fwdTo },
-      object: tutils.omit(obj, SIG),
-      other: other
-    })
-
     if (fwdTo !== this.tim.permalink && fwdTo !== this.tim.link) {
       if (obj[TYPE] !== VERIFICATION) {
         // re-sign the object
         // the customer doesn't need to know the identity of the employee
+        // forward without processing
+        const context = msgWrapper.object.context
+        const other = context && { context }
+        this.tim.signAndSend({
+          to: { permalink: fwdTo },
+          object: tutils.omit(obj, SIG),
+          other: other
+        })
+
         return
       }
 
@@ -413,7 +411,7 @@ Bank.prototype.send = co(function* (opts) {
   })
 
   if (req && req.sync) {
-    var getSent = utils.waitForEvent(this.tim, 'sent', result.message.link)
+    const getSent = utils.waitForEvent(this.tim, 'sent', result.message.link)
     req.promise(getSent)
   }
 
@@ -431,7 +429,7 @@ Bank.prototype.destroy = function () {
     Q.ninvoke(this._db, 'close')
   ])
 
-  for (var customer in this._manualReleases) {
+  for (let customer in this._manualReleases) {
     this._manualReleases[customer]()
   }
 
@@ -439,7 +437,6 @@ Bank.prototype.destroy = function () {
 }
 
 function getSender (msg) {
-  if (!msg) debugger
   return {
     permalink: msg.author.permalink
   }

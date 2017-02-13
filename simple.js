@@ -1,5 +1,3 @@
-'use strict'
-
 const util = require('util')
 const EventEmitter = require('events').EventEmitter
 const crypto = require('crypto')
@@ -162,7 +160,7 @@ function SimpleBank (opts) {
   })
 
   bank.use(PRODUCT_APPLICATION, (req) => {
-    var product = req.payload.object.product
+    const product = req.payload.object.product
     req.productType = product
     if (product === 'tradle.Remediation') {
       return this.importSession(req)
@@ -347,7 +345,7 @@ SimpleBank.prototype.isEmployee = function (permalink) {
 }
 
 SimpleBank.prototype._ensureEmployees = co(function* (employees) {
-  var self = this
+  const self = this
   if (employees) {
     return this._setEmployees(employees)
   }
@@ -390,8 +388,9 @@ SimpleBank.prototype.getMyEmployees = co(function* () {
 })
 
 SimpleBank.prototype.receivePrivateMsg = co(function* (msg, senderInfo, sync) {
+  let them
   try {
-    var them = yield this.tim.addressBook.lookupIdentity(senderInfo)
+    them = yield this.tim.addressBook.lookupIdentity(senderInfo)
   } catch (err) {
     const req = new RequestState({ author: senderInfo })
     yield this.replyNotFound(req)
@@ -424,13 +423,13 @@ SimpleBank.prototype._autoResponseDisabled = function (req) {
 SimpleBank.prototype.sendProductList = function (req) {
   if (this._autoResponseDisabled(req)) return
 
-  var bank = this.bank
-  var formModels = {}
-  var list = this._productList
+  const bank = this.bank
+  const formModels = {}
+  const list = this._productList
     .filter(productModelId => productModelId !== REMEDIATION && productModelId !== EMPLOYEE_ONBOARDING)
     .map(productModelId => {
-      var model = this.models[productModelId]
-      var forms = utils.getForms(model)
+      const model = this.models[productModelId]
+      const forms = utils.getForms(model)
       forms.forEach(formModelId => {
         if (this.models[formModelId]) {
           // avoid duplicates by using object
@@ -441,7 +440,7 @@ SimpleBank.prototype.sendProductList = function (req) {
       return model
     })
 
-  for (var p in formModels)
+  for (let p in formModels)
     list.push(formModels[p])
 
   let name // = req.from.identity.name()
@@ -464,11 +463,11 @@ SimpleBank.prototype.sendProductList = function (req) {
 SimpleBank.prototype.publishCustomerIdentity = co(function* (req) {
   // TODO: verify that sig of identityPublishRequest comes from sign/update key
   // of attached identity. Need to factor this out of @tradle/verifier
-  var bank = this.bank
-  var identity = req.payload.object.identity
-  var tim = this.tim
-  var curLink = protocol.linkString(identity)
-  var rootHash = identity[ROOT_HASH] || curLink
+  const bank = this.bank
+  const identity = req.payload.object.identity
+  const tim = this.tim
+  const curLink = protocol.linkString(identity)
+  const rootHash = identity[ROOT_HASH] || curLink
   try {
     const obj = yield tim.objects.get(curLink)
     // if obj is queued to be chained
@@ -484,8 +483,6 @@ SimpleBank.prototype.publishCustomerIdentity = co(function* (req) {
   }
 
   if (!Bank.ALLOW_CHAINING) {
-    if (process.env.NODE_ENV === 'test') return notifyPublished()
-
     this._debug('not chaining identity. To enable chaining, set Bank.ALLOW_CHAINING=true', curLink)
     return
   }
@@ -855,8 +852,6 @@ SimpleBank.prototype.continueProductApplication = co(function* (opts) {
   //   state.products[productType] = []
   // }
 
-  if (req.type === VERIFICATION) return
-
   if (isRemediation) {
     return this.continueRemediation1(opts)
   }
@@ -890,6 +885,7 @@ SimpleBank.prototype.continueProductApplication = co(function* (opts) {
   })
 
   if (missing) {
+    if (req.type === VERIFICATION) return
     if (!this._auto.prompt || opts.noNextForm) return
 
     return this.requestForm({
@@ -1010,7 +1006,7 @@ SimpleBank.prototype.handleConfirmPackageResponse = co(function* (req) {
   })))
 
   // handle in series
-  for (var i = 0; i < results.length; i++) {
+  for (let i = 0; i < results.length; i++) {
     let wrapper = results[i]
     req.payload = wrapper
     req.type = wrapper.object[TYPE]
@@ -1448,14 +1444,14 @@ SimpleBank.prototype.employees = function () {
 }
 
 SimpleBank.prototype.getEmployee = function (req) {
-  var bank = this.bank
-  var employeeIdentifier = req.payload.object.employee
-  var employeeInfo = find(this._employees, info => {
+  const bank = this.bank
+  const employeeIdentifier = req.payload.object.employee
+  const employeeInfo = find(this._employees, info => {
     return info[CUR_HASH] === employeeIdentifier[CUR_HASH]
   })
 
   if (!employeeInfo) {
-    var employeeNotFound = {
+    const employeeNotFound = {
       [TYPE]: 'tradle.NotFound',
       identifier: employeeIdentifier
     }
@@ -1466,7 +1462,7 @@ SimpleBank.prototype.getEmployee = function (req) {
     })
   }
 
-  var resp = {
+  const resp = {
     [TYPE]: 'tradle.EmployeeInfo',
     employee: utils.pick(employeeInfo, 'pub', 'profile')
   }
@@ -1590,7 +1586,7 @@ SimpleBank.prototype.destroy = function () {
 }
 
 SimpleBank.prototype._debug = function () {
-  var args = [].slice.call(arguments)
+  const args = [].slice.call(arguments)
   args.unshift(this.tim.name)
   return debug.apply(null, args)
 }
@@ -1664,7 +1660,7 @@ SimpleBank.prototype.use = function (plugin) {
 SimpleBank.prototype._execPlugins = co(function* (method, args) {
   const plugins = this._plugins.filter(p => p[method])
 
-  for (var i = 0; i < plugins.length; i++) {
+  for (let i = 0; i < plugins.length; i++) {
     let ret = plugins[i][method].apply(this, args)
     if (utils.isPromise(ret)) yield ret
   }
@@ -1728,7 +1724,7 @@ SimpleBank.prototype._execBooleanPlugin = co(function* (method, args, fallbackVa
   const plugins = this._plugins.filter(p => p[method])
 
   let result
-  for (var i = 0; i < plugins.length; i++) {
+  for (let i = 0; i < plugins.length; i++) {
     let plugin = plugins[i]
     let ret
     try {
