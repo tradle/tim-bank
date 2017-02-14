@@ -20,6 +20,7 @@ const DEFAULT_PRODUCT_LIST = [
 ]
 
 const createContextDB = require('@tradle/message-context')
+const BASE_MODELS = require('@tradle/models')
 const Bank = require('./')
 const utils = require('./lib/utils')
 const Actions = require('./lib/actionCreators')
@@ -87,6 +88,9 @@ function SimpleBank (opts) {
 
   const rawModels = (opts.models || []).concat(REMEDIATION_MODEL)
   this.models = Object.freeze(utils.processModels(rawModels))
+  this.customModels = this.models.filter(model => {
+    return !BASE_MODELS[model.id]
+  })
 
   this._productList = (opts.productList || DEFAULT_PRODUCT_LIST).slice()
   this._productList.push(REMEDIATION)
@@ -424,24 +428,20 @@ SimpleBank.prototype.sendProductList = function (req) {
   if (this._autoResponseDisabled(req)) return
 
   const bank = this.bank
+  const added = {}
   const formModels = {}
-  const list = this._productList
-    .filter(productModelId => productModelId !== REMEDIATION && productModelId !== EMPLOYEE_ONBOARDING)
-    .map(productModelId => {
-      const model = this.models[productModelId]
+  this._productList.forEach(id => {
+    if (id !== REMEDIATION && id !== EMPLOYEE_ONBOARDING) {
+      const model = added[id] = this.models[id]
       const forms = utils.getForms(model)
-      forms.forEach(formModelId => {
-        if (this.models[formModelId]) {
-          // avoid duplicates by using object
-          formModels[formModelId] = this.models[formModelId]
-        }
+      forms.forEach(id => {
+        added[id] = this.models[id]
       })
+    }
+  })
 
-      return model
-    })
-
-  for (let p in formModels)
-    list.push(formModels[p])
+  this.customModels.forEach(m => added[m.id] = m)
+  const list = Object.keys(added).map(id => added[id])
 
   let name // = req.from.identity.name()
   let greeting = name
