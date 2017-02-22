@@ -1368,17 +1368,16 @@ SimpleBank.prototype._newProductConfirmation = function (state, application, pro
     return confirmation
   }
 
-  confirmation[TYPE] = productType + 'Confirmation'
   const formIds = utils.getFormIds(application.forms)
   return {
-    [TYPE]: confirmation[TYPE],
+    [TYPE]: 'tradle.Confirmation',
     // message: imported
     //   ? `Imported product: ${productModel.title}`
     message: `Congratulations! You were approved for: ${productModel.title}`,
     forms: formIds.map(id => {
       return { id }
     }),
-    application: application.permalink
+    confirmationFor: application.permalink
   }
 }
 

@@ -538,7 +538,7 @@ function testMultiEntry () {
 
       Q.all([
           helpers.awaitVerification(3),
-          helpers.awaitType(product + 'Confirmation')
+          helpers.awaitType('tradle.Confirmation')
         ])
         .then(() => teardown(setup))
         .done(function () {
