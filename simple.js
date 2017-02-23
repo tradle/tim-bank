@@ -1383,7 +1383,10 @@ SimpleBank.prototype._newProductConfirmation = function (state, application, pro
     forms: formIds.map(id => {
       return { id }
     }),
-    confirmationFor: `tradle.ProductApplication_${application.permalink}`
+    confirmationFor: {
+      id: `tradle.ProductApplication_${application.permalink}`,
+      title: productModel.title || ''
+    }
   }
 }
 
