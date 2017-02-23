@@ -440,7 +440,13 @@ SimpleBank.prototype.sendProductList = function (req) {
     }
   })
 
-  this.customModels.forEach(m => added[m.id] = m)
+  this.customModels.forEach(m => {
+    // will have already been added above
+    if (m.subClassOf === 'tradle.FinancialProduct') return
+
+    added[m.id] = m
+  })
+
   const list = Object.keys(added).map(id => added[id])
 
   let name // = req.from.identity.name()
