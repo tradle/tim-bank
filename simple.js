@@ -1401,15 +1401,7 @@ SimpleBank.prototype.requestForm = co(function* (opts) {
   const multiEntryForms = opts.productModel.multiEntryForms || []
   const isMultiEntry = multiEntryForms.indexOf(opts.form) !== -1
   const formModel = this.models[form]
-
-  const prompt = formModel.formRequestMessage ||
-                 (formModel.subClassOf === 'tradle.MyProduct'
-                   ? 'Please share the following information'
-                   : formModel.properties.photos
-                      //  isMultiEntry ? 'Please fill out this form and attach a snapshot of the original document' :
-                     ? 'Please fill out this form and attach a snapshot of the original document'
-                     : 'Please fill out this form')
-
+  const prompt = getFormRequestMessage(formModel)
 
   // const prompt = formModel.subClassOf === 'tradle.MyProduct'
   //   ? 'Please share the following information' : formModel.properties.photos ?
@@ -1904,4 +1896,19 @@ function getAllApplications (state) {
 function autoResponseDisabled (req) {
   const msg = req.msg && req.msg.object
   return msg && msg.disableAutoResponse
+}
+
+function getFormRequestMessage (formModel) {
+  if (formModel.formRequestMessage) return formModel.formRequestMessage
+
+  const formTitle = formModel.title
+  if (formModel.subClassOf === 'tradle.MyProduct') {
+    return `Please share your product **${formTitle}**`
+  }
+
+  if (formModel.properties.photos) {
+    return `Please fill out the form **${formTitle}** and attach a snapshot of the original document`
+  }
+
+  return `Please fill out the form **${formTitle}**`
 }
