@@ -865,6 +865,18 @@ SimpleBank.prototype.continueProductApplication = co(function* (opts) {
   const isFormOrVerification = req[TYPE] === VERIFICATION || this.models.docs.indexOf(req[TYPE]) !== -1
   const reqdForms = utils.getForms(productModel)
 
+  // tmp hack for aviva
+  if (this.tim.name === 'aviva' && reqdForms.indexOf('tradle.Residence') === -1) {
+    const photoID = application.forms.find(form => form.type === 'tradle.PhotoID')
+    if (photoID) {
+      const { documentType } = photoID.form.object
+      if (documentType.title === 'Passport') {
+        // also require address
+        reqdForms.splice(reqdForms.indexOf('tradle.PhotoID') + 1, 0, 'tradle.Residence')
+      }
+    }
+  }
+
   const multiEntryForms = productModel.multiEntryForms || []
   const missing = find(reqdForms, type => {
     if (multiEntryForms.indexOf(type) !== -1) {
