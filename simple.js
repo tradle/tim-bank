@@ -872,7 +872,7 @@ SimpleBank.prototype.continueProductApplication = co(function* (opts) {
       const { documentType } = photoID.form.object
       if (documentType.title === 'Passport') {
         // also require address
-        reqdForms.splice(reqdForms.indexOf('tradle.PhotoID') + 1, 0, 'tradle.Residence')
+        reqdForms.push('tradle.Residence')
       }
     }
   }
