@@ -1547,9 +1547,14 @@ SimpleBank.prototype._handleVerification = co(function* (req, opts={}) {
   }
 
   const verifiedItemInfo = utils.parseObjectId(verification.object.document.id)
-  const verifiedItem = findFormState(application.forms, verifiedItemInfo)
+  let verifiedItem = findFormState(application.forms, verifiedItemInfo)
   if (!verifiedItem) {
-    throw utils.httpError(400, 'form not found')
+    verifiedItem = newFormStateObject({
+      type: verifiedItemInfo.type,
+      form: verifiedItemInfo
+    })
+
+    application.forms.push(verifiedItem)
   }
 
   verification.body = verification.object // backwards compat
@@ -1808,7 +1813,15 @@ function updateWithReceivedForm (application, formWrapper) {
   const { link, permalink, object } = formWrapper
   const existing = findFormState(application.forms, { permalink })
   if (existing) {
-    if (existing.link === link) return
+    if (existing.link === link) {
+      // we may only have a verification, not the actual document
+      const { form } = existing
+      if (!existing.object) {
+        existing.object = existing.body = formWrapper.object
+      }
+
+      return
+    }
   }
 
   const form = {
@@ -1821,14 +1834,7 @@ function updateWithReceivedForm (application, formWrapper) {
     time: object.time || Date.now() // deprecated
   }
 
-  const newFormObj = {
-    type: object[TYPE],
-    form: form,
-    dateReceived: Date.now(),
-    verifications: [],
-    issuedVerifications: []
-  }
-
+  const newFormObj = newFormStateObject({ form, type: object[TYPE] })
   if (existing) {
     extend(existing.form, form)
     existing.dateReceived = newFormObj.dateReceived
@@ -1839,6 +1845,16 @@ function updateWithReceivedForm (application, formWrapper) {
   return existing || newFormObj
 }
 
+function newFormStateObject ({ form, type }) {
+  return {
+    type,
+    form,
+    dateReceived: Date.now(),
+    verifications: [],
+    issuedVerifications: []
+  }
+}
+
 function newVerificationFor (opts) {
   const customerState = opts.state
   const formState = opts.form
@@ -1846,16 +1862,24 @@ function newVerificationFor (opts) {
   const formInfo = formState.form
   const verifications = formState.verifications
   const doc = formInfo.object || formInfo.body
-  const verification = opts.verification || utils.getImportedVerification(customerState, doc) || {}
+  let verification = opts.verification
+  if (!verification) {
+    if (doc) {
+      verification = utils.getImportedVerification(customerState, doc)
+    }
+
+    if (!verification) verification = {}
+  }
+
   if (!verification.dateVerified) verification.dateVerified = Date.now()
 
   verification.document = {
     id: utils.resourceId({
-      type: doc[TYPE],
+      type: formState.type,
       permalink: formInfo.permalink,
       link: formInfo.link
     }),
-    title: doc.title || doc[TYPE]
+    title: (doc && doc.title) || formState.type
   }
 
   verification.documentOwner = {
