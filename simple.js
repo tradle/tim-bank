@@ -572,61 +572,8 @@ SimpleBank.prototype.handleDocument = co(function* (req, res) {
 
   const session = state.imported[req.context]
   if (session && session.items.length) {
-    const current = session.items.shift()
-    session.imported.push(current)
-    const type = current[TYPE]
-    if (!session.items.length) delete state.imported[req.context]
-
-    if (type === 'tradle.VerifiedItem' && utils.formsEqual(current.item, formWrapper.object)) {
-      const verification = current.verification
-      const sources = verification.sources
-      if (sources) {
-        const signed = yield Q.all(sources.map(v => {
-          if (v[SIG]) {
-            throw new Error('verifications can\'t be pre-signed')
-          }
-
-          if (v._z) {
-            let existing
-            application.forms.find(f => {
-              return f.verifications.concat(f.issuedVerifications).find(v1 => {
-                if (v1.object._z === v._z) {
-                  return existing = v1
-                }
-              })
-            })
-
-            if (existing) return existing
-          }
-
-          return this._createVerification({
-            req,
-            verifiedItem: req.payload,
-            verification: v
-          })
-        }))
-
-        verification.sources = signed.reduce(function flatten (soFar, next) {
-          return soFar.concat(next)
-        }, [])
-        .map(v => v.object)
-      }
-
-      yield this._createAndSendVerification({
-        req,
-        verifiedItem: req.payload,
-        verification: current.verification
-      })
-
-      return this.continueProductApplication({ req })
-    } else {
-      // const model = this.models[type]
-      // if (model.subClassOf === 'tradle.FinancialProduct') {
-      //   const app = newApplicationState(type, crypto.randomBytes(32).toString('hex'))
-
-      //   state.pendingApplications.push(app)
-      // }
-    }
+    const done = yield this._tryImportNextItem({ req })
+    if (done) return
   }
 
   if (!utils.isVerifiableForm(this.models[req.type])) {
@@ -647,6 +594,68 @@ SimpleBank.prototype.handleDocument = co(function* (req, res) {
   }
 
   return next()
+})
+
+SimpleBank.prototype._tryImportNextItem = co(function* ({ req }) {
+  const { state, context, payload, application } = req
+  const session = state.imported[context]
+  if (!session) return
+
+  const match = session.items.find(saved => {
+    const form = saved[TYPE] === 'tradle.VerifiedItem' ? saved.item : saved
+    return utils.formsEqual(form, payload.object)
+  })
+
+  if (!match) return
+
+  session.imported.push(match)
+  session.items = session.items.filter(item => item !== match)
+  if (!session.items.length) delete state.imported[req.context]
+
+  if (match[TYPE] !== 'tradle.VerifiedItem') return
+
+  const { verification } = match
+  const { sources } = verification
+  if (sources) {
+    const signed = yield Q.all(sources.map(v => {
+      if (v[SIG]) {
+        throw new Error('verifications can\'t be pre-signed')
+      }
+
+      if (v._z) {
+        let existing
+        application.forms.find(f => {
+          return f.verifications.concat(f.issuedVerifications).find(v1 => {
+            if (v1.object._z === v._z) {
+              return existing = v1
+            }
+          })
+        })
+
+        if (existing) return existing
+      }
+
+      return this._createVerification({
+        req,
+        verifiedItem: req.payload,
+        verification: v
+      })
+    }))
+
+    verification.sources = signed.reduce(function flatten (soFar, next) {
+      return soFar.concat(next)
+    }, [])
+    .map(v => v.object)
+  }
+
+  yield this._createAndSendVerification({
+    req,
+    verifiedItem: req.payload,
+    verification: match.verification
+  })
+
+  yield this.continueProductApplication({ req })
+  return true
 })
 
 SimpleBank.prototype.onNextFormRequest = function (req, res) {
