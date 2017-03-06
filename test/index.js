@@ -198,7 +198,7 @@ testRemediation2()
 testManualMode()
 testContinue()
 
-runTests(init)
+testSharing(init)
 // Object.keys(setups).forEach(name => runTests(setups[name]))
 
 // testCustomProductList()
@@ -926,12 +926,11 @@ function testRemediation1 () {
       }
     }
 
-    let [msg, myProduct] = yield Q.all([
-      helpers.awaitType(SIMPLE_MESSAGE),
+    const [msg, myProduct] = yield Q.all([
+      helpers.awaitType('tradle.Confirmation'),
       helpers.awaitType('tradle.MyCurrentAccount')
     ])
 
-    t.ok(/confirm/.test(msg.object.object.message))
     t.equal(myProduct.object.object.myProductId, 'blah')
     yield verified
     yield teardown(setup)
@@ -1042,11 +1041,11 @@ function testRemediation2 () {
     })
 
     let [msg, myProduct] = yield Q.all([
-      helpers.awaitType(SIMPLE_MESSAGE),
+      helpers.awaitType('tradle.Confirmation'),
       helpers.awaitType('tradle.MyCurrentAccount')
     ])
 
-    t.ok(/confirm/.test(msg.object.object.message))
+    // t.ok(/confirm/.test(msg.object.object.message))
     t.equal(myProduct.object.object.myProductId, 'blah')
     yield verified
     yield teardown(setup)
@@ -1319,7 +1318,7 @@ function testShareContext () {
   })
 }
 
-function runTests (setupFn, idx) {
+function testSharing (setupFn, idx) {
   test('current account', function (t) {
     var setup
     runSetup(setupFn).then(_setup => {
@@ -1404,6 +1403,9 @@ function runTests (setupFn, idx) {
         changeBank(banks[1])
         return helpers.sendIdentity({ awaitUnchained: true })
           .then(() => helpers.startApplication())
+          // .then(() => helpers.shareVerification(ABOUT_YOU))
+          // .then(() => helpers.shareVerification(YOUR_MONEY))
+          // .then(() => helpers.shareVerification(LICENSE))
           .then(() => helpers.shareFormAndVerification({ form: ABOUT_YOU, nextForm: YOUR_MONEY }))
           .then(() => helpers.shareFormAndVerification({ form: YOUR_MONEY, nextForm: LICENSE }))
           .then(() => helpers.shareFormAndVerification({ form: LICENSE, awaitConfirmation: true }))

@@ -1061,11 +1061,8 @@ SimpleBank.prototype.continueRemediation1 = co(function* (opts) {
     if (session.done) return
 
     session.done = true
-    const msg = utils.buildSimpleMsg(
-      'Thank you for confirming your information with us!'
-    )
-
     this._debug('finished remediation')
+    const msg = this._newProductConfirmation(state, application)
     return this.send({ req, msg })
   }
 
@@ -1383,12 +1380,17 @@ SimpleBank.prototype._newProductConfirmation = function (state, application, pro
     return confirmation
   }
 
+  let message
+  if (productType === REMEDIATION) {
+    message = `Thanks for importing your data!`
+  } else {
+    message = `Congratulations! You were approved for: ${productModel.title}`
+  }
+
   const formIds = utils.getFormIds(application.forms)
   return {
     [TYPE]: 'tradle.Confirmation',
-    // message: imported
-    //   ? `Imported product: ${productModel.title}`
-    message: `Congratulations! You were approved for: ${productModel.title}`,
+    message,
     forms: formIds.map(id => {
       return { id }
     }),
