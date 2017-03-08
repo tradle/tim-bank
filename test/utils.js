@@ -12,7 +12,6 @@ var ROOT_HASH = constants.ROOT_HASH
 var CUR_HASH = constants.CUR_HASH
 var TYPE = constants.TYPE
 var NONCE = constants.NONCE
-var DSA = require('@tradle/otr').DSA
 var Driver = require('@tradle/engine').node
 // var FakeKeeper = helpers.fakeKeeper
 // var createFakeWallet = helpers.fakeWallet
@@ -33,10 +32,10 @@ var KEYS = [
     type: 'ec',
     purpose: 'update'
   },
-  {
-    type: 'dsa',
-    purpose: 'sign'
-  }
+  // {
+  //   type: 'dsa',
+  //   purpose: 'sign'
+  // }
 ]
 
 let dbCounter = 0
@@ -48,7 +47,7 @@ var utils = module.exports = {
   transactor,
   // newKeeper,
   getCoords,
-  getDSAKey,
+  // getDSAKey,
   buildNode,
   findKey,
   getDataDir,
@@ -150,13 +149,13 @@ function getCoords (tim) {
   }
 }
 
-function getDSAKey (keys) {
-  var key = keys.filter(function (k) {
-    return k.type === 'dsa'
-  })[0]
+// function getDSAKey (keys) {
+//   var key = keys.filter(function (k) {
+//     return k.type === 'dsa'
+//   })[0]
 
-  return DSA.parsePrivate(key.priv)
-}
+//   return DSA.parsePrivate(key.priv)
+// }
 
 // /**
 //  * returns mock keeper with fallback to sharedKeeper (which hosts identities)

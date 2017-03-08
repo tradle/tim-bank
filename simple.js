@@ -108,7 +108,12 @@ function SimpleBank (opts) {
 
   // TODO: plugin-ize
   bank._shouldChainReceivedMessage = req => {
-    return req.type === VERIFICATION || this._isForm(req.type)
+    if (req.msg.object.seal) {
+      this._debug(`not re-sealing "${req.type}"`)
+      return false
+    }
+
+    return this._isForm(req.type)
   }
 
   // create new customer
@@ -494,7 +499,7 @@ SimpleBank.prototype.publishCustomerIdentity = co(function* (req) {
   }
 
   this._debug('sealing customer identity with rootHash: ' + curLink)
-  yield tim.seal({ link: curLink })
+  yield this.seal({ link: curLink })
   const resp = {
     [TYPE]: 'tradle.IdentityPublished',
     identity: curLink
@@ -504,6 +509,14 @@ SimpleBank.prototype.publishCustomerIdentity = co(function* (req) {
     req: req,
     msg: resp
   })
+})
+
+SimpleBank.prototype.seal = co(function* ({ link }) {
+  this._debug('will seal ' + link)
+  yield this.willSeal({ link })
+  const seal = yield this.tim.seal({ link })
+  this._debug('queued seal for ' + link)
+  yield this.didSeal(seal)
 })
 
 SimpleBank.prototype.handleNewApplication = co(function* (req, res) {
@@ -735,7 +748,7 @@ SimpleBank.prototype._createVerification = co(function* (opts) {
   form.issuedVerifications = verifications
 
   // run async, don't wait
-  this.tim.seal({ link: verification.link })
+  this.seal({ link: verification.link })
 
   return verification
 })
@@ -1313,7 +1326,7 @@ SimpleBank.prototype._approveProduct = co(function* ({ req, application, product
     msg: confirmation
   })
 
-  this.tim.seal({ link: result.object.link })
+  this.seal({ link: result.object.link })
   application.product = result.object.permalink
   if (productType === EMPLOYEE_ONBOARDING) {
     this._ensureEmployees()
@@ -1684,6 +1697,14 @@ SimpleBank.prototype._execPlugins = co(function* (method, args) {
 
 SimpleBank.prototype._onNewCustomer = function ({ req }) {
   return this._execPlugins('newCustomer', arguments)
+}
+
+SimpleBank.prototype.willSeal = function ({ link }) {
+  return this._execPlugins('willSeal', arguments)
+}
+
+SimpleBank.prototype.didSeal = function (seal) {
+  return this._execPlugins('didSeal', arguments)
 }
 
 SimpleBank.prototype.didReceive = function ({ req, msg }) {

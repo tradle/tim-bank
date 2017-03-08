@@ -74,7 +74,6 @@ var extend = require('xtend')
 var clone = require('clone')
 var find = require('array-find')
 var memdown = require('memdown')
-var DSA = require('@tradle/otr').DSA
 var testUtils = require('./utils')
 var getCoords = testUtils.getCoords
 var testHelpers = require('@tradle/engine/test/helpers')
@@ -1401,7 +1400,7 @@ function testSharing (setupFn, idx) {
 
       function runBank2Scenario () {
         changeBank(banks[1])
-        return helpers.sendIdentity({ awaitUnchained: true })
+        return helpers.sendIdentity()
           .then(() => helpers.startApplication())
           // .then(() => helpers.shareVerification(ABOUT_YOU))
           // .then(() => helpers.shareVerification(YOUR_MONEY))
@@ -1420,6 +1419,7 @@ function testSharing (setupFn, idx) {
 
       function onReadSeal (wrapper) {
         if (wrapper.object[TYPE] !== VERIFICATION) {
+          t.notOk(bank === banks[1], '2nd bank should not reseal same objects')
           return
         }
 
@@ -1512,8 +1512,7 @@ function getHelpers (opts) {
     awaitTypeUnchained
   }
 
-  function sendIdentity (opts) {
-    opts = opts || {}
+  function sendIdentity (opts={}) {
     signNSend({
       [TYPE]: types.IDENTITY_PUBLISH_REQUEST,
       identity: applicant.identity,
@@ -1700,19 +1699,21 @@ function getHelpers (opts) {
   //   ])
   // }
 
-  function shareFormAndVerification (opts) {
-    const form = opts.form
+  function shareFormAndVerification (opts={}) {
+    const { form, nextForm } = opts
     const share = shareForm(form).then(() => shareVerification(form))
-    applicant.watchSeal({
-      link: verifications[form],
-      basePubKey: bank.tim.chainPubKey
-    })
-    .done()
+    if (opts.awaitUnchained) {
+      applicant.watchSeal({
+        link: verifications[form],
+        basePubKey: bank.tim.chainPubKey
+      })
+      .done()
+    }
 
     return Q.all([
       share,
-      awaitTypeUnchained(VERIFICATION),
-      opts.nextForm && awaitForm(opts.nextForm),
+      opts.awaitUnchained && awaitTypeUnchained(VERIFICATION),
+      nextForm && awaitForm(nextForm),
       opts.awaitConfirmation && awaitConfirmation()
     ])
 
@@ -1775,9 +1776,9 @@ function getHelpers (opts) {
       })
   }
 
-  function send (msg, opts) {
+  function send (msg, opts={}) {
     const type = msg.object ? msg.object[TYPE] : msg.type
-    let other = opts && opts.other
+    let other = opts.other
     let context = getContext()
     if (context && type !== 'tradle.ShareContext') {
       if (!other) other = {}
@@ -1795,6 +1796,8 @@ function getHelpers (opts) {
     } else {
       sendOpts.link = msg.link
     }
+
+    if (opts.seal !== false) sendOpts.seal = true
 
     return applicant.send(sendOpts)
       .then(result => {
