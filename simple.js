@@ -106,16 +106,6 @@ function SimpleBank (opts) {
 
   this._ready = this._ensureEmployees(opts.employees)
 
-  // TODO: plugin-ize
-  bank._shouldChainReceivedMessage = req => {
-    if (req.msg.object.seal) {
-      this._debug(`not re-sealing "${req.type}"`)
-      return false
-    }
-
-    return this._isForm(req.type)
-  }
-
   // create new customer
   bank.use(req => {
     if (req.state) return

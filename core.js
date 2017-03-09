@@ -303,14 +303,14 @@ Bank.prototype._handleRequest = co(function* (req) {
   try {
     yield self._middles.exec(req, res)
     yield self._setCustomerState(req)
-    if (self.shouldChainReceivedMessage(req)) {
-      self._debug('queuing chain-seal for received msg', req[TYPE])
-      // don't wait for this
-      self._chainReceivedMessage(req)
-        .catch(function (err) {
-          debug('failed to chain received msg', err)
-        })
-    }
+    // if (self.shouldChainReceivedMessage(req)) {
+    //   self._debug('queuing chain-seal for received msg', req[TYPE])
+    //   // don't wait for this
+    //   self._chainReceivedMessage(req)
+    //     .catch(function (err) {
+    //       debug('failed to chain received msg', err)
+    //     })
+    // }
 
     yield self._saveParsedMsg(req)
   } catch (err) {
@@ -323,25 +323,25 @@ Bank.prototype._handleRequest = co(function* (req) {
   return req
 })
 
-Bank.prototype.shouldChainReceivedMessage = function (req) {
-  // override this method
-  if (!Bank.ALLOW_CHAINING) return false
+// Bank.prototype.shouldChainReceivedMessage = function (req) {
+//   // override this method
+//   if (!Bank.ALLOW_CHAINING) return false
 
-  if (req.nochain || req.chain || req.tx || req.dateUnchained) {
-    return false
-  }
+//   if (req.nochain || req.chain || req.tx || req.dateUnchained) {
+//     return false
+//   }
 
-  return this._shouldChainReceivedMessage(req)
-}
+//   return this._shouldChainReceivedMessage(req)
+// }
 
-Bank.prototype._shouldChainReceivedMessage = function (req) {
-  return false
-}
+// Bank.prototype._shouldChainReceivedMessage = function (req) {
+//   return false
+// }
 
-Bank.prototype._chainReceivedMessage = function (req) {
-  // chain message on behalf of customer
-  return this.tim.seal({ link: req.payload.link })
-}
+// Bank.prototype._chainReceivedMessage = function (req) {
+//   // chain message on behalf of customer
+//   return this.tim.seal({ link: req.payload.link })
+// }
 
 Bank.prototype._setResource = function (type, rootHash, val) {
   typeforce('String', type)
