@@ -613,8 +613,6 @@ SimpleBank.prototype._tryImportNextItem = co(function* ({ req }) {
 
   session.imported.push(match)
   session.items = session.items.filter(item => item !== match)
-  if (!session.items.length) delete state.imported[req.context]
-
   if (match[TYPE] !== 'tradle.VerifiedItem') return
 
   const { verification } = match
