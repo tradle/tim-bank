@@ -905,11 +905,16 @@ SimpleBank.prototype.continueProductApplication = co(function* (opts) {
   if (missing) {
     if (req.type === VERIFICATION) {
       const id = req.payload.object.document.id
-      const { type } = utils.parseObjectId(id)
+      const { permalink } = utils.parseObjectId(id)
       // we already received the related form, so we probably already requested
       // this next form then...yea
-      if (utils.findFilledForm(state, type)) return
+      const formState = findFormState(application.forms, { permalink })
+      if (formState && formState.form.object) return
     }
+    // else if (this._isForm(req.type)) {
+    //   const formState = findFormState(application.forms, { permalink: req.payload.permalink })
+    //   if (formState.verifications.length) return
+    // }
 
     if (!this._auto.prompt || opts.noNextForm) return
 
