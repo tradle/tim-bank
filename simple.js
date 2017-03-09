@@ -903,7 +903,14 @@ SimpleBank.prototype.continueProductApplication = co(function* (opts) {
   })
 
   if (missing) {
-    if (req.type === VERIFICATION) return
+    if (req.type === VERIFICATION) {
+      const id = req.payload.object.document.id
+      const { type } = utils.parseObjectId(id)
+      // we already received the related form, so we probably already requested
+      // this next form then...yea
+      if (utils.findFilledForm(state, type)) return
+    }
+
     if (!this._auto.prompt || opts.noNextForm) return
 
     return this.requestForm({
