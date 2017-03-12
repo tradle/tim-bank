@@ -54,7 +54,8 @@ const {
   CUSTOMER_WAITING,
   SIMPLE_MESSAGE,
   NEXT_FORM_REQUEST,
-  EMPLOYEE_ONBOARDING
+  EMPLOYEE_ONBOARDING,
+  MY_EMPLOYEE_ONBOARDING
 } = require('./lib/types')
 
 const REMEDIATION_MODEL = {
@@ -379,7 +380,7 @@ SimpleBank.prototype._setProfile = function (req, res) {
 
 SimpleBank.prototype.getMyEmployees = co(function* () {
   const self = this
-  const passes = yield collect(this.tim.objects.type('tradle.MyEmployeeOnboarding'))
+  const passes = yield collect(this.tim.objects.type(MY_EMPLOYEE_ONBOARDING))
   return passes.filter(e => {
   // issued by "me" (the bank bot)
     return e.author === self.tim.permalink && !e.object.revoked
@@ -1279,14 +1280,16 @@ SimpleBank.prototype._revokeProduct = co(function* (opts) {
     return product = find(products[type], application => application.product === productPermalink)
   })
 
-  if (!product) {
+  if (product) {
+    product.revoked = true
     // state didn't change
-    throw utils.httpError(400, 'product not found')
+  } else {
+    this._debug(`revoke product: "${productPermalink}" not found...`)
+    // throw utils.httpError(400, 'product not found')
   }
 
-  product.revoked = true
-
   const wrapper = yield this.tim.objects.get(opts.product)
+  const type = wrapper.object[TYPE]
   // revoke product and send
   const productObj = wrapper.object
   delete productObj.message
@@ -1299,7 +1302,7 @@ SimpleBank.prototype._revokeProduct = co(function* (opts) {
     msg: productObj
   })
 
-  if (product.type === EMPLOYEE_ONBOARDING) {
+  if (type === EMPLOYEE_ONBOARDING) {
     this._ensureEmployees()
   }
 
