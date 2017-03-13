@@ -1599,6 +1599,13 @@ SimpleBank.prototype._handleVerification = co(function* (req, opts={}) {
 
 SimpleBank.prototype.forgetMe = co(function* (req) {
   const version = req.state.bankVersion
+  if (this.isEmployee(req.customer)) {
+    yield this._revokeProduct({
+      customer: req.customer,
+      product: EMPLOYEE_ONBOARDING
+    })
+  }
+
   // clear customer slate
   req.state = newCustomerState(req.state)
   req.state.bankVersion = version // preserve version
