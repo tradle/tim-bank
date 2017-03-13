@@ -429,8 +429,8 @@ SimpleBank.prototype.sendProductList = function (req) {
   this._productList.forEach(id => {
     if (id !== REMEDIATION && id !== EMPLOYEE_ONBOARDING) {
       const model = added[id] = this.models[id]
-      const reqd = utils.getRequiredForms(model)
-      reqd.forEach(id => {
+      const forms = utils.getRequiredForms(model).concat(utils.getOptionalForms(model))
+      forms.forEach(id => {
         added[id] = this.models[id]
       })
     }
