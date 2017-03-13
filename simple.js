@@ -429,8 +429,8 @@ SimpleBank.prototype.sendProductList = function (req) {
   this._productList.forEach(id => {
     if (id !== REMEDIATION && id !== EMPLOYEE_ONBOARDING) {
       const model = added[id] = this.models[id]
-      const forms = utils.getForms(model)
-      forms.forEach(id => {
+      const reqd = utils.getRequiredForms(model)
+      reqd.forEach(id => {
         added[id] = this.models[id]
       })
     }
@@ -665,7 +665,7 @@ SimpleBank.prototype.onNextFormRequest = function (req, res) {
   const formToSkip = req.payload.object.after
   const application = req.application || req.state.pendingApplications.find(application => {
     const model = models[application.type]
-    const forms = utils.getForms(model)
+    const forms = utils.getRequiredForms(model)
     return forms.indexOf(formToSkip) !== -1
   })
 
@@ -874,7 +874,7 @@ SimpleBank.prototype.continueProductApplication = co(function* (opts) {
   }
 
   const isFormOrVerification = req[TYPE] === VERIFICATION || this.models.docs.indexOf(req[TYPE]) !== -1
-  const reqdForms = utils.getForms(productModel)
+  const reqdForms = utils.getRequiredForms(productModel)
 
   const multiEntryForms = productModel.multiEntryForms || []
   const missing = find(reqdForms, type => {
@@ -977,7 +977,7 @@ SimpleBank.prototype.continueRemediation = co(function* (opts) {
   if (model && model.subClassOf === 'tradle.MyProduct') {
     const productType = type.replace('.My', '.') // hack
     const pModel = this.models[productType]
-    const reqdForms = utils.getForms(pModel)
+    const reqdForms = utils.getRequiredForms(pModel)
     const forms = application.forms.filter(f => {
       return reqdForms.indexOf(f.type) !== -1
     })
@@ -1086,7 +1086,7 @@ SimpleBank.prototype.continueRemediation1 = co(function* (opts) {
   if (model && model.subClassOf === 'tradle.MyProduct') {
     const productType = type.replace('.My', '.') // hack
     const pModel = this.models[productType]
-    const reqdForms = utils.getForms(pModel)
+    const reqdForms = utils.getRequiredForms(pModel)
     const forms = application.forms.filter(f => {
       return reqdForms.indexOf(f.type) !== -1
     })
