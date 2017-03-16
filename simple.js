@@ -1076,7 +1076,7 @@ SimpleBank.prototype.continueRemediation1 = co(function* (opts) {
 
     session.done = true
     this._debug('finished remediation')
-    const msg = this._newProductConfirmation(state, application)
+    const msg = this._newProductCertificate(state, application)
     return this.send({ req, msg })
   }
 
@@ -1270,6 +1270,10 @@ SimpleBank.prototype.getCustomerWithApplication = function (applicationHash) {
     .then(this.getCustomerState)
 }
 
+SimpleBank.prototype.setCustomerState = function (customer, state) {
+  return this.bank._setCustomerState({ customer, state })
+}
+
 SimpleBank.prototype._revokeProduct = co(function* (opts) {
   // TODO: minimize code repeat with continueProductApplication
   const req = opts.req
@@ -1322,15 +1326,32 @@ SimpleBank.prototype._approveProduct = co(function* ({ req, application, product
   const products = state.products[productType]
   products.push(application)
   state.pendingApplications = state.pendingApplications.filter(app => app !== application)
-  const confirmation = this._newProductConfirmation(state, application, product)
+  const certificate = this._newProductCertificate(state, application, product)
+  yield this.willIssueProduct({
+    req,
+    state,
+    product: application,
+    certificate: certificate
+  })
 
   const result = yield this.send({
     req: req,
-    msg: confirmation
+    msg: certificate
+  })
+
+  yield this.didIssueProduct({
+    req,
+    state,
+    certificate,
+    product: application
   })
 
   this.seal({ link: result.object.link })
+  application.certificate = result.object
+
+  // retain for backwards compat
   application.product = result.object.permalink
+
   if (productType === EMPLOYEE_ONBOARDING) {
     this._ensureEmployees()
   }
@@ -1338,7 +1359,7 @@ SimpleBank.prototype._approveProduct = co(function* ({ req, application, product
   return result
 })
 
-SimpleBank.prototype._newProductConfirmation = function (state, application, product={}) {
+SimpleBank.prototype._newProductCertificate = function (state, application, product={}) {
   const productType = application.type
   const productModel = this.models[productType]
   const forms = application.forms
@@ -1739,6 +1760,14 @@ SimpleBank.prototype.willRequestEdit = function ({ req, state, editRequest }) {
 
 SimpleBank.prototype.willRequestForm = function ({ state, application, form, formRequest }) {
   return this._execPlugins('willRequestForm', arguments)
+}
+
+SimpleBank.prototype.willIssueProduct = function ({ state, product, certificate }) {
+  return this._execPlugins('willIssueProduct', arguments)
+}
+
+SimpleBank.prototype.didIssueProduct = function ({ state, product, certificate }) {
+  return this._execPlugins('didIssueProduct', arguments)
 }
 
 SimpleBank.prototype.onApplicationFormsCollected = function ({ req, state, application }) {

@@ -249,7 +249,9 @@ Bank.prototype._onMessage = co(function* (received, sync) {
           other: other
         })
 
-        return
+        const req = new RequestState(msgWrapper, objWrapper)
+        req.customer = fwdTo
+        return req
       }
 
       // set actual customer
