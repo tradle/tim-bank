@@ -243,14 +243,14 @@ Bank.prototype._onMessage = co(function* (received, sync) {
         // forward without processing
         const context = msgWrapper.object.context
         const other = context && { context }
-        this.tim.signAndSend({
-          to: { permalink: fwdTo },
-          object: tutils.omit(obj, SIG),
-          other: other
-        })
-
         const req = new RequestState(msgWrapper, objWrapper)
         req.customer = fwdTo
+        req.context = context
+        yield this.send({
+          req,
+          msg: tutils.omit(obj, SIG)
+        })
+
         return req
       }
 
@@ -385,7 +385,7 @@ Bank.prototype.createCustomerStream = function (opts) {
  * @param  {?RequestState} opts.req
  * @return {Promise}
  */
-Bank.prototype.send = co(function* (opts) {
+Bank.prototype._send = co(function* (opts) {
   // typeforce('RequestState', req)
   // typeforce('Object', resp)
 

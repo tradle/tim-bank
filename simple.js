@@ -107,6 +107,8 @@ function SimpleBank (opts) {
 
   this._ready = this._ensureEmployees(opts.employees)
 
+  bank.send = this.send.bind(bank)
+
   // create new customer
   bank.use(req => {
     if (req.state) return
@@ -1440,7 +1442,7 @@ SimpleBank.prototype._newProductCertificate = function (state, application, prod
 
 SimpleBank.prototype.send = co(function* ({ req, msg }) {
   yield this.willSend({ req, msg })
-  const ret = yield this.bank.send({ req, msg })
+  const ret = yield this.bank._send({ req, msg })
   yield this.didSend({ req, msg: ret.message })
   return ret
 })
