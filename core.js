@@ -282,6 +282,9 @@ Bank.prototype._onMessage = co(function* (received, sync) {
   const unlock = yield this.lock(customer, 'process incoming message')
   try {
     return yield this._handleRequest(req)
+  } catch (err) {
+    console.log('Error handling request: ', err)
+    throw err
   } finally {
     unlock()
   }
