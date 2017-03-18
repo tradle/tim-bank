@@ -550,6 +550,7 @@ SimpleBank.prototype.handleDocument = co(function* (req, res) {
 
     const formState = updateWithReceivedForm(req.state, req.payload)
     const should = yield this.shouldSendVerification({
+      req,
       state: req.state,
       form: formState
     })
@@ -587,6 +588,7 @@ SimpleBank.prototype.handleDocument = co(function* (req, res) {
   }
 
   const should = yield this.shouldSendVerification({
+    req,
     state,
     application: application,
     form: formState
@@ -1454,11 +1456,9 @@ SimpleBank.prototype.requestForm = co(function* (opts) {
     productModel: typeforce.Object
   }, opts)
 
-  const req = opts.req
-  const form = opts.form
-  const productModel = opts.productModel
-  const multiEntryForms = opts.productModel.multiEntryForms || []
-  const isMultiEntry = multiEntryForms.indexOf(opts.form) !== -1
+  const { req, form, productModel } = opts
+  const { multiEntryForms=[] } = productModel
+  const isMultiEntry = multiEntryForms.indexOf(form) !== -1
   const formModel = this.models[form]
   const prompt = getFormRequestMessage(formModel)
 
@@ -1475,6 +1475,7 @@ SimpleBank.prototype.requestForm = co(function* (opts) {
   }
 
   yield this.willRequestForm({
+    req,
     state: req.state,
     application: req.application,
     form,
@@ -1602,6 +1603,7 @@ SimpleBank.prototype._handleVerification = co(function* (req, opts={}) {
   verifiedItem.verifications.push(verification)
 
   const should = yield this.shouldSendVerification({
+    req,
     state: req.state,
     application: application,
     form: verifiedItem
@@ -1809,6 +1811,10 @@ SimpleBank.prototype._execBooleanPlugin = co(function* (method, args, fallbackVa
       ret = plugin[method].apply(this, args)
       if (utils.isPromise(ret)) ret = yield ret
     } catch (err) {
+      if (err instanceof TypeError || err instanceof ReferenceError) {
+        throw err
+      }
+
       return {
         result: false,
         reason: err
@@ -1869,7 +1875,8 @@ function newApplicationState (type, permalink) {
     type,
     permalink,
     skip: [],
-    forms: []
+    forms: [],
+    formRequests: {}
   }
 }
 
