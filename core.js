@@ -230,35 +230,6 @@ Bank.prototype._onMessage = co(function* (received, sync) {
     return e[ROOT_HASH] === from
   })
 
-  const fwdTo = !Bank.NO_FORWARDING && msgWrapper.object.forward
-  if (fwdTo) {
-    if (!employee) {
-      return utils.rejectWithHttpError(403, 'this bot only forwards message from employees')
-    }
-
-    if (fwdTo !== this.tim.permalink && fwdTo !== this.tim.link) {
-      if (obj[TYPE] !== VERIFICATION) {
-        // re-sign the object
-        // the customer doesn't need to know the identity of the employee
-        // forward without processing
-        const context = msgWrapper.object.context
-        const other = context && { context }
-        const req = new RequestState(msgWrapper, objWrapper)
-        req.customer = fwdTo
-        req.context = context
-        yield this.send({
-          req,
-          msg: tutils.omit(obj, SIG)
-        })
-
-        return req
-      }
-
-      // set actual customer
-      customer = fwdTo
-    }
-  }
-
   // TODO: move most of this out to implementation (e.g. simple.js)
   let appLink = msgWrapper.object.context
   // HACK!
@@ -269,13 +240,28 @@ Bank.prototype._onMessage = co(function* (received, sync) {
   const req = new RequestState(msgWrapper, objWrapper)
   req.sync = sync
   req.customer = customer
+  const fwdTo = !Bank.NO_FORWARDING && msgWrapper.object.forward
+  if (fwdTo) {
+    if (!employee) {
+      return utils.rejectWithHttpError(403, 'this bot only forwards message from employees')
+    }
+
+    if (fwdTo === this.tim.permalink || fwdTo === this.tim.link) {
+      this._debug('not forwarding to self')
+      return
+    }
+
+    // set actual customer
+    req.customer = fwdTo
+    req.isFromEmployeeToCustomer = true
+  }
 
   if (appLink) {
     try {
       customer = req.customer = yield this._getCustomerForContext(appLink)
       req.customerIdentityInfo = yield this.tim.addressBook.lookupIdentity({ permalink: customer })
     } catch (err) {
-      this._debug('customer not found for context', appLink, err)
+      this._debug('customer not found for context', appLink)
     }
   }
 
@@ -283,7 +269,7 @@ Bank.prototype._onMessage = co(function* (received, sync) {
   try {
     return yield this._handleRequest(req)
   } catch (err) {
-    console.log('Error handling request: ', err)
+    this._debug('Error handling request:', err)
     throw err
   } finally {
     unlock()
@@ -388,7 +374,7 @@ Bank.prototype.createCustomerStream = function (opts) {
  * @param  {?RequestState} opts.req
  * @return {Promise}
  */
-Bank.prototype._send = co(function* (opts) {
+Bank.prototype.send = co(function* (opts) {
   // typeforce('RequestState', req)
   // typeforce('Object', resp)
 

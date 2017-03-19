@@ -71,6 +71,7 @@ const noop = function () {}
 const DAY_MILLIS = 24 * 3600 * 1000
 
 function SimpleBank (opts) {
+  const self = this
   if (!(this instanceof SimpleBank)) {
     return new SimpleBank(opts)
   }
@@ -106,8 +107,6 @@ function SimpleBank (opts) {
   const bank = this.bank = new Bank(opts)
 
   this._ready = this._ensureEmployees(opts.employees)
-
-  bank.send = this.send.bind(bank)
 
   // create new customer
   bank.use(req => {
@@ -161,7 +160,9 @@ function SimpleBank (opts) {
     if (!req.context) return this.sendProductList(req)
   })
 
-  bank.use(PRODUCT_APPLICATION, (req) => {
+  bank.use(PRODUCT_APPLICATION, req => {
+    if (req.isFromEmployeeToCustomer) return
+
     const product = req.payload.object.product
     req.productType = product
     if (product === 'tradle.Remediation') {
@@ -210,6 +211,23 @@ function SimpleBank (opts) {
   })
 
   bank.use('tradle.ShareContext', this.shareContext)
+  bank.use(co(function* (req) {
+    if (!req.isFromEmployeeToCustomer) return
+
+    const { object } = req.payload
+    // handle verifications separately
+    if (object[TYPE] === VERIFICATION) return
+
+    // forward to customer
+    //
+    // re-sign the object
+    // the customer doesn't need to know the identity of the employee
+    // forward without processing
+    yield self.send({
+      req,
+      msg: tradleUtils.omit(object, SIG)
+    })
+  }))
 
   this._shareContexts()
   this._plugins = []
@@ -281,6 +299,8 @@ SimpleBank.prototype._isMyProduct = function (type) {
 }
 
 SimpleBank.prototype._assignRelationshipManager = function (req) {
+  if (req.isFromEmployeeToCustomer) return
+
   // assign relationship manager if none is assigned
   const from = req.payload.author.permalink
   const isEmployee = this.isEmployee(from)
@@ -374,6 +394,8 @@ SimpleBank.prototype._ensureEmployees = co(function* (employees) {
 })
 
 SimpleBank.prototype._setProfile = function (req, res) {
+  if (req.isFromEmployeeToCustomer) return
+
   const profile = req.payload.object.profile
   if (profile) {
     req.state.profile = profile
@@ -423,9 +445,9 @@ SimpleBank.prototype._autoResponseDisabled = function (req) {
 }
 
 SimpleBank.prototype.sendProductList = function (req) {
+  if (req.isFromEmployeeToCustomer) return
   if (this._autoResponseDisabled(req)) return
 
-  const bank = this.bank
   const added = {}
   const formModels = {}
   this._productList.forEach(id => {
@@ -452,7 +474,7 @@ SimpleBank.prototype.sendProductList = function (req) {
     ? `Hello ${name}!`
     : 'Hello!'
 
-  return bank.send({
+  return this.send({
     req: req,
     msg: {
       [TYPE]: PRODUCT_LIST,
@@ -465,9 +487,10 @@ SimpleBank.prototype.sendProductList = function (req) {
 }
 
 SimpleBank.prototype.publishCustomerIdentity = co(function* (req) {
+  if (req.isFromEmployeeToCustomer) return
+
   // TODO: verify that sig of identityPublishRequest comes from sign/update key
   // of attached identity. Need to factor this out of @tradle/verifier
-  const bank = this.bank
   const identity = req.payload.object.identity
   const tim = this.tim
   const curLink = protocol.linkString(identity)
@@ -478,7 +501,7 @@ SimpleBank.prototype.publishCustomerIdentity = co(function* (req) {
     // assume it's on its way to be published
     if (obj && 'sealstatus' in obj) {
       // may not be published yet, but def queued
-      return bank.send({
+      return this.send({
         req: req,
         msg: utils.buildSimpleMsg('already published', IDENTITY)
       })
@@ -498,7 +521,7 @@ SimpleBank.prototype.publishCustomerIdentity = co(function* (req) {
     identity: curLink
   }
 
-  return bank.send({
+  return this.send({
     req: req,
     msg: resp
   })
@@ -517,6 +540,8 @@ SimpleBank.prototype.handleNewApplication = co(function* (req, res) {
     productType: 'String'
   }, req)
 
+  if (req.isFromEmployeeToCustomer) return
+
   const { productType } = req
   if (productType === REMEDIATION) return
 
@@ -533,6 +558,8 @@ SimpleBank.prototype.handleNewApplication = co(function* (req, res) {
 })
 
 SimpleBank.prototype.handleDocument = co(function* (req, res) {
+  if (req.isFromEmployeeToCustomer) return
+
   const appLink = req.context
   const application = req.application
   if (!application || application.isProduct) {
@@ -665,6 +692,8 @@ SimpleBank.prototype._tryImportNextItem = co(function* ({ req }) {
 })
 
 SimpleBank.prototype.onNextFormRequest = function (req, res) {
+  if (req.isFromEmployeeToCustomer) return
+
   const models = this.models
   const formToSkip = req.payload.object.after
   const application = req.application || req.state.pendingApplications.find(application => {
@@ -1016,6 +1045,8 @@ SimpleBank.prototype.continueRemediation = co(function* (opts) {
 
 SimpleBank.prototype.handleConfirmPackageResponse = co(function* (req) {
   const self = this
+  if (req.isFromEmployeeToCustomer) return
+
   const { context, state } = req
   const session = state.imported[context]
   const { imported, items, length } = session
@@ -1444,7 +1475,7 @@ SimpleBank.prototype._newProductCertificate = function (state, application, prod
 
 SimpleBank.prototype.send = co(function* ({ req, msg }) {
   yield this.willSend({ req, msg })
-  const ret = yield this.bank._send({ req, msg })
+  const ret = yield this.bank.send({ req, msg })
   yield this.didSend({ req, msg: ret.message })
   return ret
 })
@@ -1495,6 +1526,8 @@ SimpleBank.prototype.employees = function () {
 }
 
 SimpleBank.prototype.getEmployee = function (req) {
+  if (req.isFromEmployeeToCustomer) return
+
   const bank = this.bank
   const employeeIdentifier = req.payload.object.employee
   const employeeInfo = find(this._employees, info => {
@@ -1623,6 +1656,8 @@ SimpleBank.prototype._handleVerification = co(function* (req, opts={}) {
 })
 
 SimpleBank.prototype.forgetMe = co(function* (req) {
+  if (req.isFromEmployeeToCustomer) return
+
   const version = req.state.bankVersion
   if (this.isEmployee(req.customer)) {
     yield this._revokeProduct({
