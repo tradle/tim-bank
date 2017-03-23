@@ -23,8 +23,27 @@ const createContextDB = require('@tradle/message-context')
 const BASE_MODELS = require('@tradle/models')
 const Bank = require('./')
 const utils = require('./lib/utils')
+const {
+  find,
+  pick,
+  omit,
+  findVerification,
+  getAllApplications,
+  randomDecimalString,
+  getRequiredForms,
+  getOptionalForms,
+  buildSimpleMsg,
+  httpError,
+  formsEqual,
+  validateResource,
+  getApplication,
+  findFormStateLenient,
+  findFilledForm,
+  parseObjectId,
+  getFormIds
+} = utils
+
 const Actions = require('./lib/actionCreators')
-const find = utils.find
 const RequestState = require('./lib/requestState')
 const defaultPlugins = require('./lib/defaultPlugins')
 const debug = require('./debug')
@@ -328,7 +347,7 @@ SimpleBank.prototype._assignRelationshipManager = function (req) {
     if (req.state.profile) {
       intro.profile = req.state.profile
     } else {
-      intro.name = 'Customer ' + utils.randomDecimalString(6)
+      intro.name = 'Customer ' + randomDecimalString(6)
     }
 
     this.tim.signAndSend({
@@ -384,7 +403,7 @@ SimpleBank.prototype._ensureEmployees = co(function* (employees) {
       permalink: pass.customer,
       pub: identityInfo.object,
       profile: {
-        name: utils.pick(pass, 'firstName', 'lastName')
+        name: pick(pass, 'firstName', 'lastName')
       }
       // txId: e.to.txId
     }
@@ -453,7 +472,7 @@ SimpleBank.prototype.sendProductList = function (req) {
   this._productList.forEach(id => {
     if (id !== REMEDIATION && id !== EMPLOYEE_ONBOARDING) {
       const model = added[id] = this.models[id]
-      const forms = utils.getRequiredForms(model).concat(utils.getOptionalForms(model))
+      const forms = getRequiredForms(model).concat(getOptionalForms(model))
       forms.forEach(id => {
         added[id] = this.models[id]
       })
@@ -503,7 +522,7 @@ SimpleBank.prototype.publishCustomerIdentity = co(function* (req) {
       // may not be published yet, but def queued
       return this.send({
         req: req,
-        msg: utils.buildSimpleMsg('already published', IDENTITY)
+        msg: buildSimpleMsg('already published', IDENTITY)
       })
     }
   } catch (err) {
@@ -566,7 +585,7 @@ SimpleBank.prototype.handleDocument = co(function* (req, res) {
     // TODO: save in prefilled documents
 
     if (appLink) {
-      throw utils.httpError(400, `application ${appLink} not found`)
+      throw httpError(400, `application ${appLink} not found`)
     }
 
     // was previously an object,
@@ -638,7 +657,7 @@ SimpleBank.prototype._tryImportNextItem = co(function* ({ req }) {
 
   const match = session.items.find(saved => {
     const form = saved[TYPE] === 'tradle.VerifiedItem' ? saved.item : saved
-    return utils.formsEqual(form, payload.object)
+    return formsEqual(form, payload.object)
   })
 
   if (!match) return
@@ -698,7 +717,7 @@ SimpleBank.prototype.onNextFormRequest = function (req, res) {
   const formToSkip = req.payload.object.after
   const application = req.application || req.state.pendingApplications.find(application => {
     const model = models[application.type]
-    const forms = utils.getRequiredForms(model)
+    const forms = getRequiredForms(model)
     return forms.indexOf(formToSkip) !== -1
   })
 
@@ -712,11 +731,11 @@ SimpleBank.prototype.validateDocument = function (req) {
   const doc = req.payload.object
   const type = doc[TYPE]
   const model = this.models[type]
-  if (!model) throw utils.httpError(400, `unknown type ${type}`)
+  if (!model) throw httpError(400, `unknown type ${type}`)
 
   let err
   if (this._validate) {
-    err = utils.validateResource(doc, model)
+    err = validateResource(doc, model)
   }
 
   if (!err) {
@@ -750,7 +769,7 @@ SimpleBank.prototype._createVerification = co(function* (opts) {
   const product = req.product
   const application = appLink ? pending || product : req.state // productless forms in req.state.forms
   if (!findFormState(application.forms, verifiedItem )) {
-    throw utils.httpError(400, 'form not found, refusing to send verification')
+    throw httpError(400, 'form not found, refusing to send verification')
   }
 
   const identityInfo = this.tim.identityInfo
@@ -783,7 +802,7 @@ SimpleBank.prototype._sendVerification = co(function* (opts) {
 
   const { req, link } = opts
   const verification = findVerification(req.state, link)
-  if (!verification) throw utils.httpError(400, `verification ${link} not found`)
+  if (!verification) throw httpError(400, `verification ${link} not found`)
 
   return this.send({
     req: req,
@@ -874,7 +893,7 @@ SimpleBank.prototype.continueProductApplication = co(function* (opts) {
 
   let state = (req || opts).state
   const context = opts.application || req.context
-  const application = utils.getApplication(state, context)
+  const application = getApplication(state, context)
   if (!application) {
     this._debug(`pending application ${context} not found`)
     return
@@ -884,12 +903,12 @@ SimpleBank.prototype.continueProductApplication = co(function* (opts) {
   const isRemediation = productType === REMEDIATION
   const productModel = isRemediation ? REMEDIATION_MODEL : this.models[productType]
   if (!productModel) {
-    throw utils.httpError(400, 'no such product model: ' + productType)
+    throw httpError(400, 'no such product model: ' + productType)
   }
 
   const thisProduct = state.products[productType]
   if (thisProduct && thisProduct.length && !productModel.customerCanHaveMultiple) {
-    const msg = utils.buildSimpleMsg(
+    const msg = buildSimpleMsg(
       'You already have a ' + productModel.title + ' with us!'
     )
 
@@ -907,7 +926,7 @@ SimpleBank.prototype.continueProductApplication = co(function* (opts) {
   }
 
   const isFormOrVerification = req[TYPE] === VERIFICATION || this.models.docs.indexOf(req[TYPE]) !== -1
-  const reqdForms = utils.getRequiredForms(productModel)
+  const reqdForms = getRequiredForms(productModel)
 
   const multiEntryForms = productModel.multiEntryForms || []
   const missing = find(reqdForms, type => {
@@ -920,7 +939,7 @@ SimpleBank.prototype.continueProductApplication = co(function* (opts) {
     }
 
     // find and use recent if available
-    const recent = utils.findFilledForm(state, type)
+    const recent = findFilledForm(state, type)
     if (recent && recent.state) {
       if (Date.now() - recent.state.dateReceived < DAY_MILLIS) {
         // TODO: stop using 'body' and just use the wrapper that comes
@@ -937,7 +956,7 @@ SimpleBank.prototype.continueProductApplication = co(function* (opts) {
   if (missing) {
     if (req.type === VERIFICATION) {
       const id = req.payload.object.document.id
-      const { permalink } = utils.parseObjectId(id)
+      const { permalink } = parseObjectId(id)
       // we already received the related form, so we probably already requested
       // this next form then...yea
       const formState = findFormState(application.forms, { permalink })
@@ -993,7 +1012,7 @@ SimpleBank.prototype.continueRemediation = co(function* (opts) {
   const { context, application, state, customer, sync, from, to } = req
   const session = state.imported[context]
   if (!(session && session.items.length)) {
-    const msg = utils.buildSimpleMsg(
+    const msg = buildSimpleMsg(
       'Thank you for confirming your information with us!'
     )
 
@@ -1010,7 +1029,7 @@ SimpleBank.prototype.continueRemediation = co(function* (opts) {
   if (model && model.subClassOf === 'tradle.MyProduct') {
     const productType = type.replace('.My', '.') // hack
     const pModel = this.models[productType]
-    const reqdForms = utils.getRequiredForms(pModel)
+    const reqdForms = getRequiredForms(pModel)
     const forms = application.forms.filter(f => {
       return reqdForms.indexOf(f.type) !== -1
     })
@@ -1121,7 +1140,7 @@ SimpleBank.prototype.continueRemediation1 = co(function* (opts) {
   if (model && model.subClassOf === 'tradle.MyProduct') {
     const productType = type.replace('.My', '.') // hack
     const pModel = this.models[productType]
-    const reqdForms = utils.getRequiredForms(pModel)
+    const reqdForms = getRequiredForms(pModel)
     const forms = application.forms.filter(f => {
       return reqdForms.indexOf(f.type) !== -1
     })
@@ -1173,11 +1192,11 @@ SimpleBank.prototype.approveProduct = co(function* (opts) {
   const req = updatedOpts.req
   try {
     let appLink = opts.application
-    let application = appLink && utils.getApplication(req.state, appLink)
+    let application = appLink && getApplication(req.state, appLink)
     if (!application) {
       application = find(req.state.pendingApplications || [], app => app.type === opts.productType)
       if (!application) {
-        throw utils.httpError(400, `pending application ${appLink} not found`)
+        throw httpError(400, `pending application ${appLink} not found`)
       } else {
         appLink = application.permalink
       }
@@ -1227,13 +1246,13 @@ SimpleBank.prototype.handleShareContext = co(function* (req, res) {
   const from = req.from.permalink
   const isEmployee = this.isEmployee(from)
   if (isEmployee && req.state.relationshipManager !== from) {
-    throw utils.httpError(403, 'employee is not authorized to share this context')
+    throw httpError(403, 'employee is not authorized to share this context')
   }
 
   // TODO:
   // need to check whether this context is theirs to share
   const props = req.payload.object
-  const context = utils.parseObjectId(props.context.id).permalink
+  const context = parseObjectId(props.context.id).permalink
   return this.shareContext({
     context,
     recipients: props.with,
@@ -1252,11 +1271,11 @@ SimpleBank.prototype.shareContext = co(function* ({ customerState, context, reci
   })
 
   if (!cid) {
-    throw utils.httpError(400, 'invalid context')
+    throw httpError(400, 'invalid context')
   }
 
   recipients = recipients.map(r => {
-    return utils.parseObjectId(r.id).permalink
+    return parseObjectId(r.id).permalink
   })
 
   // update context state
@@ -1334,7 +1353,7 @@ SimpleBank.prototype._revokeProduct = co(function* (opts) {
     // state didn't change
   } else {
     this._debug(`revoke product: "${productPermalink}" not found...`)
-    // throw utils.httpError(400, 'product not found')
+    // throw httpError(400, 'product not found')
   }
 
   const wrapper = yield this.tim.objects.get(opts.product)
@@ -1450,12 +1469,12 @@ SimpleBank.prototype._newProductCertificate = function (state, application, prod
 
     copyProperties(confirmation, confirmation[TYPE])
     if (!confirmation.myProductId) {
-      confirmation.myProductId = utils.randomDecimalString(10)
+      confirmation.myProductId = randomDecimalString(10)
     }
 
     if (productType === EMPLOYEE_ONBOARDING && !confirmation.firstName && confirmation.lastName) {
       if (state.profile) {
-        extend(confirmation, utils.pick(state.profile, 'firstName', 'lastName'))
+        extend(confirmation, pick(state.profile, 'firstName', 'lastName'))
       }
     }
 
@@ -1469,7 +1488,7 @@ SimpleBank.prototype._newProductCertificate = function (state, application, prod
     message = `Congratulations! You were approved for: ${productModel.title}`
   }
 
-  const formIds = utils.getFormIds(application.forms)
+  const formIds = getFormIds(application.forms)
   return {
     [TYPE]: 'tradle.Confirmation',
     message,
@@ -1558,7 +1577,7 @@ SimpleBank.prototype.getEmployee = function (req) {
 
   const resp = {
     [TYPE]: 'tradle.EmployeeInfo',
-    employee: utils.pick(employeeInfo, 'pub', 'profile')
+    employee: pick(employeeInfo, 'pub', 'profile')
   }
 
   return this.send({
@@ -1577,13 +1596,13 @@ SimpleBank.prototype.receiveVerification = co(function* (opts) {
     req = sim.req
   }
 
-  const verifiedItemInfo = utils.parseObjectId(verification.document.id)
+  const verifiedItemInfo = parseObjectId(verification.document.id)
   const application = getAllApplications(req.state).find(application => {
     return findFormState(application.forms, verifiedItemInfo)
   })
 
   if (!application) {
-    throw utils.httpError(400, `application not found for verification ${verification}`)
+    throw httpError(400, `application not found for verification ${verification}`)
   }
 
   try {
@@ -1618,20 +1637,20 @@ SimpleBank.prototype._handleVerification = co(function* (req, opts={}) {
   const product = req.product
   const application = pending || product
   if (!application) {
-    throw utils.httpError(400, `application ${appLink} not found`)
+    throw httpError(400, `application ${appLink} not found`)
   }
 
   let verification = req.payload
   const isByEmployee = this.isEmployee(verification.author.permalink)
   if (isByEmployee) {
     verification = yield this.tim.createObject({
-      object: utils.omit(verification.object, SIG)
+      object: omit(verification.object, SIG)
     })
 
     verification.author = this.tim.permalink
   }
 
-  const verifiedItemInfo = utils.parseObjectId(verification.object.document.id)
+  const verifiedItemInfo = parseObjectId(verification.object.document.id)
   let verifiedItem = findFormState(application.forms, verifiedItemInfo)
   if (!verifiedItem) {
     verifiedItem = newFormStateObject({
@@ -1881,10 +1900,18 @@ SimpleBank.prototype.list = function (type, opts) {
   return this.bank.list(type, opts)
 }
 
+SimpleBank.prototype.listCustomers = function (opts) {
+  return this.bank.listCustomers(opts)
+}
+
+SimpleBank.prototype.listContexts = function (opts) {
+  return this.bank.listContexts(opts)
+}
+
 function getType (obj) {
   if (obj[TYPE]) return obj[TYPE]
   if (!obj.id) return
-  return utils.parseObjectId(obj.id).type
+  return parseObjectId(obj.id).type
 }
 
 function alphabetical (a, b) {
@@ -1916,7 +1943,7 @@ function findFormState (forms, formInfo) {
   //
   // TODO: revert to this
   // return utils.findFormState(pending.forms, { link: formInfo.link })
-  return utils.findFormStateLenient(forms, formInfo)
+  return findFormStateLenient(forms, formInfo)
 }
 
 function newApplicationState (type, permalink) {
@@ -2032,27 +2059,6 @@ function newCustomerState (customer) {
     bankVersion: BANK_VERSION,
     contexts: {}
   }, tradleUtils.pick(customer, 'permalink', 'profile', 'identity'))
-}
-
-function findVerification (state, link) {
-  let verification
-  getAllApplications(state).find(application => {
-    return application.forms.find(form => {
-      return verification = form.issuedVerifications.find(v => {
-        return v.link === link
-      })
-    })
-  })
-
-  return verification
-}
-
-function getAllApplications (state) {
-  const products = Object.keys(state.products).reduce(function (all, productType) {
-    return all.concat(state.products[productType])
-  }, [])
-
-  return state.pendingApplications.concat(products).concat(state)
 }
 
 function autoResponseDisabled (req) {

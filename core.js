@@ -146,6 +146,14 @@ Bank.prototype.use = function (type, fn) {
   return this
 }
 
+Bank.prototype.listContexts = function (opts) {
+  return this.list(CONTEXT, opts)
+}
+
+Bank.prototype.listCustomers = function (opts) {
+  return this.list(CUSTOMER, opts)
+}
+
 Bank.prototype.list = function (type, opts={}) {
   const start = prefixKey(type, '')
   opts = extend({
