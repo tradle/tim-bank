@@ -210,7 +210,7 @@ function SimpleBank (opts) {
     })
   })
 
-  bank.use('tradle.ShareContext', this.shareContext)
+  bank.use('tradle.ShareContext', this.handleShareContext)
   bank.use(co(function* (req) {
     if (!req.isFromEmployeeToCustomer) return
 
@@ -1223,60 +1223,70 @@ SimpleBank.prototype.revokeProduct = co(function* (opts) {
   }
 })
 
-SimpleBank.prototype.shareContext = co(function* (req, res) {
-  // TODO:
-  // need to check whether this context is theirs to share
-  const self = this
+SimpleBank.prototype.handleShareContext = co(function* (req, res) {
   const from = req.from.permalink
   const isEmployee = this.isEmployee(from)
   if (isEmployee && req.state.relationshipManager !== from) {
     throw utils.httpError(403, 'employee is not authorized to share this context')
   }
 
+  // TODO:
+  // need to check whether this context is theirs to share
   const props = req.payload.object
   const context = utils.parseObjectId(props.context.id).permalink
+  return this.shareContext({
+    context,
+    recipients: props.with,
+    revoke: props.revoked,
+    seq: props.seq,
+    customerState: req.state
+  })
+})
+
+SimpleBank.prototype.shareContext = co(function* ({ customerState, context, recipients, revoke, seq }) {
+  const self = this
   const cid = calcContextIdentifier({
     bank: this,
     context: context,
-    participants: [this.tim.permalink, req.customer],
+    participants: [this.tim.permalink, customerState.permalink],
   })
 
   if (!cid) {
     throw utils.httpError(400, 'invalid context')
   }
 
-  const recipients = props.with.map(r => {
+  recipients = recipients.map(r => {
     return utils.parseObjectId(r.id).permalink
   })
 
   // update context state
-  if (!req.state.contexts[context]) {
-    req.state.contexts[context] = { observers: [] }
+  if (!customerState.contexts[context]) {
+    customerState.contexts[context] = { observers: [] }
   }
 
-  const contextState = req.state.contexts[context]
+  const contextState = customerState.contexts[context]
   let observers = contextState.observers.filter(o => recipients.indexOf(o) === -1)
-  if (!props.revoked) {
+  if (!revoke) {
     observers = observers.concat(recipients)
   }
 
   contextState.observers = observers
   // end update context state
 
-  let customerIdentityInfo = req.customerIdentityInfo
-  const customerProfile = req.state.profile
-  const shareMethod = props.revoked ? 'unshare' : 'share'
+  const customerIdentity = customerState.identity
+  const customerProfile = customerState.profile
+  const shareMethod = revoke ? 'unshare' : 'share'
 
-  if (!(customerIdentityInfo && customerIdentityInfo.object)) {
-    customerIdentityInfo = yield this.tim.lookupIdentity({ permalink: req.customer })
-  }
+  // if (!(customerIdentityInfo && customerIdentityInfo.object)) {
+  //   customerIdentityInfo = yield this.tim.lookupIdentity({ permalink: req.customer })
+  // }
 
   return Q.all(recipients.map(co(function* (recipient) {
-    if (!props.revoked) {
+    if (!revoke) {
       const intro = {
         [TYPE]: 'tradle.Introduction',
         message: 'introducing...',
-        identity: customerIdentityInfo.object
+        identity: customerIdentity
       }
 
       if (customerProfile) intro.profile = customerProfile
@@ -1291,7 +1301,7 @@ SimpleBank.prototype.shareContext = co(function* (req, res) {
     return self._ctxDB[shareMethod]({
       context: cid,
       recipient,
-      seq: props.seq || 0
+      seq: seq || 0
     })
   })))
 })
