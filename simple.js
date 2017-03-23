@@ -1370,7 +1370,7 @@ SimpleBank.prototype._revokeProduct = co(function* (opts) {
     msg: productObj
   })
 
-  if (type === EMPLOYEE_ONBOARDING) {
+  if (product.type === EMPLOYEE_ONBOARDING) {
     this._ensureEmployees()
   }
 
