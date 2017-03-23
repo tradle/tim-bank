@@ -927,6 +927,17 @@ SimpleBank.prototype.continueProductApplication = co(function* (opts) {
 
   const isFormOrVerification = req[TYPE] === VERIFICATION || this.models.docs.indexOf(req[TYPE]) !== -1
   const reqdForms = getRequiredForms(productModel)
+  if (this.tim.name && this.tim.name.toLowerCase() === 'aviva') {
+    const photoID = application.forms.find(form => form.type === 'tradle.PhotoID')
+    if (photoID) {
+      const scanJson = photoID.form.object.scanJson || {}
+      if (!(scanJson.personal && scanJson.personal.lastName)) {
+        // need to collect firstName, lastName manually
+        const idx = Math.max(reqdForms.indexOf('tradle.PhotoID'), reqdForms.indexOf('tradle.Selfie'))
+        reqdForms.splice(idx + 1, 0, 'tradle.BasicContactInfo')
+      }
+    }
+  }
 
   const multiEntryForms = productModel.multiEntryForms || []
   const missing = find(reqdForms, type => {
