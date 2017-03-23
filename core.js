@@ -4,7 +4,8 @@ const assert = require('assert')
 const extend = require('xtend')
 const levelup = require('levelup')
 const mutexify = require('mutexify')
-const map = require('map-stream')
+const through = require('through2')
+const pump = require('pump')
 const find = require('array-find')
 const typeforce = require('typeforce')
 const collect = require('stream-collector')
@@ -145,18 +146,22 @@ Bank.prototype.use = function (type, fn) {
   return this
 }
 
-Bank.prototype.list = function (type) {
+Bank.prototype.list = function (type, opts={}) {
   const start = prefixKey(type, '')
-  const stream = this._db.createReadStream({
-      start: start,
-      end: start + '\xff'
-    })
-    .pipe(map(function (data, cb) {
+  opts = extend({
+    start: start,
+    end: start + '\xff'
+  }, opts)
+
+  const stream = pump(
+    this._db.createReadStream(opts),
+    through.obj(function (data, enc, cb) {
       cb(null, {
         key: unprefixKey(type, data.key),
         value: data.value
       })
-    }))
+    })
+  )
 
   return Q.nfcall(collect, stream)
 }

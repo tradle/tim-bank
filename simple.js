@@ -1877,6 +1877,10 @@ SimpleBank.prototype._execBooleanPlugin = co(function* (method, args, fallbackVa
   return typeof result === 'boolean' ? { result } : result
 })
 
+SimpleBank.prototype.list = function (type, opts) {
+  return this.bank.list(type, opts)
+}
+
 function getType (obj) {
   if (obj[TYPE]) return obj[TYPE]
   if (!obj.id) return
