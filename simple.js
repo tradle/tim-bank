@@ -317,7 +317,7 @@ SimpleBank.prototype._isMyProduct = function (type) {
   return model && model.subClassOf === 'tradle.MyProduct'
 }
 
-SimpleBank.prototype._assignRelationshipManager = function (req) {
+SimpleBank.prototype._assignRelationshipManager = co(function* (req) {
   if (req.isFromEmployeeToCustomer) return
 
   // assign relationship manager if none is assigned
@@ -329,39 +329,45 @@ SimpleBank.prototype._assignRelationshipManager = function (req) {
   const rmIsStillEmployed = this.isEmployee(relationshipManager)
   if (!rmIsStillEmployed) relationshipManager = null
 
-  if (!Bank.NO_FORWARDING && req.state && !relationshipManager && this._employees.length) {
-    // for now, just assign first employee
-    const idx = Math.floor(Math.random() * this._employees.length)
+  if (Bank.NO_FORWARDING || !req.state || relationshipManager || !this._employees.length) return
 
-    relationshipManager = req.state.relationshipManager = this._employees[idx].permalink
-    // no need to wait for this to finish
-    // console.log('ASSIGNED RELATIONSHIP MANAGER TO ' + req.customer)
-    const intro = {
-      [TYPE]: 'tradle.Introduction',
-      message: 'Your new customer',
-      // [TYPE]: 'tradle.Introduction',
-      // relationship: 'customer',
-      identity: req.from.object
-    }
+  yield this.assignRelationshipManager({
+    req,
+    state: req.state,
+    employees: this.employees()
+  })
 
-    if (req.state.profile) {
-      intro.profile = req.state.profile
-    } else {
-      intro.name = 'Customer ' + randomDecimalString(6)
-    }
 
-    this.tim.signAndSend({
-      to: { permalink: relationshipManager },
-      object: intro
-    })
+  const newRelationshipManager = req.state.relationshipManager
+  if (!newRelationshipManager) return
 
-    // this._forwardDB.share({
-    //   context: getConversationIdentifier(this.tim.permalink, req.customer),
-    //   recipient: relationshipManager,
-    //   seq: 0
-    // })
+  // no need to wait for this to finish
+  // console.log('ASSIGNED RELATIONSHIP MANAGER TO ' + req.customer)
+  const intro = {
+    [TYPE]: 'tradle.Introduction',
+    message: 'Your new customer',
+    // [TYPE]: 'tradle.Introduction',
+    // relationship: 'customer',
+    identity: req.from.object
   }
-}
+
+  if (req.state.profile) {
+    intro.profile = req.state.profile
+  } else {
+    intro.name = 'Customer ' + randomDecimalString(6)
+  }
+
+  this.tim.signAndSend({
+    to: { permalink: newRelationshipManager },
+    object: intro
+  })
+
+  // this._forwardDB.share({
+  //   context: getConversationIdentifier(this.tim.permalink, req.customer),
+  //   recipient: relationshipManager,
+  //   seq: 0
+  // })
+})
 
 SimpleBank.prototype.lock = function (id, reason) {
   return this.bank.lock(id, reason)
@@ -1853,6 +1859,10 @@ SimpleBank.prototype.didIssueProduct = function ({ state, product, certificate }
 
 SimpleBank.prototype.onApplicationFormsCollected = function ({ req, state, application }) {
   return this._execPlugins('onApplicationFormsCollected', arguments)
+}
+
+SimpleBank.prototype.assignRelationshipManager = function ({ req, state, employees }) {
+  return this._execPlugins('assignRelationshipManager', arguments)
 }
 
 SimpleBank.prototype.shouldSendVerification = co(function* ({ state, application, form }) {
