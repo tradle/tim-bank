@@ -195,23 +195,14 @@ function SimpleBank (opts) {
     }
   })
 
-  bank.use(req => {
-    if (Bank.NO_FORWARDING || !this._employees.length) return
+  bank.use(co(function* (req) {
+    if (Bank.NO_FORWARDING) return
 
-    let type = req.payload.object[TYPE]
-    if (type === IDENTITY_PUBLISH_REQUEST || type === SELF_INTRODUCTION
-        // || type === 'tradle.Message'
-        || type === 'tradle.ShareContext'
-    ) {
-      return
-    }
-
-    const from = req.payload.author.permalink
-    const isEmployee = this.isEmployee(from)
-    if (isEmployee) return
-
-    const relationshipManager = req.state.relationshipManager
+    const { relationshipManager } = req.state
     if (!relationshipManager) return
+
+    const should = yield self.shouldForwardToRelationshipManager({ req })
+    if (!should.result) return
 
     const obj = req.msg.object.object
     const embeddedType = obj[TYPE] === MESSAGE_TYPE && obj.object[TYPE]
@@ -220,22 +211,23 @@ function SimpleBank (opts) {
     if (req.context) other.context = req.context
 
     type = embeddedType || req[TYPE]
-    this._debug(`FORWARDING ${type} FROM ${req.customer} TO RM ${relationshipManager}`)
-    this.tim.send({
+    self._debug(`FORWARDING ${type} FROM ${req.customer} TO RM ${relationshipManager}`)
+    self.tim.send({
       to: { permalink: relationshipManager },
       link: req.payload.link,
       // bad: this creates a duplicate message in the context
       other: other
     })
-  })
+  }))
 
-  bank.use('tradle.ShareContext', this.handleShareContext)
+  bank.use('tradle.ShareContext', self.handleShareContext)
   bank.use(co(function* (req) {
-    if (!req.isFromEmployeeToCustomer) return
+    if (Bank.NO_FORWARDING) return
+
+    const { result } = yield self.shouldForwardFromRelationshipManager({ req })
+    if (!result) return
 
     const { object } = req.payload
-    // handle verifications separately
-    if (object[TYPE] === VERIFICATION) return
 
     // forward to customer
     //
@@ -1878,6 +1870,14 @@ SimpleBank.prototype.shouldIssueProduct = function ({ state, application }) {
 
 SimpleBank.prototype.canVerify = function ({ form }) {
   return this._execBooleanPlugin('canVerify', arguments, true)
+}
+
+SimpleBank.prototype.shouldForwardToRelationshipManager = function ({ req }) {
+  return this._execBooleanPlugin('shouldForwardToRelationshipManager', arguments, true)
+}
+
+SimpleBank.prototype.shouldForwardFromRelationshipManager = function ({ req }) {
+  return this._execBooleanPlugin('shouldForwardFromRelationshipManager', arguments, true)
 }
 
 /**
