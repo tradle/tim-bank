@@ -1247,12 +1247,6 @@ SimpleBank.prototype.revokeProduct = co(function* (opts) {
   const req = opts.req
   try {
     yield this._revokeProduct(opts)
-    try {
-      yield this.didRevokeProduct({ req })
-    } catch (err) {
-      this._debug('didRevokeProduct plugin failed', err)
-    }
-
     yield this.bank._setCustomerState(opts.req)
   } finally {
     this._endRequest(req)
@@ -1281,8 +1275,7 @@ SimpleBank.prototype.handleShareContext = co(function* (req, res) {
 
 SimpleBank.prototype.shareContext = co(function* ({ customerState, context, recipients, revoke, seq }) {
   const self = this
-  const cid = calcContextIdentifier({
-    bank: this,
+  const cid = this.calcContextIdentifier({
     context: context,
     participants: [this.tim.permalink, customerState.permalink],
   })
@@ -1387,8 +1380,10 @@ SimpleBank.prototype._revokeProduct = co(function* (opts) {
     msg: productObj
   })
 
-  if (product.type === EMPLOYEE_ONBOARDING) {
-    this._ensureEmployees()
+  try {
+    yield this.didRevokeProduct({ req, product })
+  } catch (err) {
+    this._debug('didRevokeProduct plugin failed', err)
   }
 
   return result
@@ -1768,8 +1763,7 @@ SimpleBank.prototype._shareContexts = function () {
     db: 'contexts.db',
     getContext: val => {
       if (val.object.context) {
-        return calcContextIdentifier({
-          bank: this,
+        return this.calcContextIdentifier({
           context: val.object.context,
           participants: [val.author, val.recipient]
         })
@@ -1802,12 +1796,24 @@ SimpleBank.prototype.use = function (plugin) {
   this._plugins.push(clone(plugin))
 }
 
+SimpleBank.prototype._execPluginsWithPlainReturnValue = function (method, args) {
+  const plugins = this._plugins.filter(p => p[method])
+
+  let ret
+  for (let i = 0; i < plugins.length; i++) {
+    ret = plugins[i][method].apply(this, args)
+    if (typeof ret !== 'undefined') return ret
+  }
+
+  return ret
+}
+
 SimpleBank.prototype._execPlugins = co(function* (method, args) {
   const plugins = this._plugins.filter(p => p[method])
 
   for (let i = 0; i < plugins.length; i++) {
     let ret = plugins[i][method].apply(this, args)
-    if (utils.isPromise(ret)) yield ret
+    if (utils.isPromise(ret)) ret = yield ret
   }
 })
 
@@ -1865,6 +1871,10 @@ SimpleBank.prototype.onApplicationFormsCollected = function ({ req, state, appli
 
 SimpleBank.prototype.assignRelationshipManager = function ({ req, state, employees }) {
   return this._execPlugins('assignRelationshipManager', arguments)
+}
+
+SimpleBank.prototype.calcContextIdentifier = function ({ context, participants }) {
+  return this._execPluginsWithPlainReturnValue('calcContextIdentifier', arguments)
 }
 
 SimpleBank.prototype.shouldSendVerification = co(function* ({ state, application, form }) {
@@ -1953,17 +1963,6 @@ function alphabetical (a, b) {
 
 function getConversationIdentifier (a, b) {
   return [a, b].sort(alphabetical).join(':')
-}
-
-function calcContextIdentifier ({ bank, context, participants }) {
-  const rmIsParticipant = bank.employees()
-    .some(e => participants.indexOf(e.permalink) !== -1)
-
-  // messages from/to an employee get re-written and sent by the bank
-  // this ignores the originals
-  if (rmIsParticipant) return
-
-  return context// + ':' + getConversationIdentifier(...participants)
 }
 
 function findFormState (forms, formInfo) {
