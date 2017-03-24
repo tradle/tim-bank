@@ -1247,6 +1247,12 @@ SimpleBank.prototype.revokeProduct = co(function* (opts) {
   const req = opts.req
   try {
     yield this._revokeProduct(opts)
+    try {
+      yield this.didRevokeProduct({ req })
+    } catch (err) {
+      this._debug('didRevokeProduct plugin failed', err)
+    }
+
     yield this.bank._setCustomerState(opts.req)
   } finally {
     this._endRequest(req)
@@ -1784,16 +1790,16 @@ SimpleBank.prototype._forwardConversations = function () {
 
 // PLUGIN RELATED METHODS
 
+SimpleBank.prototype.getDefaultPlugins = function () {
+  return this._plugins[0]
+}
+
 SimpleBank.prototype.disableDefaultPlugin = function (method) {
-  const idx = this._plugins.indexOf(defaultPlugins[method])
-  if (idx !== -1) {
-    this._plugins.splice(idx, 1)
-    return true
-  }
+  delete this.getDefaultPlugins()[method]
 }
 
 SimpleBank.prototype.use = function (plugin) {
-  this._plugins.push(plugin)
+  this._plugins.push(clone(plugin))
 }
 
 SimpleBank.prototype._execPlugins = co(function* (method, args) {
@@ -1847,6 +1853,10 @@ SimpleBank.prototype.willIssueProduct = function ({ state, product, certificate 
 
 SimpleBank.prototype.didIssueProduct = function ({ state, product, certificate }) {
   return this._execPlugins('didIssueProduct', arguments)
+}
+
+SimpleBank.prototype.didRevokeProduct = function ({ state, product, certificate }) {
+  return this._execPlugins('didRevokeProduct', arguments)
 }
 
 SimpleBank.prototype.onApplicationFormsCollected = function ({ req, state, application }) {
