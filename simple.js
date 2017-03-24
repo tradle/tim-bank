@@ -1973,7 +1973,8 @@ function newApplicationState (type, permalink) {
     permalink,
     skip: [],
     forms: [],
-    formRequests: {}
+    formRequests: {},
+    dateStarted: Date.now()
   }
 }
 
