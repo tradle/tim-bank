@@ -616,7 +616,13 @@ SimpleBank.prototype.handleDocument = co(function* (req, res) {
   const invalid = this.validateDocument(req)
   if (invalid) {
     req.nochain = true
-    return this.requestEdit(req, invalid)
+    let { message, errors } = invalid
+    const prefill = deepClone(req.payload.object)
+    if (application.type === REMEDIATION) {
+      message = 'Importing...' + message[0].toLowerCase() + message.slice(1)
+    }
+
+    return this.requestEdit({ req, message, errors, prefill })
   }
 
   const formWrapper = req.payload
@@ -844,13 +850,15 @@ SimpleBank.prototype.sendVerification = co(function* (opts) {
   }
 })
 
-SimpleBank.prototype.requestEdit = function (req, errs) {
+SimpleBank.prototype.requestEdit = function (opts) {
   typeforce({
+    req: 'Object',
     message: 'String',
-    errors: '?Array'
-  }, errs)
+    errors: '?Array',
+    prefill: '?Object'
+  }, opts)
 
-  const prefill = deepClone(req.payload.object)
+  const { req, message='', errors=[], prefill } = opts
   if (prefill) {
     // clean prefilled data
     for (let p in prefill) {
@@ -860,19 +868,13 @@ SimpleBank.prototype.requestEdit = function (req, errs) {
     }
   }
 
-  let message = errs.message
-  const productType = req.productType || req.application.type
-  if (productType === REMEDIATION) {
-    message = 'Importing...' + message[0].toLowerCase() + message.slice(1)
-  }
-
   return this.send({
     req: req,
     msg: {
       [TYPE]: 'tradle.FormError',
-      prefill: prefill,
-      message: message,
-      errors: errs.errors
+      prefill,
+      message,
+      errors
     }
   })
 }
