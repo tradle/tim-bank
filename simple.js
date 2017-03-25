@@ -148,9 +148,41 @@ function SimpleBank (opts) {
   })
 
   bank.use((req, res) => {
-    if (this._isForm(req.type) || this._isMyProduct(req.type)) {
+    const { type, isFromEmployeeToCustomer, application, payload } = req
+    const isForm = this._isForm(type)
+    const isCertificate = this._isMyProduct(type)
+    if (!(isForm || isCertificate)) return
+
+    if (!isFromEmployeeToCustomer) {
       return this.handleDocument(req)
     }
+
+    if (isForm) {
+      this._debug('ignoring form from employee')
+      return
+    }
+
+    const { object } = payload
+    if (object.revoked) {
+      if (application) {
+        return this._denyProduct({ req, application })
+      }
+
+      return this._revokeProduct({
+        req,
+        product: payload.permalink
+      })
+    }
+
+    if (!application) {
+      this._debug(`don't know which application to approve`)
+      return
+    }
+
+    return this._approveProduct({
+      req,
+      application
+    })
   })
 
   bank.use('tradle.Introduction', req => {
@@ -906,8 +938,9 @@ SimpleBank.prototype.continueProductApplication = co(function* (opts) {
     throw httpError(400, 'no such product model: ' + productType)
   }
 
-  const thisProduct = state.products[productType]
-  if (thisProduct && thisProduct.length && !productModel.customerCanHaveMultiple) {
+  const thisProduct = state.products[productType] || []
+  const hasProduct = thisProduct.find(application => !application.certificate.revoked)
+  if (hasProduct && !productModel.customerCanHaveMultiple) {
     const msg = buildSimpleMsg(
       'You already have a ' + productModel.title + ' with us!'
     )
@@ -1348,9 +1381,37 @@ SimpleBank.prototype.setCustomerState = function (customer, state) {
   return this.bank._setCustomerState({ customer, state })
 }
 
+SimpleBank.prototype._denyProduct = co(function* ({ req, application }) {
+  const { state } = req
+  if (!state.denials) {
+    state.denials = newCustomerState(req.state).denials
+  }
+
+  moveToResolved({ state, application, pile: state.denials })
+  const denial = {
+    [TYPE]: 'tradle.ApplicationDenial',
+    application: application.permalink,
+    forms: getFormIds(application.forms)
+  }
+
+  const { object } = yield this.send({
+    req: req,
+    msg: denial
+  })
+
+  setApplicationResult({ application, decision: object })
+  this.seal({ link: object.link })
+  return result
+})
+
 SimpleBank.prototype._revokeProduct = co(function* (opts) {
   // TODO: minimize code repeat with continueProductApplication
-  const req = opts.req
+  typeforce({
+    req: typeforce.Object,
+    product: typeforce.String
+  }, opts)
+
+  const { req } = opts
   const productPermalink = opts.product
   const products = req.state.products
   let product
@@ -1392,16 +1453,10 @@ SimpleBank.prototype._revokeProduct = co(function* (opts) {
 SimpleBank.prototype._approveProduct = co(function* ({ req, application, product }) {
   // TODO: minimize code repeat with continueProductApplication
   const productType = application.type
-  const state = req.state
+  const { state } = req
 
   this._debug('approving for product', productType)
-  if (!state.products[productType]) {
-    state.products[productType] = []
-  }
-
-  const products = state.products[productType]
-  products.push(application)
-  state.pendingApplications = state.pendingApplications.filter(app => app !== application)
+  moveToResolved({ state, application, pile: state.products })
   const certificate = this._newProductCertificate(state, application, product)
   yield this.willIssueProduct({
     req,
@@ -1423,10 +1478,7 @@ SimpleBank.prototype._approveProduct = co(function* ({ req, application, product
   })
 
   this.seal({ link: result.object.link })
-  application.certificate = result.object
-
-  // retain for backwards compat
-  application.product = result.object.permalink
+  setApplicationResult({ application, decision: result.object })
 
   if (productType === EMPLOYEE_ONBOARDING) {
     this._ensureEmployees()
@@ -2086,6 +2138,7 @@ function newCustomerState (customer) {
     forms: [],
     pendingApplications: [],
     products: {},
+    denials: [],
     // forms: [],
     prefilled: {},
     imported: {},
@@ -2112,4 +2165,21 @@ function getFormRequestMessage (formModel) {
   }
 
   return `Please fill out the form **${formTitle}**`
+}
+
+function moveToResolved ({ state, application, pile }) {
+  const { type } = application
+  if (!pile[type]) {
+    pile[type] = []
+  }
+
+  const products = state.products[type]
+  products.push(application)
+  state.pendingApplications = state.pendingApplications.filter(app => app !== application)
+}
+
+function setApplicationResult ({ application, decision }) {
+  application.certificate = decision
+  // retain for backwards compat
+  application.product = decision.permalink
 }
