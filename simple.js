@@ -74,7 +74,9 @@ const {
   SIMPLE_MESSAGE,
   NEXT_FORM_REQUEST,
   EMPLOYEE_ONBOARDING,
-  MY_EMPLOYEE_ONBOARDING
+  MY_EMPLOYEE_ONBOARDING,
+  APPLICATION_DENIAL,
+  CONFIRMATION
 } = require('./lib/types')
 
 const REMEDIATION_MODEL = {
@@ -150,8 +152,9 @@ function SimpleBank (opts) {
   bank.use((req, res) => {
     const { type, isFromEmployeeToCustomer, application, payload } = req
     const isForm = this._isForm(type)
-    const isCertificate = this._isMyProduct(type)
-    if (!(isForm || isCertificate)) return
+    const isCertificate = this._isMyProduct(type) || type === CONFIRMATION
+    const isDenial = type === APPLICATION_DENIAL
+    if (!(isForm || isCertificate || isDenial)) return
 
     if (!isFromEmployeeToCustomer) {
       return this.handleDocument(req)
@@ -162,21 +165,26 @@ function SimpleBank (opts) {
       return
     }
 
+    if (isDenial || isCertificate) {
+      if (!application) {
+        this._debug(`don't know which application to approve or deny`)
+        return
+      }
+    }
+
+    if (isDenial) {
+      return this._denyProduct({
+        req,
+        application: req.application
+      })
+    }
+
     const { object } = payload
     if (object.revoked) {
-      if (application) {
-        return this._denyProduct({ req, application })
-      }
-
       return this._revokeProduct({
         req,
         product: payload.permalink
       })
-    }
-
-    if (!application) {
-      this._debug(`don't know which application to approve`)
-      return
     }
 
     return this._approveProduct({
@@ -939,7 +947,7 @@ SimpleBank.prototype.continueProductApplication = co(function* (opts) {
   }
 
   const thisProduct = state.products[productType] || []
-  const hasProduct = thisProduct.find(application => !application.certificate.revoked)
+  const hasProduct = thisProduct.find(application => !application.revoked)
   if (hasProduct && !productModel.customerCanHaveMultiple) {
     const msg = buildSimpleMsg(
       'You already have a ' + productModel.title + ' with us!'
@@ -1382,23 +1390,25 @@ SimpleBank.prototype.setCustomerState = function (customer, state) {
 }
 
 SimpleBank.prototype._denyProduct = co(function* ({ req, application }) {
-  const { state } = req
+  const { state, payload } = req
   if (!state.denials) {
     state.denials = newCustomerState(req.state).denials
   }
 
   moveToResolved({ state, application, pile: state.denials })
   const denial = {
-    [TYPE]: 'tradle.ApplicationDenial',
+    [TYPE]: APPLICATION_DENIAL,
     application: application.permalink,
-    forms: getFormIds(application.forms)
+    forms: getFormIds(application.forms),
+    message: payload.object.message || `We regret to inform you that your application has been denied`
   }
 
-  const { object } = yield this.send({
+  const result = yield this.send({
     req: req,
     msg: denial
   })
 
+  const { object } = result
   setApplicationResult({ application, decision: object })
   this.seal({ link: object.link })
   return result
@@ -1424,6 +1434,7 @@ SimpleBank.prototype._revokeProduct = co(function* (opts) {
     // state didn't change
   } else {
     this._debug(`revoke product: "${productPermalink}" not found...`)
+    return
     // throw httpError(400, 'product not found')
   }
 
@@ -1439,6 +1450,11 @@ SimpleBank.prototype._revokeProduct = co(function* (opts) {
   const result = yield this.send({
     req: req,
     msg: productObj
+  })
+
+  setApplicationResult({
+    application: product,
+    decision: result.object
   })
 
   try {
@@ -1554,7 +1570,7 @@ SimpleBank.prototype._newProductCertificate = function (state, application, prod
 
   const formIds = getFormIds(application.forms)
   return {
-    [TYPE]: 'tradle.Confirmation',
+    [TYPE]: CONFIRMATION,
     message,
     forms: formIds.map(id => {
       return { id }
@@ -2138,7 +2154,7 @@ function newCustomerState (customer) {
     forms: [],
     pendingApplications: [],
     products: {},
-    denials: [],
+    denials: {},
     // forms: [],
     prefilled: {},
     imported: {},
@@ -2173,8 +2189,8 @@ function moveToResolved ({ state, application, pile }) {
     pile[type] = []
   }
 
-  const products = state.products[type]
-  products.push(application)
+  const pileForType = pile[type]
+  pileForType.push(application)
   state.pendingApplications = state.pendingApplications.filter(app => app !== application)
 }
 

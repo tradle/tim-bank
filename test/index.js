@@ -180,6 +180,8 @@ test.skip('models', function (t) {
   t.end()
 })
 
+testEmployee({ approve: true })     // requires forwarding
+testEmployee({ approve: false })     // requires forwarding
 testForwarding()   // requires forwarding
 testShareContext() // requires forwarding
 test('disable forwarding', function (t) {
@@ -483,6 +485,98 @@ function testForwarding () {
       .then(() => teardown(setup))
       .done(() => t.end())
   })
+}
+
+function testEmployee ({ approve }) {
+  test(`employee (${approve ? 'approve' : 'deny' } product)`, co(function* (t) {
+    const setup = yield runSetup(init)
+    yield Q.ninvoke(testHelpers, 'meet', setup.tims)
+
+    const { banks, applicant } = setup
+    const bank = banks[0]
+    const bankPermalink = bank.tim.identityInfo.permalink
+    const helpers = getHelpers({
+      applicant: applicant,
+      bank: bank,
+      banks: banks,
+      forms: {},
+      verifications: {},
+      setup: setup,
+      t: t
+    })
+
+    const employee = bank._employeeNodes[0]
+    bank.autoverify(false)
+    bank.disableDefaultPlugin('assignRelationshipManager')
+    bank.use({
+      assignRelationshipManager: function ({ req, state, employees }) {
+        state.relationshipManager = employee.permalink
+      }
+    })
+
+    const employeeHelpers = getHelpers({
+      applicant: employee,
+      bank,
+      banks,
+      forms: {},
+      verifications: {},
+      setup,
+      t
+    })
+
+
+    const product = CurrentAccount
+    const forms = CurrentAccount.forms.slice()
+    const awaitApp = employeeHelpers.awaitType(PRODUCT_APPLICATION)
+    // employee.on('message', function ({ objectinfo }) {
+    //   const { type } = objectinfo
+    //   if (forms.indexOf(type) !== -1) {
+    //     employeeSend({
+    //       [TYPE]: 'tradle.Verification',
+    //       document: {
+    //         id: utils.resourceId(objectinfo)
+    //       }
+    //     })
+    //   }
+    // })
+
+    yield helpers.sendIdentity()
+    yield helpers.startApplication(product.id)
+    const appMsg = yield awaitApp
+    const appLink = protocol.linkString(appMsg.object.object)
+
+    while (forms.length) {
+      let form = forms[0]
+      let nextForm = forms[1]
+      yield helpers.sendForm({ form, nextForm })
+      forms.shift()
+    }
+
+    yield employeeSend({
+      [TYPE]: approve ? types.CONFIRMATION : types.APPLICATION_DENIAL,
+      application: appLink
+    })
+
+    if (approve) {
+      yield helpers.awaitType('tradle.MyCurrentAccount')
+    } else {
+      yield helpers.awaitType(types.APPLICATION_DENIAL)
+    }
+
+    yield teardown(setup)
+    t.end()
+
+    function employeeSend (object) {
+      return employee.signAndSend({
+        to: { permalink: bankPermalink },
+        object,
+        other: {
+          context: appLink,
+          forward: applicant.permalink
+        }
+      })
+    }
+  }))
 }
 
 function testMultiEntry () {
@@ -1423,8 +1517,8 @@ function testSharing (setupFn, idx) {
           return
         }
 
-        var documentHash = utils.parseObjectId(wrapper.object.document.id).link
-        return applicant.objects.get(documentHash)
+        const { type, link, permalink } = utils.parseObjectId(wrapper.object.document.id)
+        return applicant.objects.get(link)
           .then(function (docWrapper) {
             var vType = docWrapper.object[TYPE]
             verifications[vType] = wrapper.link
@@ -1435,7 +1529,7 @@ function testSharing (setupFn, idx) {
           .catch(function (err) {
             if (err.name !== 'FileNotFoundError') throw err
 
-            console.error('forgotten', info[TYPE], 'not found')
+            console.error('forgotten', type, 'not found')
           })
           .done()
       }
@@ -1508,6 +1602,7 @@ function getHelpers (opts) {
     awaitVerification,
     awaitType,
     awaitConfirmation,
+    awaitMessage,
     awaitRevocation,
     awaitTypeUnchained
   }
@@ -2225,4 +2320,8 @@ function getPathPrefix (opts) {
 
 function rethrow (err) {
   if (err) throw err
+}
+
+function awaitReceived (node) {
+  return new Promise(resolve => node.once('message', resolve))
 }
