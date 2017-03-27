@@ -40,7 +40,8 @@ const {
   findFormStateLenient,
   findFilledForm,
   parseObjectId,
-  getFormIds
+  getFormIds,
+  setName
 } = utils
 
 const Actions = require('./lib/actionCreators')
@@ -665,6 +666,10 @@ SimpleBank.prototype.handleDocument = co(function* (req, res) {
 
   const formWrapper = req.payload
   const formState = updateWithReceivedForm(application, formWrapper)
+  if (application.type === EMPLOYEE_ONBOARDING) {
+    setName({ state, application })
+  }
+
   if (!state.imported) state.imported = {}
 
   const session = state.imported[req.context]
@@ -1550,12 +1555,6 @@ SimpleBank.prototype._newProductCertificate = function (state, application, prod
     copyProperties(confirmation, confirmation[TYPE])
     if (!confirmation.myProductId) {
       confirmation.myProductId = randomDecimalString(10)
-    }
-
-    if (productType === EMPLOYEE_ONBOARDING && !confirmation.firstName && confirmation.lastName) {
-      if (state.profile) {
-        extend(confirmation, pick(state.profile, 'firstName', 'lastName'))
-      }
     }
 
     return confirmation
