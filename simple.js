@@ -1403,7 +1403,9 @@ SimpleBank.prototype._denyProduct = co(function* ({ req, application }) {
   moveToResolved({ state, application, pile: state.denials })
   const denial = {
     [TYPE]: APPLICATION_DENIAL,
-    application: application.permalink,
+    application: {
+      id: utils.resourceId(application)
+    },
     forms: getFormIds(application.forms),
     message: payload.object.message || `We regret to inform you that your application has been denied`
   }
