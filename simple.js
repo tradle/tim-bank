@@ -251,7 +251,7 @@ function SimpleBank (opts) {
     delete other.context
     if (req.context) other.context = req.context
 
-    type = embeddedType || req[TYPE]
+    const type = embeddedType || req.type
     self._debug(`FORWARDING ${type} FROM ${req.customer} TO RM ${relationshipManager}`)
     self.tim.send({
       to: { permalink: relationshipManager },
@@ -973,7 +973,7 @@ SimpleBank.prototype.continueProductApplication = co(function* (opts) {
 
   const isFormOrVerification = req[TYPE] === VERIFICATION || this.models.docs.indexOf(req[TYPE]) !== -1
   const reqdForms = getRequiredForms(productModel)
-  if (this.tim.name && this.tim.name.toLowerCase() === 'aviva' && reqdForms.indexOf('tradle.Name') === -1) {
+  if (isAviva(this) && reqdForms.indexOf('tradle.Name') === -1) {
     const photoID = application.forms.find(form => form.type === 'tradle.PhotoID')
     if (photoID) {
       const scanJson = photoID.form.object.scanJson || {}
@@ -1410,9 +1410,11 @@ SimpleBank.prototype._denyProduct = co(function* ({ req, application }) {
     message: payload.object.message || `We regret to inform you that your application has been denied`
   }
 
-  const result = yield this.send({
-    req: req,
-    msg: denial
+  const result = yield maybeSend({
+    bank: this,
+    req,
+    application,
+    object: denial
   })
 
   const { object } = result
@@ -1454,9 +1456,12 @@ SimpleBank.prototype._revokeProduct = co(function* (opts) {
   productObj.revoked = true
   productObj[PREVLINK] = wrapper.link
   productObj[PERMALINK] = wrapper.permalink
-  const result = yield this.send({
-    req: req,
-    msg: productObj
+
+  const result = yield maybeSend({
+    bank: this,
+    req,
+    application: product,
+    object: productObj
   })
 
   setApplicationResult({
@@ -1488,9 +1493,11 @@ SimpleBank.prototype._approveProduct = co(function* ({ req, application, product
     certificate: certificate
   })
 
-  const result = yield this.send({
-    req: req,
-    msg: certificate
+  const result = yield maybeSend({
+    bank: this,
+    req,
+    application,
+    object: certificate
   })
 
   yield this.didIssueProduct({
@@ -2200,3 +2207,19 @@ function setApplicationResult ({ application, decision }) {
   // retain for backwards compat
   application.product = decision.permalink
 }
+
+function isAviva (bank) {
+  return bank.tim.name && bank.tim.name.toLowerCase() === 'aviva'
+}
+
+const maybeSend = co(function* ({ bank, req, application, object }) {
+  if (isAviva(bank) && application.type === 'AvivaCustomerVerification') {
+    const result = yield bank.tim.createObject({ object })
+    return { object: result }
+  }
+
+  return bank.send({
+    req: req,
+    msg: object
+  })
+})
