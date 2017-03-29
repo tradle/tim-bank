@@ -1457,6 +1457,7 @@ SimpleBank.prototype._revokeProduct = co(function* (opts) {
   productObj[PREVLINK] = wrapper.link
   productObj[PERMALINK] = wrapper.permalink
 
+  req.context = product.permalink
   const result = yield maybeSend({
     bank: this,
     req,
