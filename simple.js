@@ -518,6 +518,10 @@ SimpleBank.prototype.sendProductList = function (req) {
     }
   })
 
+  if (isAviva(this)) {
+    added['tradle.OnfidoApplicant'] = this.models['tradle.OnfidoApplicant']
+  }
+
   this.customModels.forEach(m => {
     // will have already been added above
     if (m.subClassOf === 'tradle.FinancialProduct') return
@@ -973,15 +977,12 @@ SimpleBank.prototype.continueProductApplication = co(function* (opts) {
 
   const isFormOrVerification = req[TYPE] === VERIFICATION || this.models.docs.indexOf(req[TYPE]) !== -1
   const reqdForms = getRequiredForms(productModel)
-  if (isAviva(this) && reqdForms.indexOf('tradle.Name') === -1) {
-    const photoID = application.forms.find(form => form.type === 'tradle.PhotoID')
-    if (photoID) {
-      const scanJson = photoID.form.object.scanJson || {}
-      if (!(scanJson.personal && scanJson.personal.lastName)) {
-        // need to collect firstName, lastName manually
-        const idx = Math.max(reqdForms.indexOf('tradle.PhotoID'), reqdForms.indexOf('tradle.Selfie'))
-        reqdForms.splice(idx + 1, 0, 'tradle.Name')
-      }
+  if (isAviva(this)) {
+    const personal = getScannedPersonalData(application)
+    if (!personal.lastName && reqdForms.indexOf('tradle.OnfidoApplicant') === -1) {
+      // need to collect firstName, lastName manually
+      const idx = Math.max(reqdForms.indexOf('tradle.PhotoID'), reqdForms.indexOf('tradle.Selfie'))
+      reqdForms.splice(idx + 1, 0, 'tradle.OnfidoApplicant')
     }
   }
 
@@ -2224,3 +2225,11 @@ const maybeSend = co(function* ({ bank, req, application, object }) {
     msg: object
   })
 })
+
+function getScannedPersonalData (application) {
+  const photoID = application.forms.find(form => form.type === 'tradle.PhotoID')
+  if (!photoID) return {}
+
+  const scanJson = photoID.form.object.scanJson
+  return scanJson ? scanJson.personal : {}
+}
