@@ -906,6 +906,13 @@ SimpleBank.prototype.requestEdit = function (opts) {
   }, opts)
 
   const { req, message='', errors=[], prefill } = opts
+  const msg = {
+    [TYPE]: 'tradle.FormError',
+    prefill,
+    message,
+    errors
+  }
+
   if (prefill) {
     // clean prefilled data
     for (let p in prefill) {
@@ -913,17 +920,11 @@ SimpleBank.prototype.requestEdit = function (opts) {
         delete prefill[p]
       }
     }
+
+    msg.prefill = prefill
   }
 
-  return this.send({
-    req: req,
-    msg: {
-      [TYPE]: 'tradle.FormError',
-      prefill,
-      message,
-      errors
-    }
-  })
+  return this.send({ req, msg })
 }
 
 SimpleBank.prototype.continueProductApplication = co(function* (opts) {
