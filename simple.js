@@ -35,7 +35,6 @@ const {
   buildSimpleMsg,
   httpError,
   formsEqual,
-  validateResource,
   getApplication,
   findFormStateLenient,
   findFilledForm,
@@ -656,7 +655,7 @@ SimpleBank.prototype.handleDocument = co(function* (req, res) {
 
   let state = req.state
   const next = () => this.continueProductApplication({req})
-  const invalid = this.validateDocument(req)
+  const invalid = this.validateForm({ req, application, form: req.payload.object })
   if (invalid) {
     req.nochain = true
     let { message, errors } = invalid
@@ -778,29 +777,6 @@ SimpleBank.prototype.onNextFormRequest = function (req, res) {
 
   application.skip.push(formToSkip)
   return this.continueProductApplication({req})
-}
-
-SimpleBank.prototype.validateDocument = function (req) {
-  const doc = req.payload.object
-  const type = doc[TYPE]
-  const model = this.models[type]
-  if (!model) throw httpError(400, `unknown type ${type}`)
-
-  let err
-  if (this._validate) {
-    err = validateResource(doc, model)
-  }
-
-  if (!err) {
-    if (!doc[SIG]) {
-      err = {
-        message: 'Please review',
-        errors: []
-      }
-    }
-  }
-
-  return err
 }
 
 SimpleBank.prototype._createAndSendVerification = co(function* (opts) {
@@ -1954,6 +1930,10 @@ SimpleBank.prototype.assignRelationshipManager = function ({ req, state, employe
 
 SimpleBank.prototype.calcContextIdentifier = function ({ context, participants }) {
   return this._execPluginsWithPlainReturnValue('calcContextIdentifier', arguments)
+}
+
+SimpleBank.prototype.validateForm = function ({ req, application, form }) {
+  return this._execPluginsWithPlainReturnValue('validateForm', arguments)
 }
 
 SimpleBank.prototype.shouldSendVerification = co(function* ({ state, application, form }) {
