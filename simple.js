@@ -954,7 +954,7 @@ SimpleBank.prototype.continueProductApplication = co(function* (opts) {
 
   const isFormOrVerification = req[TYPE] === VERIFICATION || this.models.docs.indexOf(req[TYPE]) !== -1
   const reqdForms = getRequiredForms(productModel)
-  if (isAviva(this)) {
+  if (isAviva(this) && productType !== EMPLOYEE_ONBOARDING) {
     const personal = getScannedPersonalData(application)
     if (!personal.lastName && reqdForms.indexOf('tradle.OnfidoApplicant') === -1) {
       // need to collect firstName, lastName manually
@@ -1520,6 +1520,11 @@ SimpleBank.prototype._newProductCertificate = function (state, application, prod
           confirmation[pName] = form[pName]
         }
       }
+    }
+
+    if (productType === EMPLOYEE_ONBOARDING) {
+      const name = utils.getName({ application })
+      extend(confirmation, name)
     }
 
     return confirmation
