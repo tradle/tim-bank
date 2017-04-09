@@ -619,7 +619,9 @@ SimpleBank.prototype.handleNewApplication = co(function* (req, res) {
 })
 
 SimpleBank.prototype.handleDocument = co(function* (req, res) {
-  if (req.isFromEmployeeToCustomer) return
+  if (req.customer !== req.from.permalink && this.isEmployee(req.from.permalink)) {
+    return
+  }
 
   const appLink = req.context
   const application = req.application
