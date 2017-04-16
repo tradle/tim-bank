@@ -109,19 +109,8 @@ function SimpleBank (opts) {
 
   if (opts.silent) this.silent(opts.silent)
 
-  const rawModels = (opts.models || []).concat(REMEDIATION_MODEL)
-  this.models = Object.freeze(utils.processModels(rawModels))
-  this.customModels = this.models.filter(model => {
-    return !BASE_MODELS[model.id]
-  })
-
-  this._productList = (opts.productList || DEFAULT_PRODUCT_LIST).slice()
-  this._productList.push(REMEDIATION)
-
-  const missingProduct = find(this._productList, p => !this.models[p])
-  if (missingProduct) {
-    throw new Error(`missing model for product: ${missingProduct}`)
-  }
+  this.setModels(opts.models)
+  this.setProductList(opts.productList)
 
   // this._employees = opts.employees
   this.tim = this.node = opts.node
@@ -291,6 +280,24 @@ function SimpleBank (opts) {
 
 module.exports = SimpleBank
 util.inherits(SimpleBank, EventEmitter)
+
+SimpleBank.prototype.setModels = function (models) {
+  const rawModels = (models || []).concat(REMEDIATION_MODEL)
+  this.models = Object.freeze(utils.processModels(rawModels))
+  this.customModels = this.models.filter(model => {
+    return !BASE_MODELS[model.id]
+  })
+}
+
+SimpleBank.prototype.setProductList = function (productList) {
+  this._productList = (productList || DEFAULT_PRODUCT_LIST).slice()
+  this._productList.push(REMEDIATION)
+
+  const missingProduct = find(this._productList, p => !this.models[p])
+  if (missingProduct) {
+    throw new Error(`missing model for product: ${missingProduct}`)
+  }
+}
 
 SimpleBank.prototype.silent = function (val) {
   if (typeof val === 'boolean') {
