@@ -961,7 +961,7 @@ SimpleBank.prototype.continueProductApplication = co(function* (opts) {
     return this.continueRemediation1(opts)
   }
 
-  const isFormOrVerification = req[TYPE] === VERIFICATION || this.models.docs.indexOf(req[TYPE]) !== -1
+  const isFormOrVerification = req[TYPE] === VERIFICATION || this._isForm(req[TYPE])
   const reqdForms = getRequiredForms(productModel)
   if (isAviva(this) && productType !== EMPLOYEE_ONBOARDING) {
     const personal = getScannedPersonalData(application)

@@ -145,40 +145,40 @@ var BANK_PERSONNEL = new Array(2).fill(null).map(function (n, i) {
   return users.slice(i * 3, i * 3 + 3) // 3 per bank
 })
 
-test.skip('models', function (t) {
-  const models = [
-    {
-      id: 'productA',
-      subClassOf: 'tradle.FinancialProduct',
-      forms: ['form1', 'form2']
-    },
-    {
-      id: 'productB',
-      subClassOf: 'tradle.FinancialProduct',
-      forms: ['form1', 'form3']
-    },
-    {
-      id: 'form1'
-    },
-    {
-      id: 'form2'
-    },
-    {
-      id: 'form3'
-    }
-  ]
+// test.skip('models', function (t) {
+//   const models = [
+//     {
+//       id: 'productA',
+//       subClassOf: 'tradle.FinancialProduct',
+//       forms: ['form1', 'form2']
+//     },
+//     {
+//       id: 'productB',
+//       subClassOf: 'tradle.FinancialProduct',
+//       forms: ['form1', 'form3']
+//     },
+//     {
+//       id: 'form1'
+//     },
+//     {
+//       id: 'form2'
+//     },
+//     {
+//       id: 'form3'
+//     }
+//   ]
 
-  const modelsInfo = utils.processModels(models)
-  t.deepEqual(modelsInfo.docs.productA, models[0].forms)
-  t.deepEqual(modelsInfo.docs.productB, models[1].forms)
-  t.ok(['form1', 'form2', 'form3'].every(f => modelsInfo.docs.indexOf(f) !== -1))
-  t.ok(['productA', 'productB'].every(p => modelsInfo.products.indexOf(p) !== -1))
-  models.forEach(m => {
-    t.deepEqual(modelsInfo[m.id], m)
-  })
+//   const modelsInfo = utils.processModels(models)
+//   t.deepEqual(modelsInfo.docs.productA, models[0].forms)
+//   t.deepEqual(modelsInfo.docs.productB, models[1].forms)
+//   t.ok(['form1', 'form2', 'form3'].every(f => modelsInfo.docs.indexOf(f) !== -1))
+//   t.ok(['productA', 'productB'].every(p => modelsInfo.products.indexOf(p) !== -1))
+//   models.forEach(m => {
+//     t.deepEqual(modelsInfo[m.id], m)
+//   })
 
-  t.end()
-})
+//   t.end()
+// })
 
 testEmployee({ approve: true })     // requires forwarding
 testEmployee({ approve: false })     // requires forwarding
