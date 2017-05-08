@@ -291,7 +291,9 @@ SimpleBank.prototype.setModels = function (models) {
 
 SimpleBank.prototype.setProductList = function (productList) {
   this._productList = (productList || DEFAULT_PRODUCT_LIST).slice()
-  this._productList.push(REMEDIATION)
+  if (this._productList.indexOf(REMEDIATION) === -1) {
+    this._productList.push(REMEDIATION)
+  }
 
   const missingProduct = find(this._productList, p => !this.models[p])
   if (missingProduct) {
