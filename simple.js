@@ -310,7 +310,7 @@ SimpleBank.prototype.silent = function (val) {
     }
   }
 
-  return this._auto.verify
+  return this._auto.silent
 }
 
 SimpleBank.prototype.autoverify = function (val) {
