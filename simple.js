@@ -1164,7 +1164,7 @@ SimpleBank.prototype.continueRemediation1 = co(function* (opts) {
     // TODO: separate out photos into "attachments" to avoid sending twice
     const msg = {
       [TYPE]: 'tradle.ConfirmPackageRequest',
-      message: 'Importing...please review your data',
+      message: 'Tap to import your data',
       items: forms
     }
 
