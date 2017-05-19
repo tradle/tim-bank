@@ -773,22 +773,28 @@ SimpleBank.prototype._tryImportNextItem = co(function* ({ req }) {
   return true
 })
 
-SimpleBank.prototype.onNextFormRequest = function (req, res) {
+SimpleBank.prototype.onNextFormRequest = co(function* (req, res) {
   if (req.isFromEmployeeToCustomer) return
 
   const models = this.models
   const formToSkip = req.payload.object.after
-  const application = req.application || req.state.pendingApplications.find(application => {
-    const model = models[application.type]
-    const forms = getRequiredForms(model)
-    return forms.indexOf(formToSkip) !== -1
-  })
+  let { application, state } = req
+  if (!application) {
+    for (let app of state.pendingApplications) {
+      let productModel = models[app.type]
+      let forms = yield this.getRequiredForms({ application, productModel })
+      if (forms.indexOf(formToSkip) !== -1) {
+        application = app
+        break
+      }
+    }
+  }
 
   if (!application || application.skip.indexOf(formToSkip) !== -1) return
 
   application.skip.push(formToSkip)
   return this.continueProductApplication({req})
-}
+})
 
 SimpleBank.prototype._createAndSendVerification = co(function* (opts) {
   const { req, verifiedItem } = opts
@@ -1074,8 +1080,8 @@ SimpleBank.prototype.continueRemediation = co(function* (opts) {
   const model = this.models[type]
   if (model && model.subClassOf === 'tradle.MyProduct') {
     const productType = type.replace('.My', '.') // hack
-    const pModel = this.models[productType]
-    const reqdForms = getRequiredForms(pModel)
+    const productModel = this.models[productType]
+    const reqdForms = yield this.getRequiredForms({ application, productModel })
     const forms = application.forms.filter(f => {
       return reqdForms.indexOf(f.type) !== -1
     })
@@ -1185,8 +1191,8 @@ SimpleBank.prototype.continueRemediation1 = co(function* (opts) {
   const model = this.models[type]
   if (model && model.subClassOf === 'tradle.MyProduct') {
     const productType = type.replace('.My', '.') // hack
-    const pModel = this.models[productType]
-    const reqdForms = getRequiredForms(pModel)
+    const productModel = this.models[productType]
+    const reqdForms = yield this.getRequiredForms({ application, productModel })
     const forms = application.forms.filter(f => {
       return reqdForms.indexOf(f.type) !== -1
     })
@@ -1879,6 +1885,19 @@ SimpleBank.prototype._execPluginsWithPlainReturnValue = function (method, args) 
   return ret
 }
 
+SimpleBank.prototype._execPluginsWithPromisedReturnValue = co(function* (method, args) {
+  const plugins = this._plugins.filter(p => p[method])
+
+  let ret
+  for (let i = 0; i < plugins.length; i++) {
+    ret = plugins[i][method].apply(this, args)
+    if (utils.isPromise(ret)) ret = yield ret
+    if (typeof ret !== 'undefined') return ret
+  }
+
+  return ret
+})
+
 SimpleBank.prototype._execPlugins = co(function* (method, args) {
   const plugins = this._plugins.filter(p => p[method])
 
@@ -1890,6 +1909,19 @@ SimpleBank.prototype._execPlugins = co(function* (method, args) {
 
 SimpleBank.prototype._onNewCustomer = function ({ req }) {
   return this._execPlugins('newCustomer', arguments)
+}
+
+SimpleBank.prototype.getMissingForms = co(function* ({ application, productModel }) {
+  const required = yield this.getRequiredForms({ application, productModel })
+  return required.filter(f => {
+    const forms = application.forms.filter(form => form.type === f)
+    const last = utils.last(forms)
+    return !(last && last.form)
+  })
+})
+
+SimpleBank.prototype.getRequiredForms = function ({ application, productModel }) {
+  return this._execPluginsWithPromisedReturnValue('getRequiredForms', arguments)
 }
 
 SimpleBank.prototype.willSeal = function ({ link }) {

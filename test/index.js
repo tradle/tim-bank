@@ -1005,7 +1005,7 @@ function testRemediation1 () {
     let wrapper = yield helpers.sendSessionIdentifier(sessionHash, CONFIRM_PACKAGE_TYPE)
     helpers.setContext(wrapper.object.context)
     let { message, items } = wrapper.object.object
-    t.ok(/review/.test(message))
+    t.ok(/import|review/.test(message))
 
     for (var i = 0; i < items.length; i++) {
       let item = items[i]
@@ -1108,7 +1108,7 @@ function testRemediation2 () {
     let wrapper = yield helpers.sendSessionIdentifier(sessionHash, CONFIRM_PACKAGE_TYPE)
     helpers.setContext(wrapper.object.context)
     let { message, items } = wrapper.object.object
-    t.ok(/review/.test(message))
+    t.ok(/import|review/.test(message))
 
     for (var i = 0; i < items.length; i++) {
       let item = items[i]
