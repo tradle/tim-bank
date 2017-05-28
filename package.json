@@ -14,6 +14,7 @@
   "dependencies": {
     "@tradle/engine": "^4.1.0",
     "@tradle/message-context": "1.5.0",
+    "@tradle/validate-model": "github:tradle/validate-model",
     "array-find": "^1.0.0",
     "bluebird-q": "github:mvayngrib/bluebird-q",
     "clone": "^1.0.2",

@@ -40,7 +40,8 @@ const {
   findFilledForm,
   parseObjectId,
   getFormIds,
-  setName
+  setName,
+  getReferencedModels
 } = utils
 
 const Actions = require('./lib/actionCreators')
@@ -79,14 +80,7 @@ const {
   CONFIRMATION
 } = require('./lib/types')
 
-const REMEDIATION_MODEL = {
-  [TYPE]: 'tradle.Model',
-  id: REMEDIATION,
-  subClassOf: 'tradle.FinancialProduct',
-  interfaces: [MESSAGE_TYPE],
-  forms: []
-}
-
+const REMEDIATION_MODEL = BASE_MODELS[REMEDIATION]
 const BANK_VERSION = require('./package.json').version
 const noop = function () {}
 const DAY_MILLIS = 24 * 3600 * 1000
@@ -213,7 +207,7 @@ function SimpleBank (opts) {
 
     const product = req.payload.object.product
     req.productType = product
-    if (product === 'tradle.Remediation') {
+    if (product === REMEDIATION) {
       return this.importSession(req)
     }
 
@@ -282,11 +276,9 @@ module.exports = SimpleBank
 util.inherits(SimpleBank, EventEmitter)
 
 SimpleBank.prototype.setModels = function (models) {
-  const rawModels = (models || []).concat(REMEDIATION_MODEL)
+  const rawModels = (models || []).slice()
+  if (!models || !models[REMEDIATION]) rawModels.push(REMEDIATION_MODEL)
   this.models = Object.freeze(utils.processModels(rawModels))
-  this.customModels = this.models.filter(model => {
-    return !BASE_MODELS[model.id]
-  })
 }
 
 SimpleBank.prototype.setProductList = function (productList) {
@@ -514,30 +506,23 @@ SimpleBank.prototype.sendProductList = function (req) {
   if (req.isFromEmployeeToCustomer) return
   if (this._autoResponseDisabled(req)) return
 
-  const added = {}
   const formModels = {}
-  this._productList.forEach(id => {
-    if (id !== REMEDIATION && id !== EMPLOYEE_ONBOARDING) {
-      const model = added[id] = this.models[id]
-      const forms = getRequiredForms(model).concat(getOptionalForms(model))
-      forms.forEach(id => {
-        added[id] = this.models[id]
-      })
-    }
+  const subset = this._productList.slice()
+  if (isAviva(this)) subset.push('tradle.OnfidoApplicant')
+
+  const refs = getReferencedModels({
+    subset,
+    models: this.models
   })
 
-  if (isAviva(this)) {
-    added['tradle.OnfidoApplicant'] = this.models['tradle.OnfidoApplicant']
-  }
-
-  this.customModels.forEach(m => {
-    // will have already been added above
-    if (m.subClassOf === 'tradle.FinancialProduct') return
-
-    added[m.id] = m
-  })
-
-  const list = Object.keys(added).map(id => added[id])
+  const added = {}
+  refs.forEach(id => added[id] = true)
+  subset.forEach(id => added[id] = true)
+  const list = Object.keys(added)
+    .filter(id => {
+      return id !== EMPLOYEE_ONBOARDING && id !== REMEDIATION
+    })
+    .map(id => this.models[id])
 
   let name // = req.from.identity.name()
   let greeting = name
