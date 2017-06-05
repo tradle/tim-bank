@@ -955,7 +955,7 @@ SimpleBank.prototype.continueProductApplication = co(function* (opts) {
   }
 
   const isFormOrVerification = req[TYPE] === VERIFICATION || this._isForm(req[TYPE])
-  const reqdForms = getRequiredForms(productModel)
+  const reqdForms = yield this.getRequiredForms({ application, productModel })
   if (isAviva(this) && productType !== EMPLOYEE_ONBOARDING) {
     const personal = getScannedPersonalData(application)
     if (!personal.lastName && reqdForms.indexOf('tradle.OnfidoApplicant') === -1) {
