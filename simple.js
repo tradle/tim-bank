@@ -1916,7 +1916,12 @@ SimpleBank.prototype.getMissingForms = co(function* ({ application, productModel
 })
 
 SimpleBank.prototype.getRequiredForms = function ({ application, productModel }) {
-  return this._execPluginsWithPromisedReturnValue('getRequiredForms', arguments)
+  if (!productModel) {
+    productModel = this.models[application.type]
+  }
+
+  const args = [{ application, productModel }]
+  return this._execPluginsWithPromisedReturnValue('getRequiredForms', args)
 }
 
 SimpleBank.prototype.willSeal = function ({ link }) {
