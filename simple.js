@@ -810,7 +810,8 @@ SimpleBank.prototype._createVerification = co(function* (opts) {
       state: req.state,
       form,
       identity: identityInfo.object,
-      verification: opts.verification
+      verification: opts.verification,
+      documentModel: this.models[form.type]
     })
   })
 
@@ -1854,8 +1855,13 @@ SimpleBank.prototype.disableDefaultPlugin = function (method) {
   delete this.getDefaultPlugins()[method]
 }
 
-SimpleBank.prototype.use = function (plugin) {
-  this._plugins.push(clone(plugin))
+SimpleBank.prototype.use = function (plugin, opts={}) {
+  plugin = clone(plugin)
+  if (opts.prepend) {
+    this._plugins.unshift(plugin)
+  } else {
+    this._plugins.push(plugin)
+  }
 }
 
 SimpleBank.prototype._execPluginsWithPlainReturnValue = function (method, args) {
@@ -1889,6 +1895,10 @@ SimpleBank.prototype._execPlugins = co(function* (method, args) {
   for (let i = 0; i < plugins.length; i++) {
     let ret = plugins[i][method].apply(this, args)
     if (utils.isPromise(ret)) ret = yield ret
+    if (ret === false) {
+      this._debug(`plugin caused early exit from "${method}"`)
+      return
+    }
   }
 })
 
