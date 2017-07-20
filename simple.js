@@ -295,7 +295,7 @@ SimpleBank.prototype.setProductList = function (productList) {
 
 SimpleBank.prototype.silent = function (val) {
   if (typeof val === 'boolean') {
-    this._silent = val
+    this._auto.silent = val
     if (val) {
       this.autoverify(false)
       this.autoprompt(false)
@@ -499,7 +499,7 @@ SimpleBank.prototype.replyNotFound = co(function* (req, whatWasntFound) {
 })
 
 SimpleBank.prototype._autoResponseDisabled = function (req) {
-  return this._silent || autoResponseDisabled(req)
+  return this.silent() || autoResponseDisabled(req)
 }
 
 SimpleBank.prototype.sendProductList = function (req) {
