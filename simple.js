@@ -2158,6 +2158,7 @@ function newVerificationFor (opts) {
   const formInfo = formState.form
   const verifications = formState.verifications
   const doc = formInfo.object || formInfo.body
+  const models = opts.models
   let verification = opts.verification
   if (!verification) {
     if (doc) {
