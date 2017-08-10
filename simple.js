@@ -812,7 +812,6 @@ SimpleBank.prototype._createVerification = co(function* (opts) {
       identity: identityInfo.object,
       verification: opts.verification,
       documentModel: this.models[form.type]
-      models: this.models
     })
   })
 
@@ -2158,7 +2157,6 @@ function newVerificationFor (opts) {
   const formInfo = formState.form
   const verifications = formState.verifications
   const doc = formInfo.object || formInfo.body
-  const models = opts.models
   let verification = opts.verification
   if (!verification) {
     if (doc) {
