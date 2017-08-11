@@ -654,8 +654,14 @@ SimpleBank.prototype.handleDocument = co(function* (req, res) {
   const invalid = this.validateForm({ req, application, form: req.payload.object })
   if (invalid) {
     req.nochain = true
-    let { message, errors, requestedProperties } = invalid
-    const prefill = deepClone(req.payload.object)
+    let {
+      message,
+      errors,
+      requestedProperties,
+      prefill=deepClone(req.payload.object)
+    } = invalid
+    // let { message, errors, requestedProperties } = invalid
+    // const prefill = deepClone(req.payload.object)
     if (application.type === REMEDIATION) {
       message = 'Importing...' + message[0].toLowerCase() + message.slice(1)
     }
@@ -885,30 +891,14 @@ SimpleBank.prototype.requestEdit = function (opts) {
     requestedProperties: '?Array',
   }, opts)
 
-  const { req, message='', errors=[], prefill, requestedProperties=[] } = opts
+  const { req, message='', errors=[], requestedProperties=[] } = opts
+  let prefill = opts.prefill
   const msg = {
     [TYPE]: 'tradle.FormError',
     prefill,
     message,
     requestedProperties,
     errors
-  }
-
-  if (prefill) {
-    // clean prefilled data
-    if (prefill[SIG]) {
-      prefill = {
-        id: utils.resourceId({type: prefill[TYPE], permalink: prefill[ROOT_HASH], link: prefill[CUR_HASH]})
-      }
-    }
-    else {
-      for (let p in prefill) {
-        if (p[0] === '_' && p !== TYPE) {
-          delete prefill[p]
-        }
-      }
-    }
-    msg.prefill = prefill
   }
 
   return this.send({ req, msg })
