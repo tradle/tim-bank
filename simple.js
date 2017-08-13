@@ -58,6 +58,7 @@ const {
   PERMALINK,
   TYPES
 } = constants
+const LINK = '_c'
 const MESSAGE_TYPE = TYPES
 const GUEST_SESSION = 'guestsession'
 const {
@@ -658,8 +659,15 @@ SimpleBank.prototype.handleDocument = co(function* (req, res) {
       message,
       errors,
       requestedProperties,
-      prefill=deepClone(req.payload.object)
+      prefill
     } = invalid
+
+    if (!prefill) {
+      prefill = deepClone(req.payload.object)
+      prefill[PERMALINK] = req.payload.permalink
+      prefill[LINK] = req.payload.link
+    }
+
     // let { message, errors, requestedProperties } = invalid
     // const prefill = deepClone(req.payload.object)
     if (application.type === REMEDIATION) {
