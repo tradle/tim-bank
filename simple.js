@@ -41,7 +41,8 @@ const {
   parseObjectId,
   getFormIds,
   setName,
-  getReferencedModels
+  getReferencedModels,
+  getMyProductType
 } = utils
 
 const Actions = require('./lib/actionCreators')
@@ -511,6 +512,13 @@ SimpleBank.prototype.sendProductList = function (req) {
   const subset = this._productList.slice()
   if (isAviva(this)) subset.push('tradle.OnfidoApplicant')
 
+  subset.forEach(productModelId => {
+    const myProductType = getMyProductType(productModelId)
+    if (myProductType in this.models) {
+      subset.push(myProductType)
+    }
+  })
+
   const refs = getReferencedModels({
     subset,
     models: this.models
@@ -521,7 +529,9 @@ SimpleBank.prototype.sendProductList = function (req) {
   subset.forEach(id => added[id] = true)
   const list = Object.keys(added)
     .filter(id => {
-      return id !== EMPLOYEE_ONBOARDING && id !== REMEDIATION
+      return id !== EMPLOYEE_ONBOARDING &&
+        id !== REMEDIATION &&
+        id !== MY_EMPLOYEE_ONBOARDING
     })
     .map(id => this.models[id])
 
@@ -1545,9 +1555,7 @@ SimpleBank.prototype._newProductCertificate = function (state, application, prod
 
   let confirmationType = product[TYPE]
   if (!confirmationType) {
-    const parts = productType.split('.')
-    parts[parts.length - 1] = 'My' + parts[parts.length - 1]
-    confirmationType = parts.join('.')
+    confirmationType = getMyProductType(productType)
   }
 
   const guessedMyProductModel = this.models[confirmationType]
