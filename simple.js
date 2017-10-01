@@ -794,6 +794,7 @@ SimpleBank.prototype.onNextFormRequest = co(function* (req, res) {
       let forms = yield this.getRequiredForms({ application: app, productModel })
       if (forms.indexOf(formToSkip) !== -1) {
         req.application = application = app
+        req.context = application.permalink
         break
       }
     }
