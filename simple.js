@@ -793,7 +793,7 @@ SimpleBank.prototype.onNextFormRequest = co(function* (req, res) {
       let productModel = models[app.type]
       let forms = yield this.getRequiredForms({ application: app, productModel })
       if (forms.indexOf(formToSkip) !== -1) {
-        application = app
+        req.application = application = app
         break
       }
     }
