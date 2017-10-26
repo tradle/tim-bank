@@ -11,26 +11,19 @@ var crypto = require('crypto')
 // constants.TYPES.GET_HISTORY = 'tradle.getHistory'
 
 // overwrite models for tests
-var MODELS = require('@tradle/models')
-var additionalModels = require('./fixtures/models')
-additionalModels.forEach(additional => {
-  for (var i = 0; i < MODELS.length; i++) {
-    let model = MODELS[i]
-    if (model.id === additional.id) {
-      MODELS[i] = additional
-      return
-    }
-  }
+const baseModels = require('@tradle/models').models
+const customModels = require('@tradle/custom-models')
+const additionalModels = require('./fixtures/models')
+const mergeModels = require('@tradle/merge-models')
+var MODELS_BY_ID = mergeModels()
+  .add(baseModels)
+  .add(customModels)
+  .add(additionalModels)
+  .get()
 
-  MODELS.push(additional)
-})
-
-var MODELS_BY_ID = {}
-MODELS.forEach(function (m) {
-  MODELS_BY_ID[m.id] = m
-})
-
-var CurrentAccount = MODELS_BY_ID['tradle.CurrentAccount']
+var CURRENT_ACCOUNT = 'tradle.TestCurrentAccount'
+var MY_CURRENT_ACCOUNT = 'tradle.MyTestCurrentAccount'
+var CurrentAccount = MODELS_BY_ID[CURRENT_ACCOUNT]
 var currentAccountForms = CurrentAccount.forms
 var IDENTITY_PUBLISHING_REQUEST = 'tradle.IdentityPublishRequest'
 var LICENSE = 'tradle.LicenseVerification'
@@ -38,26 +31,27 @@ var MORTGAGE_LOAN_DETAIL = 'tradle.MortgageLoanDetail'
 var ABOUT_YOU = 'tradle.AboutYou'
 var YOUR_MONEY = 'tradle.YourMoney'
 var VERIFICATION = 'tradle.Verification'
-var PRODUCT_APPLICATION = 'tradle.ProductApplication'
+var PRODUCT_REQUEST = 'tradle.ProductRequest'
 var CONFIRM_PACKAGE_TYPE = 'tradle.ConfirmPackageRequest'
+var MODELS_PACK = 'tradle.ModelsPack'
 // var DEFAULT_AWAIT_OPTS = {
 //   awaitVerification: true,
 //   awaitConfirmation: true
 // }
 
 var testProductList = [
-  'tradle.CurrentAccount',
+  CURRENT_ACCOUNT,
   'tradle.BusinessAccount',
   'tradle.Mortgage',
   'tradle.JumboMortgage',
   'tradle.MortgageProduct'
 ]
 
-CurrentAccount.forms = [
-  ABOUT_YOU,
-  YOUR_MONEY,
-  LICENSE
-]
+// CurrentAccount.forms = [
+//   ABOUT_YOU,
+//   YOUR_MONEY,
+//   LICENSE
+// ]
 
 var test = require('tape')
 var typeforce = require('typeforce')
@@ -527,7 +521,7 @@ function testEmployee ({ approve }) {
 
     const product = CurrentAccount
     const forms = CurrentAccount.forms.slice()
-    const awaitApp = employeeHelpers.awaitType(PRODUCT_APPLICATION)
+    const awaitApp = employeeHelpers.awaitType(PRODUCT_REQUEST)
     // employee.on('message', function ({ objectinfo }) {
     //   const { type } = objectinfo
     //   if (forms.indexOf(type) !== -1) {
@@ -558,7 +552,7 @@ function testEmployee ({ approve }) {
     })
 
     if (approve) {
-      yield helpers.awaitType('tradle.MyCurrentAccount')
+      yield helpers.awaitType(MY_CURRENT_ACCOUNT)
     } else {
       yield helpers.awaitType(types.APPLICATION_DENIAL)
     }
@@ -571,7 +565,7 @@ function testEmployee ({ approve }) {
         to: { permalink: bankPermalink },
         object,
         other: {
-          context: appLink,
+          context: helpers.getContext(),
           forward: applicant.permalink
         }
       })
@@ -589,7 +583,11 @@ function testMultiEntry () {
       var bankCoords = getCoords(bank.tim)
       var productModel = multiEntryProduct
       var product = multiEntryProduct.id
-      bank.models = utils.processModels([productModel])
+      bank.models = mergeModels()
+        .add(bank.models)
+        .add([productModel])
+        .get()
+
       bank._productList.push(product)
       MODELS_BY_ID[product] = productModel
 
@@ -701,6 +699,7 @@ function testCustomProductConfirmation () {
             'application for',
             product
           ))
+          .done()
 
           return helpers.awaitForm(productForms[0])
         })
@@ -870,7 +869,7 @@ function testRemediation () {
         },
         license,
         {
-          [TYPE]: 'tradle.MyCurrentAccount',
+          [TYPE]: MY_CURRENT_ACCOUNT,
           myProductId: 'blah'
         }
       ]
@@ -892,7 +891,7 @@ function testRemediation () {
           helpers.setContext(wrapper.object.context)
           const message = wrapper.object.object.message
           t.ok(/review/.test(message))
-          helpers.signNSend(aboutYou)
+          helpers.signNSend(aboutYou).done()
           return helpers.awaitType(types.FORM_ERROR)
         })
         .then(wrapper => {
@@ -903,16 +902,16 @@ function testRemediation () {
         .then(wrapper => {
           // console.log(wrapper.object)
           t.equal(wrapper.object.object.prefill[TYPE], YOUR_MONEY)
-          helpers.signNSend(yourMoney)
+          helpers.signNSend(yourMoney).done()
           return helpers.awaitType(types.FORM_ERROR)
         })
         .then(wrapper => {
           const message = wrapper.object.object.message
           t.ok(/review/.test(message))
-          helpers.signNSend(license)
+          helpers.signNSend(license).done()
           return Q.all([
             helpers.awaitType(SIMPLE_MESSAGE),
-            helpers.awaitType('tradle.MyCurrentAccount')
+            helpers.awaitType(MY_CURRENT_ACCOUNT)
           ])
         })
         .spread((msg, myProduct) => {
@@ -985,7 +984,7 @@ function testRemediation1 () {
       },
       license,
       {
-        [TYPE]: 'tradle.MyCurrentAccount',
+        [TYPE]: MY_CURRENT_ACCOUNT,
         myProductId: 'blah'
       }
     ]
@@ -1021,7 +1020,7 @@ function testRemediation1 () {
 
     const [msg, myProduct] = yield Q.all([
       helpers.awaitType('tradle.Confirmation'),
-      helpers.awaitType('tradle.MyCurrentAccount')
+      helpers.awaitType(MY_CURRENT_ACCOUNT)
     ])
 
     t.equal(myProduct.object.object.myProductId, 'blah')
@@ -1088,7 +1087,7 @@ function testRemediation2 () {
       },
       license,
       {
-        [TYPE]: 'tradle.MyCurrentAccount',
+        [TYPE]: MY_CURRENT_ACCOUNT,
         myProductId: 'blah'
       }
     ]
@@ -1119,8 +1118,9 @@ function testRemediation2 () {
     const toSign = items.map(item => {
       if (item[TYPE] === 'tradle.VerifiedItem') return item.item
 
-      const model = MODELS_BY_ID[item[TYPE]]
-      if (model.subClassOf === 'tradle.Form') return item
+      if (isForm(item[TYPE])) {
+        return item
+      }
     })
     .filter(item => item)
 
@@ -1132,10 +1132,11 @@ function testRemediation2 () {
       [TYPE]: 'tradle.ConfirmPackageResponse',
       sigs: signed.map(wrapper => wrapper.object[SIG])
     })
+    .done()
 
     let [msg, myProduct] = yield Q.all([
       helpers.awaitType('tradle.Confirmation'),
-      helpers.awaitType('tradle.MyCurrentAccount')
+      helpers.awaitType(MY_CURRENT_ACCOUNT)
     ])
 
     // t.ok(/confirm/.test(msg.object.object.message))
@@ -1155,7 +1156,7 @@ function testManualMode () {
       bank._auto.verify = false
 
       var bankCoords = getCoords(bank.tim)
-      var product = 'tradle.CurrentAccount'
+      var product = CURRENT_ACCOUNT
       var forms = {}
       var approved = false
       var helpers = getHelpers({
@@ -1267,7 +1268,8 @@ function testShareContext () {
       }))
 
       const existing = [
-        PRODUCT_APPLICATION,
+        PRODUCT_REQUEST,
+        MODELS_PACK,
         FORM_REQUEST,
         ABOUT_YOU,
         VERIFICATION,
@@ -1284,7 +1286,7 @@ function testShareContext () {
       const live = [
         LICENSE,
         VERIFICATION,
-        'tradle.MyCurrentAccount'
+        MY_CURRENT_ACCOUNT
       ]
 
       let batch = existing.slice()
@@ -1342,7 +1344,7 @@ function testShareContext () {
           object: {
             [TYPE]: 'tradle.ShareContext',
             revoked: !!revoke,
-            context: { id: `_${helpers[0].getContext()}` },
+            context: helpers[0].getContext(),
             with: [{ id: `_${banks[1].tim.permalink}` }]
           },
           other: {
@@ -1359,7 +1361,8 @@ function testShareContext () {
           // console.log('EMPLOYEE RECEIVEING', msg.object.object[TYPE])
           const fwded = msg.object.object.object
           if (!fwded) {
-            return t.equal(msg.object.object[TYPE], 'tradle.Introduction')
+            const type = msg.object.object[TYPE]
+            return t.ok(type === 'tradle.Introduction' || type === 'tradle.ModelsPack')
           }
 
           // forwarded message
@@ -1536,7 +1539,7 @@ function testSharing (setupFn, idx) {
 
       // function dumpDBs (bank) {
       //   var lists = CurrentAccount.forms.concat([
-      //     'tradle.MyCurrentAccount',
+      //     MY_CURRENT_ACCOUNT,
       //     VERIFICATION
       //   ])
 
@@ -1574,7 +1577,7 @@ function getHelpers (opts) {
   const setup = opts.setup
   const t = opts.t
   const bankCoords = getCoords(bank.tim)
-  let application
+  let context
   return {
     sendIdentity,
     sendIdentityAgain,
@@ -1613,6 +1616,7 @@ function getHelpers (opts) {
       identity: applicant.identity,
       profile: applicant.profile
     })
+    .done()
 
     if (opts.awaitUnchained) {
       applicant.watchSeal({
@@ -1651,28 +1655,32 @@ function getHelpers (opts) {
 
   function sendSessionIdentifier (identifier, waitType) {
     var msg = {
-      [TYPE]: PRODUCT_APPLICATION, //types.GUEST_SESSION_PROOF,
+      [TYPE]: PRODUCT_REQUEST, //types.GUEST_SESSION_PROOF,
       session: identifier,
-      product: 'tradle.Remediation'
+      requestFor: 'tradle.Remediation',
+      contextId: randomString(32)
     }
 
-    signNSend(msg)
+    signNSend(msg).done()
     return waitType && awaitType(waitType)
   }
 
   function startApplication (productType) {
-    productType = productType || 'tradle.CurrentAccount'
+    productType = productType || CURRENT_ACCOUNT
     var model = MODELS_BY_ID[productType]
     // var msg = utils.buildSimpleMsg(
     //   'application for',
     //   productType
     // )
 
+    const contextId = randomString(32)
+    setContext(contextId)
     signNSend({
-      [TYPE]: PRODUCT_APPLICATION,
-      product: productType
+      [TYPE]: PRODUCT_REQUEST,
+      requestFor: productType,
+      contextId
     })
-    .done(result => setContext(result.object.link))
+    .done()
 
     return awaitForm(model.forms[0])
       .then(result => {
@@ -1688,7 +1696,7 @@ function getHelpers (opts) {
       hey: 'ho'
     }
 
-    signNSend(msg)
+    signNSend(msg).done()
     return Q.all([
         awaitType('tradle.NotFound')
       ])
@@ -1727,6 +1735,7 @@ function getHelpers (opts) {
       [TYPE]: 'tradle.NextFormRequest',
       after: opts.after
     })
+    .done()
 
     return Q.all([
       opts.nextForm && awaitForm(opts.nextForm)
@@ -1778,6 +1787,7 @@ function getHelpers (opts) {
       licenseNumber: 'abc',
       dateOfIssue: 1414342441249
     })
+    .done()
 
     return awaitType('tradle.FormError')
   }
@@ -1848,18 +1858,18 @@ function getHelpers (opts) {
 
 //    msg[NONCE] = '' + (nonce++)
     msg[TYPE] = types.FORGET_ME
-    signNSend(msg)
+    signNSend(msg).done()
     return awaitType(types.FORGOT_YOU)
       .then(() => applicant.forget(bank.tim.permalink))
   }
 
-  function setContext (context) {
+  function setContext (value) {
     // console.log('setting context', context)
-    application = context
+    context = value
   }
 
   function getContext () {
-    return application
+    return context
   }
 
   function signNSend (msg, opts) {
@@ -1880,9 +1890,8 @@ function getHelpers (opts) {
       other.context = context
     }
 
-    if (!other && type === PRODUCT_APPLICATION) {
-      const link = msg.link || tradleUtils.hexLink(msg.object)
-      other = { context: link }
+    if (!other && type === PRODUCT_REQUEST) {
+      other = { context: msg.object.contextId }
     }
 
     const sendOpts = { other, to: bankCoords }
@@ -1897,7 +1906,7 @@ function getHelpers (opts) {
     return applicant.send(sendOpts)
       .then(result => {
         const type = result.object.object[TYPE]
-        if (MODELS_BY_ID[type].subClassOf === 'tradle.Form' || CurrentAccount.forms.indexOf(type) !== -1) {
+        if (isForm(type) || CurrentAccount.forms.indexOf(type) !== -1) {
           forms[type] = result.object.permalink
         }
 
@@ -1930,7 +1939,7 @@ function getHelpers (opts) {
   }
 
   function awaitConfirmation () {
-    return awaitType('tradle.MyCurrentAccount')
+    return awaitType(MY_CURRENT_ACCOUNT)
       .then(wrapper => {
         t.pass('customer got account')
         return wrapper
@@ -2004,7 +2013,9 @@ function getHelpers (opts) {
         return
       }
 
-      var form = msg.object.object.form
+      var { form } = msg.object.object
+      if (form === PRODUCT_REQUEST) return
+
       t.equal(form, nextFormType, 'got next form request: ' + nextFormType)
       // t.equal(msg.object.context, context)
       defer.resolve(msg)
@@ -2065,7 +2076,9 @@ function runSetup (init) {
   const defer = Q.defer()
   initCount++
   let result
-  return init()
+  return init({
+    models: Object.keys(MODELS_BY_ID).map(id => MODELS_BY_ID[id])
+  })
   // .then(function (_result) {
   //   result = _result
   //   const applicant = utils.promisifyNode(result.applicant)
@@ -2286,7 +2299,7 @@ function fakeValue (model, propName) {
   const type = prop.type
   switch (type) {
     case 'string':
-      return crypto.randomBytes(32).toString('hex')
+      return randomString(32)
     case 'number':
       return Math.random() * 100 | 0
     case 'date':
@@ -2309,6 +2322,10 @@ function fakeValue (model, propName) {
   }
 }
 
+function randomString (bytes) {
+  return crypto.randomBytes(bytes).toString('hex')
+}
+
 function getPathPrefix (opts) {
   if (opts.user) {
     var name = opts.user.profile.name
@@ -2324,4 +2341,11 @@ function rethrow (err) {
 
 function awaitReceived (node) {
   return new Promise(resolve => node.once('message', resolve))
+}
+
+function isForm (type) {
+  const model = MODELS_BY_ID[type]
+  if (model && model.subClassOf === 'tradle.Form' && type !== PRODUCT_REQUEST) {
+    return true
+  }
 }

@@ -244,10 +244,10 @@ Bank.prototype._onMessage = co(function* (received, sync) {
   })
 
   // TODO: move most of this out to implementation (e.g. simple.js)
-  let appLink = msgWrapper.object.context
+  let { context } = msgWrapper.object
   // HACK!
-  if (!appLink && obj[TYPE] === 'tradle.ShareContext') {
-    appLink = utils.parseObjectId(obj.context.id).permalink
+  if (!context && obj[TYPE] === 'tradle.ShareContext') {
+    context = obj.context
   }
 
   const req = new RequestState(msgWrapper, objWrapper)
@@ -269,12 +269,12 @@ Bank.prototype._onMessage = co(function* (received, sync) {
     req.isFromEmployeeToCustomer = true
   }
 
-  if (appLink) {
+  if (context) {
     try {
-      customer = req.customer = yield this._getCustomerForContext(appLink)
+      customer = req.customer = yield this._getCustomerForContext(context)
       req.customerIdentityInfo = yield this.tim.addressBook.lookupIdentity({ permalink: customer })
     } catch (err) {
-      this._debug('customer not found for context', appLink)
+      this._debug('customer not found for context', context)
     }
   }
 

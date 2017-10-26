@@ -21,6 +21,7 @@ const DEFAULT_PRODUCT_LIST = [
 
 const createContextDB = require('@tradle/message-context')
 const BASE_MODELS = require('@tradle/models')
+const CUSTOM_MODELS = require('@tradle/custom-models')
 const Bank = require('./')
 const utils = require('./lib/utils')
 const {
@@ -64,8 +65,7 @@ const MESSAGE_TYPE = TYPES
 const GUEST_SESSION = 'guestsession'
 const {
   REMEDIATION,
-  PRODUCT_APPLICATION,
-  PRODUCT_LIST,
+  PRODUCT_REQUEST,
   IDENTITY,
   IDENTITY_PUBLISH_REQUEST,
   SELF_INTRODUCTION,
@@ -79,7 +79,9 @@ const {
   EMPLOYEE_ONBOARDING,
   MY_EMPLOYEE_ONBOARDING,
   APPLICATION_DENIAL,
-  CONFIRMATION
+  CONFIRMATION,
+  MODELS_PACK,
+  FORM_REQUEST
 } = require('./lib/types')
 
 const REMEDIATION_MODEL = BASE_MODELS[REMEDIATION]
@@ -132,6 +134,30 @@ function SimpleBank (opts) {
     req.state = newCustomerState(cInfo)
     this._onNewCustomer({ req })
     // yield self._setCustomerState(req)
+  })
+
+  bank.use(req => {
+    if (req.state.modelsHash !== this.modelsHash) {
+      req.state.modelsHash = this.modelsHash
+      return this.sendModelsPack(req)
+    }
+  })
+
+  bank.use(req => {
+    if (req.isFromEmployeeToCustomer) return
+    if (req.type !== PRODUCT_REQUEST) return
+
+    const product = req.payload.object.requestFor
+    req.productType = product
+    if (product === REMEDIATION) {
+      return this.importSession(req)
+    }
+
+    if (this._productList.indexOf(product) === -1) {
+      return this.replyNotFound(req, product)
+    } else {
+      return this.handleNewApplication(req)
+    }
   })
 
   bank.use((req, res) => {
@@ -204,22 +230,6 @@ function SimpleBank (opts) {
     if (!req.context) return this.sendProductList(req)
   })
 
-  bank.use(PRODUCT_APPLICATION, req => {
-    if (req.isFromEmployeeToCustomer) return
-
-    const product = req.payload.object.product
-    req.productType = product
-    if (product === REMEDIATION) {
-      return this.importSession(req)
-    }
-
-    if (this._productList.indexOf(product) === -1) {
-      return this.replyNotFound(req, product)
-    } else {
-      return this.handleNewApplication(req)
-    }
-  })
-
   bank.use(co(function* (req) {
     if (Bank.NO_FORWARDING) return
 
@@ -281,6 +291,7 @@ SimpleBank.prototype.setModels = function (models) {
   const rawModels = (models || []).slice()
   if (!models || !models[REMEDIATION]) rawModels.push(REMEDIATION_MODEL)
   this.models = Object.freeze(utils.processModels(rawModels))
+  this.modelsHash = utils.hashObject(this.models)
 }
 
 SimpleBank.prototype.setProductList = function (productList) {
@@ -343,6 +354,8 @@ SimpleBank.prototype.receiveMsg = co(function* (msg, senderInfo, sync) {
 })
 
 SimpleBank.prototype._isForm = function (type) {
+  if (type === PRODUCT_REQUEST) return false
+
   const model = this.models[type]
   return model && model.subClassOf === 'tradle.Form'
 }
@@ -504,10 +517,8 @@ SimpleBank.prototype._autoResponseDisabled = function (req) {
   return this.silent() || autoResponseDisabled(req)
 }
 
-SimpleBank.prototype.sendProductList = function (req) {
-  if (req.isFromEmployeeToCustomer) return
-  if (this._autoResponseDisabled(req)) return
-
+SimpleBank.prototype.sendModelsPack = function (req) {
+  this._debug('sending ModelsPack')
   const formModels = {}
   const subset = this._productList.slice()
   if (isAviva(this)) subset.push('tradle.OnfidoApplicant')
@@ -527,27 +538,35 @@ SimpleBank.prototype.sendProductList = function (req) {
   const added = {}
   refs.forEach(id => added[id] = true)
   subset.forEach(id => added[id] = true)
-  const list = Object.keys(added)
-    .filter(id => {
-      return id !== EMPLOYEE_ONBOARDING &&
-        id !== REMEDIATION &&
-        id !== MY_EMPLOYEE_ONBOARDING
-    })
+  const models = Object.keys(added)
+    .filter(id => !(id in BASE_MODELS || id in CUSTOM_MODELS))
     .map(id => this.models[id])
-
-  let name // = req.from.identity.name()
-  let greeting = name
-    ? `Hello ${name}!`
-    : 'Hello!'
 
   return this.send({
     req: req,
     msg: {
-      [TYPE]: PRODUCT_LIST,
-      welcome: true,
-      // message: '[Hello! It very nice to meet you](Please choose the product)',
-      message: `[${greeting}](Click for a list of products)`,
-      list: list
+      [TYPE]: MODELS_PACK,
+      models
+    }
+  })
+}
+
+SimpleBank.prototype.sendProductList = function (req) {
+  if (req.isFromEmployeeToCustomer) return
+  if (this._autoResponseDisabled(req)) return
+
+  return this.send({
+    req: req,
+    msg: {
+      [TYPE]: FORM_REQUEST,
+      form: 'tradle.ProductRequest',
+      message: `**Click to see a list of products**`,
+      chooser: {
+        property: 'requestFor',
+        oneOf: this._productList.filter(id => {
+          return id !== REMEDIATION && id !== EMPLOYEE_ONBOARDING
+        })
+      }
     }
   })
 }
@@ -613,13 +632,19 @@ SimpleBank.prototype.handleNewApplication = co(function* (req, res) {
 
   const pendingApp = find(req.state.pendingApplications || [], app => app.type === productType)
   if (pendingApp) {
-    req.context = pendingApp.permalink
+    req.context = pendingApp.context
     return this.continueProductApplication({req})
   }
 
-  const permalink = req.payload.permalink
-  req.state.pendingApplications.push(newApplicationState(productType, permalink))
-  req.context = permalink
+  const { permalink, object } = req.payload
+  const { contextId } = object
+  req.state.pendingApplications.push(newApplicationState({
+    productType,
+    context: contextId,
+    permalink
+  }))
+
+  req.context = contextId
   return this.continueProductApplication({req})
 })
 
@@ -794,7 +819,7 @@ SimpleBank.prototype.onNextFormRequest = co(function* (req, res) {
       let forms = yield this.getRequiredForms({ application: app, productModel })
       if (forms.indexOf(formToSkip) !== -1) {
         req.application = application = app
-        req.context = application.permalink
+        req.context = application.context
         break
       }
     }
@@ -1089,7 +1114,12 @@ SimpleBank.prototype.continueRemediation = co(function* (opts) {
       return reqdForms.indexOf(f.type) !== -1
     })
 
-    const fakeApp = newApplicationState(productType, application.permalink)
+    const fakeApp = newApplicationState({
+      productType,
+      context: application.context,
+      permalink: application.permalink
+    })
+
     fakeApp.forms = forms
     state.pendingApplications.push(fakeApp)
     yield this._approveProduct({ req, application: fakeApp, product: next })
@@ -1158,7 +1188,7 @@ SimpleBank.prototype.continueRemediation1 = co(function* (opts) {
   const { context, application, state, customer, sync, from, to } = req
   const session = state.imported[context]
   const { imported, items, length } = session
-  const isRemediationReq = req.type === PRODUCT_APPLICATION && req.productType === REMEDIATION
+  const isRemediationReq = req.type === PRODUCT_REQUEST && req.productType === REMEDIATION
   if (isRemediationReq || items.length === length) {
     const forms = imported.concat(items).map(item => {
       const type = item[TYPE]
@@ -1200,7 +1230,12 @@ SimpleBank.prototype.continueRemediation1 = co(function* (opts) {
       return reqdForms.indexOf(f.type) !== -1
     })
 
-    const fakeApp = newApplicationState(productType, application.permalink)
+    const fakeApp = newApplicationState({
+      productType,
+      context: application.context,
+      permalink: application.permalink
+    })
+
     fakeApp.forms = forms
     state.pendingApplications.push(fakeApp)
     yield this._approveProduct({ req, application: fakeApp, product: next })
@@ -1257,7 +1292,7 @@ SimpleBank.prototype.approveProduct = co(function* (opts) {
       }
     }
 
-    req.context = appLink
+    req.context = application.context
     const result = yield this._approveProduct({ req, application })
     yield this.bank._setCustomerState(req)
     return result
@@ -1307,12 +1342,12 @@ SimpleBank.prototype.handleShareContext = co(function* (req, res) {
   // TODO:
   // need to check whether this context is theirs to share
   const props = req.payload.object
-  const context = parseObjectId(props.context.id).permalink
+  const { context, seq } = props
   return this.shareContext({
     context,
     recipients: props.with,
     revoke: props.revoked,
-    seq: props.seq,
+    seq,
     customerState: req.state
   })
 })
@@ -1455,7 +1490,7 @@ SimpleBank.prototype._revokeProduct = co(function* (opts) {
   productObj[PREVLINK] = wrapper.link
   productObj[PERMALINK] = wrapper.permalink
 
-  req.context = product.permalink
+  req.context = product.context
   const result = yield maybeSend({
     bank: this,
     req,
@@ -1618,7 +1653,7 @@ SimpleBank.prototype.requestForm = co(function* (opts) {
   //   'Please fill out this form and attach a snapshot of the original document' : 'Please fill out this form'
 
   const formRequest = {
-    [TYPE]: 'tradle.FormRequest',
+    [TYPE]: FORM_REQUEST,
     message: prompt,
     product: productModel.id,
     form: form
@@ -1706,7 +1741,7 @@ SimpleBank.prototype.receiveVerification = co(function* (opts) {
 
     if (!saved) saved = yield doSave
 
-    req.context = application.permalink
+    req.context = application.context
     req.payload = saved
     req.payload.author = { permalink: saved.author }
     const ret = yield this._handleVerification(req, { noNextForm: true })
@@ -1820,15 +1855,20 @@ SimpleBank.prototype.importSession = co(function* (req) {
   if (!state.imported) state.imported = {}
 
   if (!state.imported[sessionId]) {
-    const permalink = req.payload.permalink
-    state.imported[sessionId] = permalink
-    state.imported[permalink] = {
+    const { context } = req
+    const { permalink } = req.payload
+    state.imported[sessionId] = context
+    state.imported[context] = {
       length: session.length,
       items: session,
       imported: []
     }
 
-    state.pendingApplications.push(newApplicationState(REMEDIATION, permalink))
+    state.pendingApplications.push(newApplicationState({
+      productType: REMEDIATION,
+      permalink,
+      context
+    }))
   }
 
   req.context = state.imported[sessionId]
@@ -2100,10 +2140,11 @@ function findFormState (forms, formInfo) {
   return findFormStateLenient(forms, formInfo)
 }
 
-function newApplicationState (type, permalink) {
+function newApplicationState ({ productType, permalink, context }) {
   return {
-    type,
+    type: productType,
     permalink,
+    context,
     skip: [],
     forms: [],
     formRequests: {},

@@ -1,0 +1,225 @@
+[
+  {
+    "id": "tradle.TestCurrentAccount",
+    "title": "Test Current Account",
+    "interfaces": [
+      "tradle.Message"
+    ],
+    "type": "tradle.Model",
+    "forms": [
+      "tradle.AboutYou",
+      "tradle.YourMoney",
+      "tradle.LicenseVerification"
+    ],
+    "subClassOf": "tradle.FinancialProduct",
+    "properties": {}
+  },
+  {
+    "id": "tradle.JumboMortgage",
+    "title": "Jumbo Mortgage",
+    "interfaces": [
+      "tradle.Message"
+    ],
+    "type": "tradle.Model",
+    "forms": [
+      "tradle.AboutYou",
+      "tradle.YourMoney",
+      "tradle.MortgageLoanDetail"
+    ],
+    "subClassOf": "tradle.FinancialProduct",
+    "properties": {
+      "_t": {
+        "type": "string",
+        "readOnly": true
+      },
+      "from": {
+        "type": "object",
+        "readOnly": true,
+        "ref": "tradle.Identity"
+      },
+      "to": {
+        "type": "object",
+        "readOnly": true,
+        "ref": "tradle.Identity"
+      }
+    }
+  },
+  {
+    "id": "tradle.LicenseVerification",
+    "type": "tradle.Model",
+    "title": "License Verification",
+    "subClassOf": "tradle.Form",
+    "interfaces": [
+      "tradle.Message"
+    ],
+    "style": {
+      "backgroundColor": "#EBE1FA"
+    },
+    "properties": {
+      "_t": {
+        "type": "string",
+        "readOnly": true
+      },
+      "licenseNumber": {
+        "type": "number",
+        "maxLength": 8,
+        "displayName": true
+      },
+      "surname": {
+        "type": "string"
+      },
+      "givenName": {
+        "type": "string"
+      },
+      "dateOfBirth": {
+        "type": "date"
+      },
+      "dateOfIssue": {
+        "type": "date"
+      },
+      "dateOfExpiry": {
+        "type": "date",
+        "displayName": true
+      },
+      "issuingAuthority": {
+        "type": "string"
+      },
+      "holderAddress": {
+        "type": "string"
+      },
+      "entitlementCategories": {
+        "type": "string"
+      },
+      "from": {
+        "type": "object",
+        "readOnly": true,
+        "ref": "tradle.Identity"
+      },
+      "to": {
+        "type": "object",
+        "ref": "tradle.Identity",
+        "displayName": true,
+        "readOnly": true
+      },
+      "time": {
+        "type": "date",
+        "readOnly": true
+      },
+      "photos": {
+        "type": "array",
+        "title": "Document Snapshots",
+        "items": {
+          "type": "object",
+          "properties": {
+            "tags": {
+              "type": "string",
+              "skipLabel": true
+            },
+            "url": {
+              "type": "string",
+              "readOnly": true
+            },
+            "width": {
+              "type": "number",
+              "readOnly": true
+            },
+            "height": {
+              "type": "number",
+              "readOnly": true
+            }
+          }
+        },
+        "required": [
+          "title",
+          "url"
+        ]
+      },
+      "verifications": {
+        "type": "array",
+        "readOnly": true,
+        "items": {
+          "backlink": "document",
+          "ref": "tradle.Verification"
+        }
+      },
+      "blockchainUrl": {
+        "type": "string",
+        "readOnly": true
+      },
+      "transactionHash": {
+        "readOnly": true,
+        "type": "string"
+      },
+      "additionalInfo": {
+        "type": "array",
+        "items": {
+          "ref": "tradle.AdditionalInfo",
+          "backlink": "document"
+        }
+      }
+    },
+    "required": [
+      "to",
+      "from",
+      "photos",
+      "licenseNumber",
+      "surname",
+      "givenName",
+      "dateOfBirth",
+      "dateOfIssue",
+      "dateOfExpiry",
+      "issuingAuthority",
+      "holderAddress",
+      "entitlementCategories"
+    ],
+    "gridCols": [
+      "from",
+      "licenseNumber",
+      "dateOfExpiry",
+      "time"
+    ],
+    "viewCols": [
+      "photos",
+      "licenseNumber",
+      "surname",
+      "givenName",
+      "dateOfBirth",
+      "dateOfIssue",
+      "dateOfExpiry",
+      "issuingAuthority",
+      "holderAddress",
+      "entitlementCategories",
+      "verifications",
+      "additionalInfo"
+    ]
+  },
+  {
+    "id": "tradle.MyTestCurrentAccount",
+    "title": "My Current Account",
+    "interfaces": [
+      "tradle.Message"
+    ],
+    "subClassOf": "tradle.MyProduct",
+    "type": "tradle.Model",
+    "properties": {
+      "_t": {
+        "type": "string",
+        "readOnly": true
+      },
+      "from": {
+        "type": "object",
+        "readOnly": true,
+        "ref": "tradle.Identity"
+      },
+      "to": {
+        "type": "object",
+        "readOnly": true,
+        "ref": "tradle.Identity"
+      },
+      "myProductId": {
+        "title": "Mortgage number",
+        "type": "string"
+      }
+    }
+  }
+]
