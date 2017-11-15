@@ -1,7 +1,9 @@
 'use strict'
 
+require('./env')
+
 // var LOG = require('why-is-node-running')
-require('./q-to-bluebird')
+require('../q-to-bluebird')
 // require('@tradle/multiplex-utp')
 
 var crypto = require('crypto')
@@ -11,25 +13,13 @@ var crypto = require('crypto')
 // constants.TYPES.GET_HISTORY = 'tradle.getHistory'
 
 // overwrite models for tests
-var MODELS = require('@tradle/models')
-var additionalModels = require('./fixtures/models')
-additionalModels.forEach(additional => {
-  for (var i = 0; i < MODELS.length; i++) {
-    let model = MODELS[i]
-    if (model.id === additional.id) {
-      MODELS[i] = additional
-      return
-    }
-  }
+var MODELS_BY_ID = require('@tradle/merge-models')()
+  .add(require('@tradle/models').slice(), { validate: false })
+  // .add(require('@tradle/custom-models'))
+  .add(require('./fixtures/models'), { validate: false })
+  .get()
 
-  MODELS.push(additional)
-})
-
-var MODELS_BY_ID = {}
-MODELS.forEach(function (m) {
-  MODELS_BY_ID[m.id] = m
-})
-
+var MODELS = Object.keys(MODELS_BY_ID).map(id => MODELS_BY_ID[id])
 var CurrentAccount = MODELS_BY_ID['tradle.CurrentAccount']
 var currentAccountForms = CurrentAccount.forms
 var IDENTITY_PUBLISHING_REQUEST = 'tradle.IdentityPublishRequest'
@@ -524,7 +514,6 @@ function testEmployee ({ approve }) {
       t
     })
 
-
     const product = CurrentAccount
     const forms = CurrentAccount.forms.slice()
     const awaitApp = employeeHelpers.awaitType(PRODUCT_APPLICATION)
@@ -589,7 +578,7 @@ function testMultiEntry () {
       var bankCoords = getCoords(bank.tim)
       var productModel = multiEntryProduct
       var product = multiEntryProduct.id
-      bank.models = utils.processModels([productModel])
+      bank.models = utils.processModels(MODELS.concat(productModel))
       bank._productList.push(product)
       MODELS_BY_ID[product] = productModel
 
@@ -681,7 +670,7 @@ function testCustomProductConfirmation () {
       var bank = banks[0]
       var bankCoords = getCoords(bank.tim)
       var product = 'tradle.MortgageProduct'
-      var productModel = MODELS[product]
+      var productModel = MODELS_BY_ID[product]
       var productForms = productModel.forms
       var forms = {}
       var helpers = getHelpers({
@@ -2065,7 +2054,10 @@ function runSetup (init) {
   const defer = Q.defer()
   initCount++
   let result
-  return init()
+  return init({
+    models: MODELS
+  })
+
   // .then(function (_result) {
   //   result = _result
   //   const applicant = utils.promisifyNode(result.applicant)

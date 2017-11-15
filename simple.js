@@ -509,7 +509,12 @@ SimpleBank.prototype.sendProductList = function (req) {
   if (this._autoResponseDisabled(req)) return
 
   const formModels = {}
-  const subset = this._productList.slice()
+  const subset = this.isEmployee(req.from.permalink)
+    ? Object.keys(this.models).filter(id => {
+      return this.models[id].subClassOf === 'tradle.FinancialProduct'
+    })
+    : this._productList.slice()
+
   if (isAviva(this)) subset.push('tradle.OnfidoApplicant')
 
   subset.forEach(productModelId => {
@@ -1511,6 +1516,7 @@ SimpleBank.prototype._approveProduct = co(function* ({ req, application, product
 
   if (productType === EMPLOYEE_ONBOARDING) {
     this._ensureEmployees()
+    yield this.sendProductList(req)
   }
 
   return result
