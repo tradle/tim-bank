@@ -20,7 +20,7 @@ const DEFAULT_PRODUCT_LIST = [
 ]
 
 const createContextDB = require('@tradle/message-context')
-const BASE_MODELS = require('@tradle/models')
+const BASE_MODELS = require('./lib/base-models')
 const Bank = require('./')
 const utils = require('./lib/utils')
 const {
@@ -510,9 +510,10 @@ SimpleBank.prototype.sendProductList = function (req) {
 
   const formModels = {}
   const subset = this.isEmployee(req.from.permalink)
-    ? Object.keys(this.models).filter(id => {
-      return this.models[id].subClassOf === 'tradle.FinancialProduct'
-    })
+    ? this.models.filter(model => {
+        return model.subClassOf === 'tradle.FinancialProduct' && !BASE_MODELS[model.id]
+      })
+      .map(model => model.id)
     : this._productList.slice()
 
   if (isAviva(this)) subset.push('tradle.OnfidoApplicant')
@@ -536,7 +537,8 @@ SimpleBank.prototype.sendProductList = function (req) {
     .filter(id => {
       return id !== EMPLOYEE_ONBOARDING &&
         id !== REMEDIATION &&
-        id !== MY_EMPLOYEE_ONBOARDING
+        id !== MY_EMPLOYEE_ONBOARDING &&
+        !BASE_MODELS[id]
     })
     .map(id => this.models[id])
 

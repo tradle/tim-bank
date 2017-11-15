@@ -14,8 +14,7 @@ var crypto = require('crypto')
 
 // overwrite models for tests
 var MODELS_BY_ID = require('@tradle/merge-models')()
-  .add(require('@tradle/models').slice(), { validate: false })
-  // .add(require('@tradle/custom-models'))
+  .add(require('../lib/base-models'), { validate: false })
   .add(require('./fixtures/models'), { validate: false })
   .get()
 

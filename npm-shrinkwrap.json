@@ -19,6 +19,11 @@
         }
       }
     },
+    "@tradle/merge-models": {
+      "version": "2.1.0",
+      "from": "@tradle/merge-models@latest",
+      "resolved": "https://registry.npmjs.org/@tradle/merge-models/-/merge-models-2.1.0.tgz"
+    },
     "@tradle/message-context": {
       "version": "1.5.0",
       "from": "@tradle/message-context@>=1.5.0 <2.0.0",
@@ -30,9 +35,9 @@
       "resolved": "https://registry.npmjs.org/@tradle/protocol/-/protocol-2.3.0.tgz"
     },
     "@tradle/validate-model": {
-      "version": "1.0.0",
-      "from": "tradle/validate-model#167753aa",
-      "resolved": "git://github.com/tradle/validate-model.git#167753aaf077fcd33ae942a94a0dc1e88dbd7283",
+      "version": "4.0.0",
+      "from": "@tradle/validate-model@>=4.0.0 <5.0.0",
+      "resolved": "https://registry.npmjs.org/@tradle/validate-model/-/validate-model-4.0.0.tgz",
       "dependencies": {
         "typeforce": {
           "version": "1.12.0",
